@@ -1,3 +1,4 @@
+# script.zen_dojotools_volume_redirector
 alias: Zen DojoTools Volume Redirector
 description: >
   DojoTools Volume Redirector — ZENOS Edition (v3.9.8 RC1)
@@ -624,24 +625,25 @@ actions:
       # DEFAULT — unmatched
       # ============================
       - default:
-          - event: dojo_volume_redirector_result
-            event_data:
-              status: error
-              failure: unmatched_volume_route
-              event_type: "{{ event_type }}"
-              volume_entity: "{{ volume_entity }}"
-              volume_name: "{{ canonical_volume_name }}"
-              key: "{{ key }}"
-              set_timestamp: "{{ set_timestamp }}"
-          - variables:
-              routing_status: error
-              routing_action: none
-              final_response:
+          - sequence:
+            - event: dojo_volume_redirector_result
+              event_data:
                 status: error
-                message: |
-                  Target volume {{ volume_entity }} not found.
-          - stop: Target Volume Not Found
-            response_variable: final_response
+                failure: unmatched_volume_route
+                event_type: "{{ event_type }}"
+                volume_entity: "{{ volume_entity }}"
+                volume_name: "{{ canonical_volume_name }}"
+                key: "{{ key }}"
+                set_timestamp: "{{ set_timestamp }}"
+            - variables:
+                routing_status: error
+                routing_action: none
+                final_response:
+                  status: error
+                  message: |
+                    Target volume {{ volume_entity }} not found.
+            - stop: Target Volume Not Found
+              response_variable: final_response
 
   # -------------------------------------------------------------
   # Emit success telemetry
