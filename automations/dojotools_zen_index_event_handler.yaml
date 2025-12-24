@@ -1,5 +1,5 @@
 alias: DojoTools Zen Index Event Handler
-{# NOTE THIS IS AN AUTOMATION - NOT A SCRIPT #}
+# NOTE THIS IS AN AUTOMATION - NOT A SCRIPT #
 description: >
   Event Listener (2.0.0) to recurse index calls.  REQUIRES DojoTOOLS Zen Index
   (2.0.0 or greater)
