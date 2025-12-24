@@ -620,28 +620,28 @@ actions:
               routing_action: "{{ trigger.id }}"
               routed_volume: "{{ volume_entity }}"
 
-      # ============================
-      # DEFAULT — unmatched
-      # ============================
-      - default:
-          - event: dojo_volume_redirector_result
-            event_data:
-              status: error
-              failure: unmatched_volume_route
-              event_type: "{{ event_type }}"
-              volume_entity: "{{ volume_entity }}"
-              volume_name: "{{ canonical_volume_name }}"
-              key: "{{ key }}"
-              set_timestamp: "{{ set_timestamp }}"
-          - variables:
-              routing_status: error
-              routing_action: none
-              final_response:
-                status: error
-                message: |
-                  Target volume {{ volume_entity }} not found.
-          - stop: Target Volume Not Found
-            response_variable: final_response
+    # ============================
+    # DEFAULT — unmatched
+    # ============================
+    default:
+      - event: dojo_volume_redirector_result
+        event_data:
+          status: error
+          failure: unmatched_volume_route
+          event_type: "{{ event_type }}"
+          volume_entity: "{{ volume_entity }}"
+          volume_name: "{{ canonical_volume_name }}"
+          key: "{{ key }}"
+          set_timestamp: "{{ set_timestamp }}"
+      - variables:
+          routing_status: error
+          routing_action: none
+          final_response:
+            status: error
+            message: |
+              Target volume {{ volume_entity }} not found.
+      - stop: Target Volume Not Found
+        response_variable: final_response
 
   # -------------------------------------------------------------
   # Emit success telemetry
