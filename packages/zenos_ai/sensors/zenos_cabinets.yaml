@@ -131,6 +131,7 @@ template:
     sensor:
       - name: "ZenOS Dojo Cabinet"
         unique_id: zenos_zen_dojo_cabinet
+        default_entity_id: sensor.zenos_zen_dojo_cabinet
         icon: mdi:file-cabinet
         state: Variables
         attributes:
@@ -179,6 +180,7 @@ template:
     sensor:
       - name: "ZenOS Kata Cabinet"
         unique_id: zenos_zen_kata_cabinet
+        default_entity_id: sensor.zenos_zen_kata_cabinet
         icon: mdi:file-cabinet
         state: Variables
         attributes:
@@ -227,6 +229,7 @@ template:
     sensor:
       - name: "ZenOS History Cabinet"
         unique_id: zenos_zen_history_cabinet
+        default_entity_id: sensor.zenos_zen_history_cabinet
         icon: mdi:file-cabinet
         state: Variables
         attributes:
@@ -275,6 +278,7 @@ template:
     sensor:
       - name: "ZenOS Scratchpad Cabinet"
         unique_id: zenos_zen_scratchpad_cabinet
+        default_entity_id: sensor.zenos_zen_scratchpad_cabinet
         icon: mdi:file-cabinet
         state: Variables
         attributes:

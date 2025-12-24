@@ -1,6 +1,7 @@
 # zen_dojotools_volume_redirector
 automation:
 - alias: Zen DojoTools Volume Redirector
+  unique_id: zen_dojotools_volume_redirector
   description: >
     DojoTools Volume Redirector — ZENOS Edition (v3.9.8 RC1)
     Clean switchboard redirector for canonical Ring-0 ZENOS cabinets only.
@@ -625,25 +626,26 @@ automation:
         # ============================
         # DEFAULT — unmatched
         # ============================
-        - default:
-            - event: dojo_volume_redirector_result
-              event_data:
+      default:
+        - sequence:
+          - event: dojo_volume_redirector_result
+            event_data:
+              status: error
+              failure: unmatched_volume_route
+              event_type: "{{ event_type }}"
+              volume_entity: "{{ volume_entity }}"
+              volume_name: "{{ canonical_volume_name }}"
+              key: "{{ key }}"
+              set_timestamp: "{{ set_timestamp }}"
+          - variables:
+              routing_status: error
+              routing_action: none
+              final_response:
                 status: error
-                failure: unmatched_volume_route
-                event_type: "{{ event_type }}"
-                volume_entity: "{{ volume_entity }}"
-                volume_name: "{{ canonical_volume_name }}"
-                key: "{{ key }}"
-                set_timestamp: "{{ set_timestamp }}"
-            - variables:
-                routing_status: error
-                routing_action: none
-                final_response:
-                  status: error
-                  message: |
-                    Target volume {{ volume_entity }} not found.
-            - stop: Target Volume Not Found
-              response_variable: final_response
+                message: |
+                  Target volume {{ volume_entity }} not found.
+          - stop: Target Volume Not Found
+            response_variable: final_response
 
     # -------------------------------------------------------------
     # Emit success telemetry

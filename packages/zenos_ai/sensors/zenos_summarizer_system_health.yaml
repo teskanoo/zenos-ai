@@ -226,6 +226,7 @@ template:
   - sensor:
       - name: Zen Summarizer Health
         unique_id: zen_summarizer_health
+        default_entity_id: sensor.zen_summarizer_health
         device_class: enum
         availability: >-
           {{
