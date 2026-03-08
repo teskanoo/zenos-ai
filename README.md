@@ -302,7 +302,7 @@ packages/zenos_ai/
 custom_templates/zenos_ai/
   library_index.jinja
   zen_os_1rc.jinja
-  zen_query_jinja
+  zen_query.jinja
 ```
 
 ---
