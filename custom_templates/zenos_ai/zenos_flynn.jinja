@@ -1,0 +1,138 @@
+{%- set label_data = [
+    dict(
+        slot = 'system',
+        name = 'Zen System Cabinet',
+        id = 'Zen System Cabinet' | slugify,
+        required: true
+    ),
+    dict(
+        slot = 'dojo',
+        name = 'Zen Dojo Cabinet',
+        id = 'Zen Dojo Cabinet' | slugify,
+        required: true
+    ),
+    dict(
+        slot = 'kata',
+        name = 'Zen Kata Cabinet',
+        id = 'Zen Kata Cabinet' | slugify,
+        required: true
+    ),
+    dict(
+        slot = 'household',
+        name = 'Zen Household Cabinet',
+        id = 'Zen Household Cabinet' | slugify,
+        required: false
+    ),
+
+    dict(
+        slot = 'default_household',
+        name = 'Zen Default Household Cabinet',
+        id = 'Zen Default Household Cabinet' | slugify,
+        required: true
+    ),
+
+    dict(
+        slot = 'family',
+        name = 'Zen Family Cabinet',
+        id = 'Zen Family Cabinet' | slugify,
+        required: false
+    ),
+
+    dict(
+        slot = 'default_family',
+        name = 'Zen Default Family Cabinet',
+        id = 'Zen Default Family Cabinet' | slugify,
+        required: true
+    ),
+
+
+    dict(
+        slot = 'user',
+        name = 'Zen User Cabinet',
+        id = 'Zen User Cabinet' | slugify,
+        required: false
+    ),
+
+    dict(
+        slot = 'default_user',
+        name = 'Zen Default User Cabinet',
+        id = 'Zen Default User Cabinet' | slugify,
+        required: true
+    ),
+
+    dict(
+        slot = 'ai_user',
+        name = 'Zen AI User Cabinet',
+        id = 'Zen AI User Cabinet' | slugify,
+        required: false
+    ),
+
+    dict(
+        slot = 'default_ai_user',
+        name = 'Zen Default AI User Cabinet',
+        id = 'Zen Default AI User Cabinet' | slugify,
+        required: true
+    ),
+
+    dict(
+        slot = 'history',
+        name = 'Zen History Cabinet',
+        id = 'Zen History Cabinet' | slugify,
+        required: false
+    ),
+
+    dict(
+        slot = 'index',
+        name = 'Zen Index Cabinet',
+        id = 'Zen Index Cabinet' | slugify,
+        required: false
+    ),
+
+] -%}
+
+{#- slot_to_label -#}
+{%- macro slot_to_label -%}
+    {%- set rv = {
+        'system':'Zen System Cabinet',
+        'dojo':'Zen Dojo Cabinet',
+        'kata':'Zen Kata Cabinet',
+        'household':'Zen Household Cabinet',
+        'default_household':'Zen Default Household Cabinet',
+        'family':'Zen Family Cabinet',
+        'default_family':'Zen Default Family Cabinet',
+        'user':'Zen User Cabinet',
+        'default_user':'Zen Default User Cabinet',
+        'ai_user':'Zen AI User Cabinet',
+        'default_ai_user':'Zen Default AI User Cabinet',
+        'history':'Zen History Cabinet',
+        'index':'Zen Index Cabinet'
+    } -%}
+    {{- rv|to_json(pretty_print=true) -}}
+{% endmacro %}
+
+{%- macro required_slots -%}
+    {%- set rv = label_data | selectattr('required', 'eq', true) | map(attribute='slot') -%}
+    {{- rv|to_json(pretty_print=true) -}}
+{% endmacro %}
+
+
+
+{#- required -#}
+{%- macro required -%}
+    {%- set rv = [
+        'Zen Cabinet','Zen System Cabinet','Zen Dojo Cabinet','Zen Kata Cabinet',
+        'Zen Default Household','Zen Default Family',
+        'Zen Default User Cabinet','Zen Default AI User Cabinet',
+        'Zen History Cabinet','Zen Index Cabinet'
+    ] -%}
+    {{- rv|to_json(pretty_print=true) -}}
+{% endmacro %}
+
+{#- required -#}
+{%- macro optional -%}
+    {%- set rv =[
+        'household','family','user','ai_user',
+        'history','index'
+    ] -%}
+    {{- rv|to_json(pretty_print=true) -}}
+{% endmacro %}

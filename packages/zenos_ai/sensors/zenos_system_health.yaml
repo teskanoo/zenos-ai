@@ -234,32 +234,10 @@ template:
         # STATE
         #######################################################################
         state: >-
-          {% set required = [
-            'system','dojo','kata',
-            'default_household','default_family',
-            'default_user','default_ai_user'
-          ] %}
-
-          {% set optional = [
-            'household','family','user','ai_user',
-            'history','index'
-          ] %}
-
-          {% set slot_to_label = {
-            'system':'Zen System Cabinet',
-            'dojo':'Zen Dojo Cabinet',
-            'kata':'Zen Kata Cabinet',
-            'household':'Zen Household Cabinet',
-            'default_household':'Zen Default Household Cabinet',
-            'family':'Zen Family Cabinet',
-            'default_family':'Zen Default Family Cabinet',
-            'user':'Zen User Cabinet',
-            'default_user':'Zen Default User Cabinet',
-            'ai_user':'Zen AI User Cabinet',
-            'default_ai_user':'Zen Default AI User Cabinet',
-            'history':'Zen History Cabinet',
-            'index':'Zen Index Cabinet'
-          } %}
+          {%- import 'zenos_ai/zenos_flynn.jinja' as FLYNN -%}
+          {%- set required      = FLYNN.required_slots()|from_json([]) -%}
+          {%- set optional      = FLYNN.optional()|from_json([]) -%}
+          {%- set slot_to_label = FLYNN.slot_to_label()|from_json({}) -%}
 
           {% set parent_slug = 'Zen Cabinet' | slugify %}
           {% set all_cabs = label_entities(parent_slug) | list %}
@@ -370,6 +348,10 @@ template:
           # EXISTING CABINETS (BY SLOT)
           #####################################################################
           existing_cabinets: >-
+            {%- import 'zenos_ai/zenos_flynn.jinja' as FLYNN -%}
+            {%- set required      = FLYNN.required()|from_json([]) -%}
+            {%- set optional      = FLYNN.optional()|from_json([]) -%}
+            {%- set slot_to_label = FLYNN.slot_to_label()|from_json({}) -%}
             {% set slots = [
               'system','dojo','kata',
               'household','default_household',
@@ -410,6 +392,10 @@ template:
           # MISSING REQUIRED CABINETS (LABEL OR ASSIGNMENT)
           #####################################################################
           missing_cabinets: >-
+            {%- import 'zenos_ai/zenos_flynn.jinja' as FLYNN -%}
+            {%- set required      = FLYNN.required()|from_json([]) -%}
+            {%- set optional      = FLYNN.optional()|from_json([]) -%}
+            {%- set slot_to_label = FLYNN.slot_to_label()|from_json({}) -%}
             {% set required = [
               'system','dojo','kata',
               'default_household','default_family',
