@@ -52,6 +52,15 @@ template:
             'index':'Zen Index Cabinet'
           } %}
 
+          {#- PENDING REFACTORING-START -#}
+          {% if false %}
+            {%- import 'zenos_ai/zenos_flynn.jinja' as FLYNN -%}
+            {%- set required      = FLYNN.label_slots(true)|from_json([]) -%}
+            {%- set optional      = FLYNN.label_slots(false)|from_json([]) -%}
+            {%- set slot_to_label = FLYNN.slot_to_label()|from_json([]) -%}
+          {% endif %}
+          {#- PENDING REFACTORING-END -#}
+
           {% set parent_slug = 'Zen Cabinet' | slugify %}
           {% set all_cabs = label_entities(parent_slug) | list %}
           {% set label_index = labels() %}

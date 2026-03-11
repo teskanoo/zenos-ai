@@ -1787,6 +1787,7 @@ automation:
         - condition: template
           value_template: "{{ routing_status == 'success' }}"
       then:
+        # @todo - declare variable 'event_data' and reuse where it's duplicated here
         - event: dojo_volume_redirector_result
           event_data:
             status: success

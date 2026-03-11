@@ -635,7 +635,7 @@
 
   {%- endif %}
 
-  {{ ns.result | tojson }}
+  {{ ns.result | to_json(pretty_print=true) }}
 {%- endmacro -%}
 
 {# ===== IDENTITY CABINET LOADER (HA-SAFE) ===== #}
