@@ -366,8 +366,19 @@ script:
             Kitchen Sync (Mealie↔Grocy bridge), Firefly III (finance), Wiki.js.
           Room Manager: label-intersection state machine — 7 states:
             override → asleep → occupied → active → wasp → idle_dark → inactive.
-          Summarizer pipeline: Ninja Summarizer → SuperSummary / High Priestess
-            → stored in Kata cabinet (15-min warn, 30-min critical staleness).
+          Kung Fu Components (KF4 RC2): The atomic unit of contextual intelligence.
+            Each KFC owns a domain of the home. The dojo drawer IS the component spec.
+            The label IS the scope. The HyperIndex IS the data layer. Monks read the
+            drawer brief, traverse the label graph, interpret entity semantics, and
+            write kata. No hardcoded branches. No library commands. Self-describing
+            and self-discovering. Read the canon key 'kung_fu' in the dojo for the
+            full component contract. Register a component: press dojo drawer via
+            KungFu Writer → apply label → tag entities → add trigger_subscriptions.
+            Dry-run a component: force_summary (post=false) → review monk output.
+          Summarizer pipeline: Scheduler reads dojo → dispatches Ninja Summarizer
+            per subscribed KFC → monk reads drawer + HyperIndex → writes kata →
+            SuperSummary synthesizes all kata → zen_summary → Friday.
+            Staleness: 15-min warn, 30-min critical.
           Health stack: zen_label_health, zen_cabinet_health, zen_monastery_health,
             zen_agent_health (states: critical / error / warn / ok).
 
@@ -408,7 +419,8 @@ script:
             - DojoTools suite (utilities, comms, data, summarizer, AI, admin)
             - Plugins (Mealie, Grocy, Kitchen Sync, Firefly III, Wiki.js)
             - Room Manager (label-intersection state machine)
-            - Summarizer pipeline (Ninja → SuperSummary → High Priestess → Kata)
+            - Kung Fu Components KF4 RC2 (label=scope, drawer=spec, HyperIndex=data)
+            - Summarizer pipeline (Scheduler → Ninja per KFC → SuperSummary → Kata → Friday)
             - Health sensors (label, cabinet, monastery, agent gates)
           escalation:
             security: Notify system owner immediately.
@@ -731,8 +743,8 @@ script:
         notification_devices: "{% set t = ( notification_targets | string ) | trim %}
           {% if t[0] == '[' and t[-1] == ']' %}\n  {{ t | tojson | from_json }}\n{%
           else %}\n  {{ [t] }}\n{% endif %}"
-        quiet_hours: '{{ states(''binary_sensor.quiet_hours'') }}'
-        work_hours: '{{ states(''binary_sensor.work_hours'') }}'
+        quiet_hours: '{{ states(''binary_sensor.zen_quiet_hours'') }}'
+        work_hours: '{{ states(''binary_sensor.zen_work_hours'') }}'
         breakthrough: '{{ breakthrough | default(false) }}'
         importance: '{{ importance | default(''default'') }}'
         breakthrough_allowed: "{%- if ((importance == 'high') or (importance == 'max'))
