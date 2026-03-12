@@ -801,9 +801,10 @@
 {% macro zen_health_status() %}
 
     {% set h = zen_health_block() | from_json %}
-
+    {#- @TODO Surely none of these can ever be in the 'healthy' state ? -#}
     {% set label_ok = h.zen_health.label_health in ['ok','healthy'] %}
     {% set cab_ok   = h.zen_health.cabinet_health in ['ok','healthy'] %}
+    {#- @TODO Surely this check should now include 'warn' ? -#}
     {% set mon_ok   = h.zen_health.monastery_health in ['ok','healthy'] %}
 
     {% if label_ok and cab_ok and mon_ok %}
