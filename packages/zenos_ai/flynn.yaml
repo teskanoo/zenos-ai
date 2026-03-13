@@ -65,11 +65,17 @@ automation:
     triggers:
       - trigger: homeassistant
         event: start
+    # ---------------------------------------------------------
+    # Only trigger on state change of health cabinets (enum) - not on attributes
+    # @todo - might be able to use. not_to: unavailable
+    # ---------------------------------------------------------
       - trigger: state
         entity_id: sensor.zen_label_health
-      # ---------------------------------------------------------
-      # Only trigger on state change of sensor.zen_cabinet_health(enum) - not on attributes
-      # ---------------------------------------------------------
+        to:
+        - critical
+        - error
+        - warn
+        - ok
       - trigger: state
         entity_id: sensor.zen_cabinet_health
         to:
@@ -79,6 +85,11 @@ automation:
         - ok
       - trigger: state
         entity_id: sensor.zen_monastery_health
+        to:
+        - critical
+        - error
+        - warn
+        - ok
     conditions: []
     actions:
       # Capture green state + OOBE state BEFORE delay
