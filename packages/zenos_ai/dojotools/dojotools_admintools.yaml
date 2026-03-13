@@ -297,6 +297,14 @@ script:
           boolean:
         default: false
     sequence:
+
+    # ---------------------------------------
+    # Variables: ignore_me_here_to_split_traces
+    # ---------------------------------------
+    - alias: 'Variables: ignore_me_here_to_split_traces'
+      variables:
+        ignore_me_here_to_split_traces: true
+
     - variables:
         canon_ring0_cabinets:
         - sensor.zenos_system_cabinet
