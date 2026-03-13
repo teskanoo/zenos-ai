@@ -16,6 +16,12 @@
 ###############################################################################
 
 template:
+  # Force periodic re-check as no longer listening to any entity
+ # @todo - we could use flynn to ease off a bit
+  - trigger:
+      - trigger: time_pattern
+        minutes: /1
+
   - sensor:
       - name: Zen Label Health
         unique_id: zen_label_health

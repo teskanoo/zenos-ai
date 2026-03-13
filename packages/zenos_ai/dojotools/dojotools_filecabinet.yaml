@@ -13,6 +13,14 @@
 script:
   zen_dojotools_filecabinet:
     sequence:
+
+    # ---------------------------------------
+    # Variables: ignore_me_here_to_split_traces
+    # ---------------------------------------
+    - alias: 'Variables: ignore_me_here_to_split_traces'
+      variables:
+        ignore_me_here_to_split_traces: true
+
     - variables:
         routing_status: init
         normalized_label_targets: '{{ [] }}'
