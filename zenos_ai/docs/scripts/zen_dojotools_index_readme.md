@@ -1,4 +1,4 @@
-# 📘 Zen DojoTools Zen Index — v3.8.0 RC1
+# Zen DojoTools Index — 4.2.0
 **File:** `zen_dojotools_zen_index_readme.md`  
 **Type:** Technical Documentation  
 
@@ -240,7 +240,7 @@ This is the *search brainstem* of ZenOS-AI.
 
 ## Summary
 
-The Zen Index RC1 provides:
+The Zen Index 4.2.0 provides:
 
 - A fully featured, label/entity correlation engine  
 - Integrated set logic with four operators  

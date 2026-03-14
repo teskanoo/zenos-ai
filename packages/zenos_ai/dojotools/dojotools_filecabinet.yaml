@@ -1074,17 +1074,6 @@ script:
               response_variable: final_response
           - conditions:
             - condition: template
-              value_template: '{{ has_mount_points }}'
-            sequence:
-            - variables:
-                final_response:
-                  status: error
-                  message: 'Source cabinet contains mount point drawer(s): {{ src_mount_keys
-                    | join('', '') }}. Resolve mounts before cloning.'
-            - stop: Mount point block
-              response_variable: final_response
-          - conditions:
-            - condition: template
               value_template: '{{ transfer_guid and not force_action }}'
             sequence:
             - variables:
@@ -1175,6 +1164,7 @@ script:
               source: '{{ volume_entity }}'
               destination: '{{ dest_cabinet }}'
               drawers_cloned: '{{ drawers_to_clone | length }}'
+              mounts_copied: '{{ src_mount_keys }}'
               source_guid: '{{ src_guid }}'
               verification:
                 confirmed: '{{ clone_verified }}'
@@ -1232,6 +1222,7 @@ script:
             value: "{{ {'mount_point': true, 'target_guid': target_guid, 'target_entity_id':
               target_entity_resolved} }}"
             volume_entity: '{{ volume_entity }}'
+            set_timestamp: true
         - alias: set_mount write verification
           wait_template: "{% set vol = state_attr(volume_entity, 'variables') | default({},
             true) %} {% set entry = vol.get(key, {}) if vol is mapping else {} %} {{

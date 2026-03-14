@@ -1,4 +1,4 @@
-# 📘 Zen DojoTools Inspect — v3.8.0 RC1
+# Zen DojoTools Inspect — 4.2.0
 **File:** `zen_dojotools_inspect_readme.md`  
 **Type:** Technical Documentation  
 
@@ -321,7 +321,7 @@ it's because Inspect told her what it is — safely.
 
 ## Summary
 
-The Zen DojoTools Inspect RC1 provides:
+The Zen DojoTools Inspect 4.2.0 provides:
 
 - multi-entity snapshot  
 - fully sanitized attributes  

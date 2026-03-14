@@ -1,6 +1,6 @@
 # ZenOS-AI: Install Guide
 
-> **Version:** 4.0.0 RC2 | **Last Updated:** March 2026
+> **Version:** 4.2.0 | **Last Updated:** March 2026
 
 ---
 
@@ -9,7 +9,6 @@
 - **Home Assistant** 2024.x or newer
 - **Spook Integration** Installable through HACS. [Spook Install instructions](https://spook.boo/installation/)
 - **A conversation agent** configured in HA with a tool-calling capable model. Models smaller than ~8B parameters or with short context windows are not recommended — ZenOS-AI prompts are large and tool use is required.
-- `custom_templates:` enabled in your HA configuration
 - SSH or filesystem access to your HA config directory
 
 ---
@@ -47,15 +46,22 @@ If you already have a packages block, merge this in — don't add a second `home
 
 ---
 
-## Step 3 — Enable Custom Templates
+## Step 3 — Add Required Secrets
 
-Add this to `configuration.yaml` if it isn't already there:
+ZenOS-AI requires a HA long-lived access token for its system tools. Add this to your `secrets.yaml`:
 
 ```yaml
-custom_templates:
+ha_bearer: "Bearer <your-long-lived-token>"
 ```
 
-No further configuration needed — HA will automatically pick up templates from `custom_templates/`.
+Generate a token at **Profile → Security → Long-Lived Access Tokens** in your HA UI.
+
+> **Plugin secrets:** If you install the Mealie or Grocy plugins, add these too:
+> ```yaml
+> mealie_bearer: "Bearer <mealie-api-token>"
+> grocy_api_key: "<grocy-api-key>"
+> ```
+> Leave them out entirely if you're not using those plugins.
 
 ---
 
@@ -99,6 +105,19 @@ conversation.claude
 After setting this, trigger a restart or wait — Flynn re-runs on any health sensor change and will complete bootstrap on its next pass.
 
 > **Note:** Flynn confirms the entity exists and is reachable but does not perform a live inference test at boot. If your model is misconfigured or offline it will pass this gate — the failure surfaces at runtime when the summarizer first calls it.
+
+> **⚠️ WARNING — Background Summarization Costs:**
+> ZenOS-AI runs two AI agents in the background on a continuous schedule: the Ninja Summarizer (fires multiple times per hour) and the SuperSummary (minimum 4 times per hour). The entity set in `input_text.zenos_ai_task_entity` — which Flynn auto-configures from your conversation agent — is what drives these background jobs.
+>
+> **Do NOT point your AI task entity at a paid inference API** (OpenAI, Anthropic, Google, etc.) unless you have explicitly budgeted for continuous automated inference. The token volume will generate a significant bill.
+>
+> Use a **locally-hosted model** (e.g. Ollama, LocalAI, llama.cpp via the HA Local AI integration) for background summarization. Your frontline conversation agent — the one you chat with — operates on demand only and does not carry this risk.
+>
+> **Model selection guidance for background summarization:**
+> - The summarizer does **not** require a tool-calling capable model — it needs strong summarization and JSON authoring skills
+> - Models under ~4B parameters do not perform reliably here
+> - **Context window is critical.** Each summarizer run ingests a supplemental prompt, the component's prior Kata drawers, and a full entity state snapshot. Your inference server must have enough context headroom to hold all of this in a single pass. If your model is silently truncating or your inference server is throwing context errors, your summaries will degrade or fail — check your inference server logs for context length warnings
+> - Better instrumentation for context size diagnostics is planned for a future build
 
 **Optional pre-seeds** (can also be set conversationally via OOBE):
 
