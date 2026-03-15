@@ -1,0 +1,121 @@
+{#- zenos_cabinets.jinja -#}
+
+{#- <editor-fold desc="Docs" defaultstate="collapsed"> -#}
+{#- <editor-fold desc="API" defaultstate="collapsed"> -#}
+
+{#
+-----------------
+ZENOS CABINET API
+-----------------
+cabinet_variables(entity_id)
+  Returns the 'variables' attribute dict as JSON.
+  Safety: Returns {} if entity is unavailable.
+
+cabinet_variables_from_label(cabinet_label)
+  Resolves a label to an entity and returns its 'variables' dict.
+  Safety: Depends on cabinet_id_from_label logic.
+#}
+{#- </editor-fold> -#}
+
+
+{#- <editor-fold desc="Assumptions" defaultstate="collapsed"> -#}
+
+{#-
+@assumptions: A Cabinet using these macros ALWAYS has the following structure
+
+    state: Variables
+
+    attributes:
+
+      # icon and friendly_name populated from HA-Template-Configuration
+      icon: mdi:file-cabinet
+      friendly_name: ZenOS Default AI User Cabinet
+
+      # [boolean] Indicates if attributes are to be timestampped
+      default_timestamp: true
+
+      # [boolean] Indicates if attribute changes should be logged to the logbook
+      log_events: false
+
+      # [dict] Data storage for the cabinet template sensor
+      variables:
+
+          attr_1:
+            # value: [string|list|dict] The Value of 'attr_1' [optional]
+            value: {}
+            # timestamp: [string|null] last modified datetime of 'attr_1' [optional]
+            timestamp: '2026-03-12T19:40:11.060327-07:00'
+
+          attr_2:
+            value: 'string-value'
+            timestamp: null
+
+          attr_3:
+            value:
+            - list-item-1
+            - list-item-2
+
+          attr_n:
+            value: ...
+-#}
+{#- </editor-fold> -#}
+
+{#- </editor-fold> -#}
+
+{#- <editor-fold desc="Cabinet Helpers" defaultstate="collapsed"> -#}
+
+{#-
+@note: not using any of the following variants here
+    1. | select('match', 'sensor.')
+    2. | select('match', 'sensor\.')
+    3. | select('match', 'sensor\\.')
+    Character Class: [.] Is cleaner to read and avoids backslash confusion entirely.
+    @caveat: | first will only ever give you the one that comes first alphabetically.
+    @note: label_entities ALWAYS returns a list and usually returns IDs in the order they were assigned or created, which often happens to be alphabetical
+-#}
+{%- macro cabinet_id_from_label(cabinet_label) -%}
+    {{- label_entities(cabinet_label)
+    | select('match', 'sensor[.]')
+    | list
+    | first
+    | default('') -}}
+{%- endmacro -%}
+
+{#-
+"Safe Getter" for the complex nested data structure defined in ZenOS cabinet schema.
+Purpose: Retrieves the variables attribute from a specific sensor entity while providing safety checks to prevent template errors.
+Input: entity_id (string): The full Home Assistant entity ID (e.g., sensor.kitchen_cabinet).
+Logic: Checks if the entity_id is provided and if the entity currently exists/has a valid state in the state machine using has_value().
+
+Attempts to extract the variables attribute.
+If the entity is missing, has no state, or the attribute doesn't exist, it defaults to an empty dictionary {}.
+
+Output: A JSON-formatted string of the variables dictionary.
+Technical Note: By using to_json(pretty_print=true), the output is optimized for debugging in the Developer Tools or for being passed into fields that expect a JSON string.
+-#}
+{%- macro cabinet_variables(entity_id) -%}
+    {%- set rv = {} -%}
+    {%- if entity_id and has_value(entity_id) -%}
+        {%- set rv = state_attr(entity_id, 'variables') | default({}, true) -%}
+    {%- endif -%}
+    {{- rv | to_json(pretty_print=true) -}}
+{%- endmacro -%}
+
+{#-
+"High-Level Wrapper" that abstracts away the need to know the specific entity ID, relying instead on Home Assistant's organizational labels.
+
+Purpose: Finds the primary sensor associated with a label and returns its stored variables in one call.
+
+Input: cabinet_label (string): The slug or name of the Home Assistant label assigned to the cabinet sensor.
+
+Logic: Calls cabinet_id_from_label(cabinet_label) to resolve the label into a specific sensor. entity ID.
+        Passes that ID into cabinet_variables(entity_id).
+
+Output: A JSON-formatted string of the variables dictionary (or an empty JSON object if no entity is found for that label).
+-#}
+{%- macro cabinet_variables_from_label(cabinet_label) -%}
+    {%- set entity_id = cabinet_id_from_label(cabinet_label) -%}
+    {{- cabinet_variables(entity_id) -}}
+{%- endmacro -%}
+
+{#- </editor-fold> -#}
