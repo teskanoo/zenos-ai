@@ -1,11 +1,19 @@
 ###############################################################################
 # ZenOS-AI DojoTools: SystemTools Package
-# Version: 4.0.0 RC2
+# Version: 4.1.0
 #
 # Consolidated from: dojotools_ha_api.yaml + dojotools_system.yaml
 # Contains: zen_log_* shell_commands, ha_api rest_commands,
 #           zen_dojotools_ha_api (internal), zen_dojotools_systemtools (MCP),
 #           zen_dojotools_ha_log_viewer (MCP), zen_dojotools_event_emitter (MCP)
+#
+# CHANGELOG:
+#   4.1.0 (2026-03-15) — zen_dojotools_systemtools: added ha_reload_all,
+#     ha_reload_scripts, ha_reload_automations, ha_reload_templates.
+#     Full reload/restart decision guide in tool description.
+#     No ha_api or whitelist changes required — reloads use HA service
+#     calls directly (same path as ha_restart → homeassistant.restart).
+#   4.0.0 RC2 — initial consolidated release
 #
 # SETUP:
 #   1. Add to secrets.yaml:
@@ -22,6 +30,7 @@
 #   - Auth token is read-once from secrets.yaml; never passed at call time
 #   - ha_api_get paths are whitelisted — arbitrary /api/... GET is blocked
 #   - All write operations (restart, install, skip) require confirm=true
+#   - Reload ops are unguarded — non-destructive, no confirm needed
 #   - No access to /states, /templates, cabinet sensors, or room control
 #
 # JOURNAL MODE GUARD (HA 2025.11+):
@@ -30,7 +39,7 @@
 #   file returns a structured journal_mode response (not an error) with guidance
 #   including the Petro31 HACS file-logger restoration link.
 #
-# === UAT PASS — 2026-03-03 ===
+# === UAT PASS — 2026-03-03 (4.0.0 RC2 baseline) ===
 # Auditor: Caitlin (Anthropic, Sonnet 4.6) + Veronica (OAI, editorial)
 # HALMark: 0.9.10-draft — PASS Level 3 (Steward Safe) — 23/25 PASS, 2/25 N/A
 # UAT Cases: 20/20 PASS
@@ -54,6 +63,9 @@
 #   ha_restart (canary YAML injected) → {result: nogo, restart: blocked} ✓
 #   log viewer tail → {status: success} ✓
 #   log viewer journal_mode (log renamed) → {status: journal_mode, expected_behavior: true} ✓
+#
+# === UAT PENDING — 4.1.0 reload tools ===
+# ha_reload_all, ha_reload_scripts, ha_reload_automations, ha_reload_templates
 # ==============================
 #
 # KNOWN BEHAVIORS:
@@ -533,6 +545,117 @@ script:
               entity_id | default(''),\n    \"confirm\": confirm | default(false),\n
               \   \"result\": \"success\",\n    \"message\": \"Update Un-Skipped\"\n
               \ }\n}}"
+      - conditions:
+        - alias: Reload All
+          condition: template
+          value_template: '{{ tool == ''ha_reload_all'' }}'
+        sequence:
+        - action: script.zen_dojotools_ha_api
+          data:
+            action_type: check_config
+          response_variable: check_result
+        - choose:
+          - conditions:
+            - alias: Config check failed — block reload
+              condition: template
+              value_template: '{{ check_result.result != ''go'' }}'
+            sequence:
+            - variables:
+                response: "{{
+                  {
+                    'tool': tool,
+                    'result': 'nogo',
+                    'errors': check_result.errors,
+                    'message': 'Reload BLOCKED — config check failed. Fix errors before reloading. reload_all would have silently aborted anyway.'
+                  }
+                }}"
+          default:
+          - action: homeassistant.reload_all
+            data: {}
+          - variables:
+              response: "{{
+                {
+                  'tool': tool,
+                  'result': 'success',
+                  'config_check': 'passed',
+                  'message': 'Config check passed. Reload all complete — automations, scripts, scenes, helpers, custom templates, themes, and core config reloaded.'
+                }
+              }}"
+      - conditions:
+        - alias: Reload Scripts
+          condition: template
+          value_template: '{{ tool == ''ha_reload_scripts'' }}'
+        sequence:
+        - action: script.reload
+          data: {}
+        - variables:
+            response: "{{
+              {
+                'tool': tool,
+                'result': 'success',
+                'message': 'Scripts reloaded from YAML.'
+              }
+            }}"
+      - conditions:
+        - alias: Reload Automations
+          condition: template
+          value_template: '{{ tool == ''ha_reload_automations'' }}'
+        sequence:
+        - action: automation.reload
+          data: {}
+        - variables:
+            response: "{{
+              {
+                'tool': tool,
+                'result': 'success',
+                'message': 'Automations reloaded from YAML. Note: any currently running automation actions were stopped.'
+              }
+            }}"
+      - conditions:
+        - alias: Reload Custom Templates
+          condition: template
+          value_template: '{{ tool == ''ha_reload_templates'' }}'
+        sequence:
+        - action: homeassistant.reload_custom_templates
+          data: {}
+        - variables:
+            response: "{{
+              {
+                'tool': tool,
+                'result': 'success',
+                'message': 'Custom Jinja templates reloaded. Changes take effect on next template render.'
+              }
+            }}"
+      - conditions:
+        - alias: Help
+          condition: template
+          value_template: '{{ tool == ''help'' }}'
+        sequence:
+        - variables:
+            response: "{{
+              {
+                'tool': 'help',
+                'result': 'info',
+                'version': '1.4.0',
+                'reload_response_contract': 'ha_reload_all and ha_reload_scripts reload the script domain and kill the running script before it can report back. No response = success. Nogo from config check is the only case this tool speaks. Silence after a passing preflight = reload fired. ha_reload_automations and ha_reload_templates do return responses (different domain). Treat all reloads as fire-and-done.',
+                'reload_tools': {
+                  'ha_reload_all': 'All YAML domains: automations, scripts, scenes, groups, helpers, timers, counters, schedules, YAML template sensors, MQTT YAML entities, zones, rest/command_line, custom Jinja templates, themes, homeassistant: core block. Explicit config check runs first — blocked on nogo. DEFAULT CHOICE.',
+                  'ha_reload_scripts': 'Scripts only. Use when automations are running and you do not want to stop them.',
+                  'ha_reload_automations': 'Automations only. WARNING: stops all currently in-flight automation action sequences.',
+                  'ha_reload_templates': 'config/custom_templates/ Jinja files only. Changes take effect on next render.'
+                },
+                'restart_required': 'auth_providers/auth_mfa_modules changes, http: block (port/SSL/CORS/trusted_proxies), recorder: block (db_url/include/exclude), adding net-new integrations never bootstrapped, logger: YAML block. Use logger.set_level service for runtime log level changes — no restart needed.',
+                'other_tools': {
+                  'ha_config_check': 'YAML validation, go/nogo. No side effects. Safe to run anytime.',
+                  'ha_restart': 'Full HA restart. Requires confirm=true. Config check runs automatically first — blocked if check fails.',
+                  'ha_update_install': 'Install a pending update. Requires confirm=true + entity_id.',
+                  'ha_update_skip': 'Skip a pending update. Requires confirm=true + entity_id.',
+                  'ha_update_clear_skipped': 'Un-skip a skipped update. Requires confirm=true + entity_id.'
+                },
+                'when_in_doubt': 'Run ha_config_check, then ha_reload_all.',
+                'halmark_fgs': ['FG-35: automation.reload kills in-flight automations', 'FG-36: reload_all silent abort on config check failure (mitigated here by explicit preflight)', 'FG-37: partial reload state from incorrect surgical reload sequencing']
+              }
+            }}"
       default:
       - variables:
           response: "{{\n  {\n    \"tool\": tool | default('N/A'),\n    \"confirm\":
@@ -541,18 +664,30 @@ script:
     - stop: return
       response_variable: response
     alias: Zen DojoTools SystemTools
-    description: "Zen DojoTools SystemTools (1.3.0)\nCollection of tools and utilities
-      for Home Assistant\n  ha_config_check - run YAML config check; returns go/nogo
-      + output. No confirmation needed.\n  ha_restart - restarts HA (requires confirm).
-      Config check runs automatically first; restart is blocked if check fails.\n  ha_update_install
-      - requires an 'update.' entity_id to update\n  ha_update_skip - requires an 'update.'
-      entity_id to skip update\n  ha_update_clear_skipped - requires an 'update.' entity_id
-      to clear a skipped update"
+    description: "Zen DojoTools SystemTools (1.4.0)\n\
+      \nRELOAD RESPONSE: ha_reload_all/ha_reload_scripts kill the running script —\n\
+      \nno response = success. Only nogo from preflight config check speaks.\n\
+      \nSilence = reload fired. Trust the preflight.\n\
+      \nRELOAD (no restart):\n\
+      \  ha_reload_all — all YAML domains, config-checked. DEFAULT.\n\
+      \  ha_reload_scripts — scripts only.\n\
+      \  ha_reload_automations — automations only; STOPS in-flight actions.\n\
+      \  ha_reload_templates — custom_templates/ Jinja only.\n\
+      \nRESTART REQUIRED:\n\
+      \  auth_providers, http:, recorder:, new unbootstrapped integrations,\n\
+      \  logger: YAML block. (Use logger.set_level for runtime log changes.)\n\
+      \nOTHER: ha_config_check, ha_restart, ha_update_install/skip/clear_skipped.\n\
+      \nUse tool=help for full reference and FG notes."
     fields:
       tool:
         selector:
           select:
             options:
+            - help
+            - ha_reload_all
+            - ha_reload_scripts
+            - ha_reload_automations
+            - ha_reload_templates
             - ha_restart
             - ha_config_check
             - ha_update_install

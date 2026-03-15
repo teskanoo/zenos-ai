@@ -234,10 +234,10 @@ script:
         infer_mode: '{{ infer | default(false) }}'
         timeout_s: '{{ timeout | default(60) }}'
         results: []
-        drawer_key_input: "{% if drawer_key is iterable and drawer_key is not string
-          %}\n  {{ drawer_key | map('trim') | map('lower') | reject('equalto', '') |
-          list }}\n{% elif drawer_key is string and drawer_key | trim | length > 0 %}\n
-          \ {{ [drawer_key | trim | lower] }}\n{% else %}\n  []\n{% endif %}"
+        drawer_key_input: "{% set _dk = drawer_key | default('') %}{% if _dk is iterable
+          and _dk is not string %}\n  {{ _dk | map('trim') | map('lower') | reject('equalto',
+          '') | list }}\n{% elif _dk is string and _dk | trim | length > 0 %}\n  {{
+          [_dk | trim | lower] }}\n{% else %}\n  []\n{% endif %}"
     - repeat:
         for_each: '{{ entity_list }}'
         sequence:
@@ -667,7 +667,7 @@ script:
           target_entities: '{{ entities_base }}'
         response_variable: response_zen_query
       - variables:
-          response_entities: '{{ response_zen_query.baselist | default([]) }}'
+          response_entities: '{{ response_zen_query.result | from_json([]) }}'
           fallback_entities_base: '{{ entities_base | default([]) }}'
           strict_mode: '{{ strict | default(false) }}'
           entities_base: "{% if strict_mode %}\n  {{ response_entities }}\n{% else %}\n
