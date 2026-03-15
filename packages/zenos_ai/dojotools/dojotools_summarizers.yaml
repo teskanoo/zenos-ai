@@ -421,7 +421,9 @@ script:
       # ── 1. Resolve cabinets + slug ────────────────────────────────────────
       - alias: Resolve cabinets and component slug
         variables:
+          # @todo cabinet_id_from_label('Zen Dojo Cabinet')
           dojo_cabinet: "{{ label_entities('Zen Dojo Cabinet') | first | default('') }}"
+          # @todo cabinet_id_from_label('Zen Kata Cabinet')
           kata_cabinet: "{{ label_entities('Zen Kata Cabinet') | first | default('') }}"
           household_cabinet: "{{ label_entities('Zen Default Household Cabinet') | first | default('') }}"
           monk_response: {}

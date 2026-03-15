@@ -240,14 +240,18 @@ automation:
     # with a zen_event_component set, only that component runs.
     # delay_seconds is skipped for force_summary (urgent path).
     - variables:
+        # @todo cabinet_id_from_label('Zen Dojo Cabinet')
         _dojo_cab: >-
           {{ label_entities('Zen Dojo Cabinet')
              | select('match', 'sensor.') | list | first | default('') }}
+        # @todo cabinet_id_from_label('Zen Kata Cabinet')
         _kata_cab: >-
           {{ label_entities('Zen Kata Cabinet')
              | select('match', 'sensor.') | list | first | default('') }}
         _force_component: "{{ zen_event_component | default('') | slugify }}"
         _protected: "['AI_Cabinet_VolumeInfo', 'kfc_template', 'zen_library_manifest', '_context']"
+        # @todo cabinet_variables_from_label('Zen Dojo Cabinet') | from_json()
+        # @todo cabinet_variables_from_label('Zen Kata Cabinet') | from_json()
         _subscribers: >-
           {%- set dojo_vars = state_attr(_dojo_cab, 'variables') | default({}, true) -%}
           {%- set trig_id   = trigger.id | default('') -%}

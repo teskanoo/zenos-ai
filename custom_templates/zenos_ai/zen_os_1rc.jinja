@@ -556,6 +556,7 @@
   {%- set ns = namespace(result={}) -%}
   {#- Default registered agent for this install — fallback on any resolution failure.
       Empty means pre-bootstrap: cabinets not yet initialized, system not ready. -#}
+  {# @todo cabinet_id_from_label('zen_default_ai_user_cabinet') -#}
   {%- set _default_entity = label_entities('zen_default_ai_user_cabinet')
         | select('match', 'sensor\.')
         | list | first | default('') -%}
@@ -856,6 +857,7 @@
 {%- macro prompt_header(ai_user="", identity_block=None) -%}
 
   {# --- Zen Health Discovery ----------------------------------------------- #}
+  {# @todo - what is being supported here with this non-standard, undocumented label 'zen_health'?  #}
   {%- set zen_health = label_entities('zen_health') %}
   {%- set label_health = (intersect(zen_health, label_entities('labels')) | first) | default('sensor.zen_label_health') %}
   {%- set cabinet_health = (intersect(zen_health, label_entities('cabinets')) | first) | default('sensor.zen_cabinet_health') %}

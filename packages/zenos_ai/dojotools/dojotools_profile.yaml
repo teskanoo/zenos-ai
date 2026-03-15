@@ -36,6 +36,7 @@ script:
           select:
             options: [help, read, write]
 
+      # @todo - target_type is never validated - that's an immediate failure if defined and not in the defined options
       target_type:
         name: Target Type
         description: "ai_user | household | user | family. Defaults to ai_user."
@@ -300,6 +301,14 @@ script:
           _force:  "{{ force | default(false) | bool }}"
           _mode:   "{{ mode | default('help') }}"
           _explicit: "{{ target | default('') | trim }}"
+          # @todo language standardization - `type` vs. `slot`
+          # @todo dangling `else` statement in setting _default_target - should never happen - that's an exception on input validation
+          # @todo zenos_cabinets.cabinet_id_from_label('zen_default_ai_user_cabinet')
+          # @todo zenos_cabinets.cabinet_id_from_label('zen_default_household_cabinet')
+          # @todo zenos_cabinets.cabinet_id_from_label('zen_default_family_cabinet')
+          # @todo zenos_cabinets.cabinet_id_from_label('zen_default_user_cabinet')
+          # OR ...
+          # @todo zenos_cabinets.cabinet_id_from_slot(_type) if constrained to slots ['ai_user', 'household', 'family', 'user']
           _default_target: >-
             {%- if _type == 'ai_user' -%}
               {{ label_entities('zen_default_ai_user_cabinet')

@@ -180,6 +180,7 @@ template:
                   and conv_eid not in ['unknown','unavailable','none']
                   and states(conv_eid) not in ['unknown','unavailable'] %}
 
+            {#- @todo cabinet_list_from_label('zen_ai_user_cabinet') | from_json() -#}
             {%- set all_ai_cabs = label_entities('zen_ai_user_cabinet')
                                   | select('match', 'sensor\\.') | list %}
             {%- set ns = namespace(ok_count=0) %}
@@ -272,14 +273,18 @@ template:
                                    and kata_vars.get('zen_summary') != {} %}
 
             {#--- household cabinet: zen_library_manifest (optional) ---#}
+            {#- @todo cabinet_id_from_label('zen_ai_user_cabinet') -#}
             {%- set hh_cab = label_entities('zen_default_household_cabinet')
                              | select('match', 'sensor\\.') | list | first | default('') %}
             {%- set hh_ok = hh_cab != '' and states(hh_cab) not in ['unknown','unavailable'] %}
+            {#- @todo cabinet_variables_from_label('zen_default_household_cabinet') | from_json() -#}
             {%- set hh_vars = state_attr(hh_cab, 'variables') | default({}, true) if hh_ok else {} %}
             {%- set manifest_ok = hh_ok and hh_vars.get('zen_library_manifest') is not none
                                   and hh_vars.get('zen_library_manifest') | string | trim != '' %}
 
             {#--- who is the currently active default persona? ---#}
+            {#- @todo surely there can be only one zen_default_ai_user_cabinet? -#}
+            {#- @todo cabinet_list_from_label('zen_default_ai_user_cabinet') | from_json() -#}
             {%- set def_ai_cabs = label_entities('zen_default_ai_user_cabinet')
                                   | select('match', 'sensor\\.') | list %}
             {%- set def_ns = namespace(loaded_name='') %}
@@ -293,6 +298,7 @@ template:
             {%- endif %}
 
             {#--- enumerate agent cabinets dynamically ---#}
+            {#- @todo cabinet_list_from_label('zen_ai_user_cabinet') | from_json() -#}
             {%- set all_ai_cabs = label_entities('zen_ai_user_cabinet')
                                   | select('match', 'sensor\\.') | list %}
             {%- set ns = namespace(rows=[]) %}
@@ -376,6 +382,7 @@ template:
             {%- set conv_avail =
                   conv_eid != '' and conv_eid not in ['unknown','unavailable','none']
                   and states(conv_eid) not in ['unknown','unavailable'] %}
+            {#- @todo cabinet_list_from_label('zen_ai_user_cabinet') | from_json() -#}
             {%- set all_ai_cabs = label_entities('zen_ai_user_cabinet')
                                   | select('match', 'sensor\\.') | list %}
             {%- set def_ai_cabs = label_entities('zen_default_ai_user_cabinet') | list %}
@@ -390,12 +397,14 @@ template:
             {{ ns.ok }}
 
           agents_total: >-
+            {#- @todo cabinet_list_from_label('zen_ai_user_cabinet') | from_json() -#}
             {{ label_entities('zen_ai_user_cabinet') | select('match', 'sensor\\.') | list | count }}
 
           ##################################################################
           # ACTIVE PERSONA (who is currently the default)
           ##################################################################
           active_persona: >-
+            {#- @todo cabinet_id_from_label('zen_default_ai_user_cabinet') -#}
             {%- set def_cab = label_entities('zen_default_ai_user_cabinet')
                               | select('match', 'sensor\\.') | list | first | default('') %}
             {%- if def_cab == '' or states(def_cab) in ['unknown','unavailable'] %}
@@ -429,6 +438,7 @@ template:
         availability: "true"
 
         options: >-
+          {#- @todo cabinet_list_from_label('zen_ai_user_cabinet') | from_json() -#}
           {%- set all_ai_cabs = label_entities('zen_ai_user_cabinet')
                                 | select('match', 'sensor\\.') | list %}
           {%- set ns = namespace(names=[]) %}
@@ -452,6 +462,7 @@ template:
           {%- if stored not in ['', 'unknown', 'unavailable'] %}
             {{ stored }}
           {%- else %}
+            {#- @todo cabinet_id_from_label('zen_default_ai_user_cabinet') -#}
             {%- set def_cab = label_entities('zen_default_ai_user_cabinet')
                               | select('match', 'sensor\\.') | list | first | default('') %}
             {%- if def_cab != '' and states(def_cab) not in ['unknown', 'unavailable'] %}

@@ -87,9 +87,11 @@ script:
             } | tojson
           }}
     - variables:
+        # @todo cabinet_id_from_label('Zen Kata Cabinet')
         _rtt_kata: >-
           {{ label_entities('Zen Kata Cabinet')
              | select('match', 'sensor.') | list | first | default('') }}
+        # @todo cabinet_id_from_label('Zen Dojo Cabinet')
         _rtt_dojo: >-
           {{ label_entities('Zen Dojo Cabinet')
              | select('match', 'sensor.') | list | first | default('') }}
@@ -149,6 +151,7 @@ script:
     sequence:
     - variables:
         _dry_run: "{{ dry_run | default(true) | bool }}"
+        # @todo cabinet_id_from_label('Zen Dojo Cabinet')
         _dojo_cab: >-
           {{ label_entities('Zen Dojo Cabinet')
              | select('match', 'sensor.') | list | first | default('') }}
@@ -550,6 +553,7 @@ script:
 
     - variables:
         _act: "{{ action | default('help') }}"
+        # @todo cabinet_id_from_label('Zen Dojo Cabinet')
         _dojo_cab: >-
           {{ label_entities('Zen Dojo Cabinet')
              | select('match', 'sensor.') | list | first | default('') }}

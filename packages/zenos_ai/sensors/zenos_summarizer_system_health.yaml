@@ -24,10 +24,12 @@ template:
   - sensor:
       - name: Zen Dojo Cabinet Resolved
         unique_id: zen_dojo_cabinet_resolved
+        # @todo cabinet_id_from_label('Zen Dojo Cabinet', 'unavailable')
         state: >-
           {{ label_entities('Zen Dojo Cabinet')
              | select('match', 'sensor\.')
              | first | default('unavailable') }}
+        # @todo cabinet_list_from_label('Zen Dojo Cabinet') | from_json() -#}
         availability: >-
           {{ label_entities('Zen Dojo Cabinet')
              | select('match', 'sensor\.')
@@ -35,10 +37,12 @@ template:
 
       - name: Zen Kata Cabinet Resolved
         unique_id: zen_kata_cabinet_resolved
+        # @todo cabinet_id_from_label('Zen Kata Cabinet', 'unavailable')
         state: >-
           {{ label_entities('Zen Kata Cabinet')
              | select('match', 'sensor\.')
              | first | default('unavailable') }}
+        # @todo cabinet_list_from_label('Zen Kata Cabinet') | from_json() -#}
         availability: >-
           {{ label_entities('Zen Kata Cabinet')
              | select('match', 'sensor\.')
@@ -46,10 +50,12 @@ template:
 
       - name: Zen System Cabinet Resolved
         unique_id: zen_system_cabinet_resolved
+        # @todo cabinet_id_from_label('Zen System Cabinet', 'unavailable')
         state: >-
           {{ label_entities('Zen System Cabinet')
              | select('match', 'sensor\.')
              | first | default('unavailable') }}
+        # @todo cabinet_list_from_label('Zen System Cabinet') | from_json() -#}
         availability: >-
           {{ label_entities('Zen System Cabinet')
              | select('match', 'sensor\.')

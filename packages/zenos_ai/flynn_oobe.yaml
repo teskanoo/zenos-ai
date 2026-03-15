@@ -39,9 +39,11 @@ script:
       # RESOLVE DEFAULT AI USER CABINET (all modes need it)
       ###########################################################################
       - variables:
+          # @todo cabinet_id_from_label('zen_default_ai_user_cabinet')
           _ai_cab: >-
             {{ label_entities('zen_default_ai_user_cabinet')
                | select('match', 'sensor.') | list | first | default('') }}
+          # @todo cabinet_variables_from_label('zen_default_ai_user_cabinet') | from_json()
           _ai_vars: >-
             {{ state_attr(_ai_cab, 'variables') | default({}, true)
                if _ai_cab != '' else {} }}
