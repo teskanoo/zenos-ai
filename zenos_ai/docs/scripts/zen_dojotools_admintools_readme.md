@@ -1,4 +1,4 @@
-# Zen DojoTools AdminTools — 4.2.0
+# Zen DojoTools AdminTools — 4.2.1
 
 *Ring-2 administrative tools: component registration, cabinet repair, template management, and prompt configuration*
 
@@ -18,10 +18,11 @@ Most tools in this module are **admin-only** — they are not exposed to the AI 
 |---|---|---|---|
 | `zen_dojotools_kungfu_writer` | 4.2.0 | **Yes** | Register or update a Kung Fu component in the Dojo |
 | `zen_admintools_reset_template` | 1.1.0 | No | Press zen_template and kfc_template into cabinets |
-| `zen_admintools_cabinetadmin` | 4.2.0 | No | Inspect, restore, reset, or hammer Ring-0 cabinets |
+| `zen_admintools_reset_labels` | 4.2.1 | No | Nuclear: delete all zen_ labels and assignments, trigger Flynn rebuild |
+| `zen_admintools_cabinetadmin` | 4.2.1 | No | Inspect, restore, reset, hammer, init, or reset_all Ring-0 cabinets |
 | `zen_admintools_cabinetadmin_backup` | 1.x | No | Factory-stamp or repair a cabinet's VolumeInfo drawer |
 | `zen_admintools_kfc_migration_press` | 1.1.0 | No | One-time migration: seed scheduling fields into KFC drawers |
-| `zen_admintools_zenos_prompt_loader` | 4.2.0 | No | Load Cortex, Directives, and Purpose into the AI identity substrate |
+| `zen_admintools_zenos_prompt_loader` | 4.2.1 | No | Load versioned Cortex, Directives, and Purpose (v27 = RC2, v29/latest = GA Ninja Fusion, v30 = Living Index) |
 
 ---
 
@@ -58,7 +59,7 @@ hourly_trigger        quarter_hour          every_10_minutes
 every_5_minutes       home_mode_updates     alarm_panel
 door_opens_or_closes  lock_changes          window_opens_or_closes
 garage_door           home_occupancy_change force_summary
-force_gc
+force_ninja           force_supersummary    force_gc
 ```
 
 > Hardware triggers (`nathan_bed_changes`, `kim_bed_changes`, `water_flow_stop`, `hot_tub_state`, `elec_panel_door_change`, `mb_wake`, `test_button`, `start_home_wake`, `start_home_evening`) are available in the trigger ID list but only active if you have added them to a custom scheduler. See `docs/examples/zen_dojotools_scheduler_custom.yaml`.
@@ -127,6 +128,41 @@ Called automatically by **Flynn gate-3** if the templates are missing at boot. C
 
 ---
 
+## zen_admintools_reset_labels
+
+⚠️ **NUCLEAR** — deletes all `zen_` labels and all their entity assignments. No undo.
+
+Use this when label IDs are corrupt, have wrong names, or you need a full label reinstall. For wiping assignments only (labels survive), use `zen_dojotools_labels` with `action_type: reset` instead.
+
+**Not MCP-exposed.** Admin use only.
+
+### What It Does
+
+1. Untags all entities from every label with a `zen_` ID
+2. Deletes every `zen_` label (`zen_*` IDs only — non-zen labels are never touched)
+3. Fires `zen_resolver_refresh` so resolver sensors re-evaluate immediately
+
+Flynn re-engages automatically: `zen_label_health` flips to `critical` → Stepgate Sentinel fires → Gate 0 recreates labels → Gate 1 re-assigns. No HA restart required (HA 2024.x+ propagates label creation live).
+
+### Input Fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `confirm` | boolean | `false` | Must be `true` — refuses without it |
+
+### Full Nuclear Reset Sequence
+
+To completely rebuild from scratch (labels + cabinets):
+
+```
+1. zen_admintools_reset_labels          — nuke + rebuild all zen_ labels
+2. zen_admintools_cabinetadmin          — op: reset_all (wipe cabinets + reseed + Flynn)
+```
+
+Two tool calls. Order matters — labels first, then cabinets.
+
+---
+
 ## zen_admintools_cabinetadmin
 
 Ring-2 cabinet maintenance tool. Supports inspecting, restoring, resetting, and hammering the 14 Ring-0 system cabinets.
@@ -137,9 +173,10 @@ Ring-2 cabinet maintenance tool. Supports inspecting, restoring, resetting, and 
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `mode` | select | `inspect` | `inspect`, `restore`, `reset`, `hammer`, `init` |
+| `mode` | select | `inspect` | `inspect`, `restore`, `reset`, `hammer`, `init`, `reset_all` |
 | `target_cabinet` | entity (sensor) | — | Single cabinet to target; leave empty to target all Ring-0 cabinets |
 | `hammer_ok` | boolean | `false` | Required `true` for `hammer` mode |
+| `confirm` | boolean | `false` | Required `true` for `reset_all` |
 
 ### Modes
 
@@ -150,6 +187,7 @@ Ring-2 cabinet maintenance tool. Supports inspecting, restoring, resetting, and 
 | `reset` | **Yes** | Clear all drawers in targeted cabinet(s) |
 | `hammer` | **Yes** | Clear all drawers + stamp `_hammered` marker. Requires `hammer_ok: true` |
 | `init` | **Yes** | Initialize cabinet with `AI_Cabinet_VolumeInfo` drawer; clears if targeting all |
+| `reset_all` | **NUCLEAR** | Wipe all Ring-0 cabinets + reseed schemas + trigger Flynn bootstrap. `confirm: true` required |
 
 ### Ring-0 Cabinets
 
@@ -179,6 +217,7 @@ sensor.zenos_default_ai_user_history_cabinet
 - **reset** — nuke a cabinet's contents cleanly (e.g., clear scratchpad, reset history)
 - **hammer** — full wipe with audit trail; last resort before re-init
 - **init** — fresh cabinet initialization; sets VolumeInfo metadata
+- **reset_all** — full nuclear cabinet reset + reseed. Calls `reset_template` and fires Flynn via `zen_cabinet_health` state change. If you want to customize the sequence (skip a cabinet, change order), run the steps individually — that is exactly what `reset_all` orchestrates under the hood.
 
 ---
 
@@ -270,7 +309,26 @@ Loads the AI's identity substrate: **Cortex**, **Directives**, and **Purpose**. 
 - When upgrading the Cortex schema (new version of the reasoning contract)
 - When adjusting behavioral rules for a specific deployment
 
-> This script contains hardcoded identity content. It is not parameterized. To customize Cortex or Directives, edit the script directly before running.
+### Input Fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `cortex_version` | select | `latest` | `latest` or `29` = 2026 GA Ninja Fusion. `30` = Living Index (opt-in). `27` = 2026 RC2 |
+| `ship_zen_system` | boolean | `true` | If `true`, also writes the `zen_system` KFC drawer after loading. Set `false` to load Cortex only without touching the Dojo. |
+
+Use the `cortex_version` field to select which version to load. The three primitives (Purpose, Directives, Cortex) are versioned together as a set:
+
+| Version | Codename | Notes |
+|---|---|---|
+| `27` | Quiet Fusion (RC2) | 2026 RC2 — 4.2.x series |
+| `29` / `latest` | Ninja Fusion | 2026 GA — includes Context Resolution directive and scope-aware context stack |
+| `30` | Living Index | Opt-in — adds label policy, memory policy, expanded audit schema, and `zen_dojotools_labels` as a core tool. Requires Friday Memory Delta Spec installed in AI user cabinet. |
+
+Cortex 30 is an explicit opt-in. Selecting `latest` or passing no `cortex_version` loads v29.
+
+### Custom Prompt Material
+
+If you want to ship completely custom Purpose, Directives, or Cortex content, copy the prompt loader script, make your changes, and fire it. The loader is a standard HA script — there's nothing special about it beyond the version-select logic. Custom forks are your own maintenance surface; ZenOS ships the versioned canonical set and that's the extent of it.
 
 ---
 

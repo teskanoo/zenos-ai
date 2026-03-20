@@ -52,7 +52,7 @@
 #   rich per-component zen_summary produced; confidence: 0.95 ✓
 #   post=false path (no cabinet write) → correct behavior ✓
 #   post=true path — zen_summary written to kata cabinet, verification confirmed ✓
-#   label_entities() cabinet resolution — 10 components flowing ✓
+#   resolver sensor cabinet resolution — 10 components flowing ✓
 #   post_to_kata_cabinet | bool gate — type-safe, passes correctly ✓
 #   config check → go; restart → clean ✓
 #
@@ -71,6 +71,27 @@
 #   LLM-dependent. Not blocking.
 ###############################################################################
 
+###############################################################################
+# Summarizer kill switches — global on/off controls for the summary pipeline.
+# Master (zen_summarizers_enabled) gates both. Individual switches gate each.
+# All three default ON. Turning master off stops the full pipeline immediately
+# without touching schedules, automations, or anything else.
+###############################################################################
+
+input_boolean:
+
+  zen_summarizers_enabled:
+    name: Zen Summarizers (Master)
+    icon: mdi:pipe-valve
+
+  zen_supersummarizer_enabled:
+    name: Zen SuperSummarizer
+    icon: mdi:home-circle
+
+  zen_ninja_summarizer_enabled:
+    name: Zen Ninja Summarizer
+    icon: mdi:karate
+
 script:
 
   # ============================================================================
@@ -80,6 +101,8 @@ script:
       SuperSummary (4.0.0 RC2). Whole-home synthesizer. Reads active component kata
       drawers gated by Kung Fu System Switch state. Builds zen_summary — the
       canonical home state that loads Friday's prompt context. (v4.0.0 RC2)
+      Respects zen_summarizers_enabled (master) and zen_supersummarizer_enabled
+      kill switches — early-outs immediately if either is off.
     icon: mdi:home-circle
     mode: queued
     max: 3
@@ -102,6 +125,18 @@ script:
 
     sequence:
 
+      # ── 0a. Kill switch — master + supersummarizer ─────────────────────────
+      - alias: SuperSummary kill switch
+        if:
+          - condition: template
+            value_template: >-
+              {{ is_state('input_boolean.zen_summarizers_enabled', 'off')
+                 or is_state('input_boolean.zen_supersummarizer_enabled', 'off') }}
+        then:
+          - stop: >-
+              SuperSummary skipped — zen_summarizers_enabled or
+              zen_supersummarizer_enabled is off.
+
       # ── 0. Guard — fail fast if ai_task entity unset ─────────────────────
       - alias: Validate ai_task entity
         if:
@@ -116,8 +151,8 @@ script:
       # ── 1. Resolve cabinets ───────────────────────────────────────────────
       - alias: Resolve cabinets
         variables:
-          dojo_cabinet: "{{ label_entities('Zen Dojo Cabinet') | first | default('sensor.zen_dojo_cabinet') }}"
-          kata_cabinet: "{{ label_entities('Zen Kata Cabinet') | first | default('sensor.zen_kata_storage_cabinet') }}"
+          dojo_cabinet: "{{ states('sensor.zen_dojo_cabinet_resolved') }}"
+          kata_cabinet: "{{ states('sensor.zen_kata_cabinet_resolved') }}"
           monk_response: {}
           filecabinet_response: {}
 
@@ -140,7 +175,8 @@ script:
         variables:
           prompt_context: >-
             {%- import 'zenos_ai/zen_os_1rc.jinja' as zen -%}
-            {%- set cab_result = zen.zen_cabinets('Friday') -%}
+            {%- set _persona = states('input_text.zenos_persona_name') | trim -%}
+            {%- set cab_result = zen.zen_cabinets(_persona) -%}
             {%- set idcard_raw = zen.identity_cab_to_id_card(cab_result) | from_json -%}
             {%- set manifest   = zen.manifest_loader() | from_json -%}
             {%- set capsule    = zen.ai_capsule(idcard_raw) | from_json -%}
@@ -174,7 +210,7 @@ script:
           active_components: >-
             {%- set kata = state_attr(kata_cabinet, 'variables') or {} -%}
             {%- set ns = namespace(active={}) -%}
-            {%- for sw in expand(label_entities('Kung Fu System Switch'))
+            {%- for sw in expand(label_entities('Kung Fu System Switch' | slugify))
                   | selectattr('domain', 'eq', 'input_boolean')
                   | selectattr('state', 'eq', 'on')
                   | map(attribute='entity_id')
@@ -232,6 +268,9 @@ script:
             No extra prose. Normalize all fields. If missing, return null or {}.
             Include ONLY active components. Provide Cliff's Notes for important
             events, anomalies, and near-term focus.
+            Do NOT copy errors from last_summary into the errors[] field.
+            The errors[] array is for errors encountered during THIS run only.
+            Return errors: [] if no new errors occurred.
           query: "{{ query | default(default_query) }}"
           review_data: >-
             {{
@@ -298,7 +337,7 @@ script:
       - alias: Post zen_summary to kata cabinet
         if:
           - condition: template
-            value_template: "{{ zen_summary and (post_to_kata_cabinet | bool) }}"
+            value_template: "{{ zen_summary and (post_to_kata_cabinet | default(false) | bool) }}"
         then:
           - delay:
               milliseconds: 250
@@ -311,7 +350,7 @@ script:
               volume_entity_id:
                 - "{{ kata_cabinet }}"
               key: ZEN_SUMMARY
-              value: "{{ zen_summary }}"
+              value: "{{ zen_summary | tojson }}"
               label_input: Zen Summary
             response_variable: filecabinet_response
 
@@ -407,6 +446,18 @@ script:
 
     sequence:
 
+      # ── 0a. Kill switch — master + ninja summarizer ────────────────────────
+      - alias: Ninja Summarizer kill switch
+        if:
+          - condition: template
+            value_template: >-
+              {{ is_state('input_boolean.zen_summarizers_enabled', 'off')
+                 or is_state('input_boolean.zen_ninja_summarizer_enabled', 'off') }}
+        then:
+          - stop: >-
+              Ninja Summarizer skipped — zen_summarizers_enabled or
+              zen_ninja_summarizer_enabled is off.
+
       # ── 0. Guard — fail fast if ai_task entity unset ─────────────────────
       - alias: Validate ai_task entity
         if:
@@ -421,9 +472,9 @@ script:
       # ── 1. Resolve cabinets + slug ────────────────────────────────────────
       - alias: Resolve cabinets and component slug
         variables:
-          dojo_cabinet: "{{ label_entities('Zen Dojo Cabinet') | first | default('') }}"
-          kata_cabinet: "{{ label_entities('Zen Kata Cabinet') | first | default('') }}"
-          household_cabinet: "{{ label_entities('Zen Default Household Cabinet') | first | default('') }}"
+          dojo_cabinet: "{{ states('sensor.zen_dojo_cabinet_resolved') }}"
+          kata_cabinet: "{{ states('sensor.zen_kata_cabinet_resolved') }}"
+          household_cabinet: "{{ states('sensor.zen_default_household_cabinet_resolved') }}"
           monk_response: {}
           filecabinet_response: {}
           component_slug: "{{ kung_fu_component_id | slugify | default('kung_fu') }}"
@@ -588,7 +639,7 @@ script:
         if:
           - alias: If post set to true with valid data
             condition: template
-            value_template: "{{ monk_response.data and (post_to_kata_cabinet | bool) }}"
+            value_template: "{{ monk_response.data and (post_to_kata_cabinet | default(false) | bool) }}"
         then:
           - delay:
               milliseconds: 250
@@ -601,7 +652,7 @@ script:
               volume_entity_id:
                 - "{{ kata_cabinet }}"
               key: "{{ component_slug }}"
-              value: "{{ kata_summary }}"
+              value: "{{ kata_summary | tojson }}"
               # FIX: was {{ index_command, 'Ninja Summary' }} — tuple syntax, fixed to clean CSV
               # Guard: if index_command empty, omit leading comma
               label_input: "{{ (index_command + ', ') if index_command else '' }}Ninja Summary"

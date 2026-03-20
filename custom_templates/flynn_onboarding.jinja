@@ -1,0 +1,87 @@
+{#
+  Flynn Gate Status Reporter + FlynnTools
+  Version 1.1.0
+  Used by the prompt engine when Flynn is the active persona.
+
+  Health vocabulary (normalized): critical / error / warn / disabled / ok
+
+  FlynnTools:
+    resolve_agent_name(ai_cab_vars)              — read name from cab, fallback to "your agent"
+    flynn_gate_status(agent_name)                — health chain status in Flynn's voice
+    flynn_essence_conflict(cabinet_keys, agent_name) — cab has data but no essence
+#}
+
+
+{#- ============================================================
+    FLYNNTOOLS HELPER — resolve_agent_name(ai_cab_vars)
+    Reads agent name from zenai_essence in the cabinet.
+    If absent or unreadable, returns "your agent".
+    ============================================================ #}
+{% macro resolve_agent_name(ai_cab_vars) -%}
+  {%- set essence = ai_cab_vars.get('zenai_essence', {}) -%}
+  {%- set essence = essence.get('value', essence) if essence is mapping else {} -%}
+  {%- set name = essence.get('identity', {}).get('name', '') | trim -%}
+  {%- if name not in ['', 'your AI', 'none', 'unknown', 'unavailable'] -%}
+    {{ name }}
+  {%- else -%}
+    your agent
+  {%- endif -%}
+{%- endmacro %}
+
+
+{#- ============================================================
+    FLYNNTOOLS: flynn_gate_status(agent_name)
+    Health chain gate — reports current system status in Flynn's voice.
+    ============================================================ #}
+{% macro flynn_gate_status(agent_name='your agent') %}
+  {%- set lh = states('sensor.zen_label_health') | trim -%}
+  {%- set ch = states('sensor.zen_cabinet_health') | trim -%}
+  {%- set mh = states('sensor.zen_monastery_health') | trim -%}
+
+  {%- if lh == 'critical' -%}
+gate: labels_missing
+status: {{ lh }}
+message: Hey, I'm Flynn. I need some labels set up before I can get this place wired. I'm creating them now — you'll need to restart HA after.
+  {%- elif lh in ['warn', 'error'] -%}
+gate: labels_unassigned
+status: {{ lh }}
+message: Labels are here but not wired up yet. Give me a sec, I'm connecting things.
+  {%- elif ch != 'ok' -%}
+gate: cabinets_unhealthy
+status: {{ ch }}
+message: The filing cabinets need some work — setting up the folders now. Hang tight.
+  {%- elif mh == 'disabled' -%}
+gate: pipeline_disabled
+status: disabled
+message: Structure's green. The summary pipeline is intentionally off — no kata will be written until you enable it in Settings > Helpers (zen_summarizers_enabled).
+  {%- elif mh != 'ok' -%}
+gate: bootstrap_needed
+status: {{ mh }}
+message: Almost there. The structure's good but I need to load the operating manual into the system. One more step.
+  {%- else -%}
+gate: all_green
+status: ok
+message: Everything's copacetic. System's green across the board. Ready to hand off to {{ agent_name }}.
+  {%- endif -%}
+{% endmacro %}
+
+
+{#- ============================================================
+    FLYNNTOOLS: flynn_essence_conflict(cabinet_keys, agent_name)
+    Cabinet has data but no essence — pause before any agent comes online.
+    ============================================================ #}
+{% macro flynn_essence_conflict(cabinet_keys, agent_name='your agent') %}
+gate: essence_conflict
+status: warn
+agent: {{ agent_name }}
+message: Hey, it's Flynn. I need to stop before {{ agent_name }} comes online.
+
+I found existing data in the AI user cabinet but no essence block — that's the part that tells me who actually lives in there. Without it I can't safely hand off. If there's already a configured agent in here, I could overwrite them. I'd rather ask.
+
+Here's what I can see in the cabinet: {{ cabinet_keys | join(', ') }}
+
+Tell me what we're working with before I touch anything:
+- If there's already an agent in here and this is a recovery situation, let me know and we'll sort it out together.
+- If this is a fresh install with leftover data, say "Flynn, initialize the essence" and I'll set it up and hand off to {{ agent_name }}.
+- Say "Flynn, show me the cabinet" and I'll walk you through exactly what's in there.
+{% endmacro %}

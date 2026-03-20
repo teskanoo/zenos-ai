@@ -7,7 +7,7 @@
 # sensor.zen_flynn_health
 #   Flynn infrastructure rollup. Compresses label_health + cabinet_health +
 #   monastery_health into a single clean state.
-#   State: critical | error | warn | ok
+#   State: critical | error | warn | disabled | ok
 #   Key attributes:
 #     current_gate — ok | gate_0 | gate_1 | gate_2 | gate_3
 #     next_step    — plain-language instruction for the blocking gate
@@ -52,7 +52,7 @@ template:
 
         #######################################################################
         # STATE — worst of the three gate sensors
-        # Priority: critical > error > warn > ok
+        # Priority: critical > error > warn > disabled > ok
         #######################################################################
         state: >-
           {%- set label_st = states('sensor.zen_label_health') %}
@@ -67,6 +67,8 @@ template:
             error
           {%- elif 'warn' in all %}
             warn
+          {%- elif 'disabled' in all %}
+            disabled
           {%- else %}
             ok
           {%- endif %}
@@ -130,6 +132,8 @@ template:
               Labels exist but not assigned to cabinet entities. Trigger automation.flynn_stepgate_sentinel — Flynn will wire them.
             {%- elif cab_st != 'ok' %}
               Labels wired but required cabinets not initialized. Trigger automation.flynn_stepgate_sentinel — Flynn will initialize them.
+            {%- elif mon_st == 'disabled' %}
+              Summary pipeline is disabled. Enable zen_summarizers_enabled (and optionally zen_ninja_summarizer_enabled / zen_supersummarizer_enabled) in Settings > Helpers to restore full cognition.
             {%- elif mon_st != 'ok' %}
               Cabinets ready but content not bootstrapped. Fill in Settings > Helpers (household name, primary user, persona name, conversation agent), then trigger automation.flynn_stepgate_sentinel.
             {%- else %}
@@ -185,7 +189,7 @@ template:
             {%- set ns = namespace(ok_count=0) %}
             {%- for ag_cab in all_ai_cabs %}
               {%- if states(ag_cab) not in ['unknown','unavailable'] %}
-                {%- if conv_avail and ag_cab in label_entities('zen_default_ai_user_cabinet') %}
+                {%- if conv_avail and ag_cab == states('sensor.zen_default_ai_user_cabinet_resolved') %}
                   {%- set ns.ok_count = ns.ok_count + 1 %}
                 {%- endif %}
               {%- endif %}
@@ -272,18 +276,15 @@ template:
                                    and kata_vars.get('zen_summary') != {} %}
 
             {#--- household cabinet: zen_library_manifest (optional) ---#}
-            {%- set hh_cab = label_entities('zen_default_household_cabinet')
-                             | select('match', 'sensor\\.') | list | first | default('') %}
+            {%- set hh_cab = states('sensor.zen_default_household_cabinet_resolved') %}
             {%- set hh_ok = hh_cab != '' and states(hh_cab) not in ['unknown','unavailable'] %}
             {%- set hh_vars = state_attr(hh_cab, 'variables') | default({}, true) if hh_ok else {} %}
             {%- set manifest_ok = hh_ok and hh_vars.get('zen_library_manifest') is not none
                                   and hh_vars.get('zen_library_manifest') | string | trim != '' %}
 
             {#--- who is the currently active default persona? ---#}
-            {%- set def_ai_cabs = label_entities('zen_default_ai_user_cabinet')
-                                  | select('match', 'sensor\\.') | list %}
+            {%- set def_cab = states('sensor.zen_default_ai_user_cabinet_resolved') %}
             {%- set def_ns = namespace(loaded_name='') %}
-            {%- set def_cab = def_ai_cabs | first | default('') %}
             {%- if def_cab != '' and states(def_cab) not in ['unknown','unavailable'] %}
               {%- set def_vars = state_attr(def_cab, 'variables') | default({}, true) %}
               {%- set def_essence = def_vars.get('zenai_essence', {}) %}
@@ -307,7 +308,7 @@ template:
                 {%- set ag_name = (ag_identity.get('name', ag_cab) | string | trim)
                                   if ag_identity is mapping else ag_cab %}
 
-                {%- set ag_is_default = ag_cab in def_ai_cabs %}
+                {%- set ag_is_default = ag_cab == def_cab %}
 
                 {#--- required agent gates ---#}
                 {%- set agent = {
@@ -378,11 +379,11 @@ template:
                   and states(conv_eid) not in ['unknown','unavailable'] %}
             {%- set all_ai_cabs = label_entities('zen_ai_user_cabinet')
                                   | select('match', 'sensor\\.') | list %}
-            {%- set def_ai_cabs = label_entities('zen_default_ai_user_cabinet') | list %}
+            {%- set def_cab = states('sensor.zen_default_ai_user_cabinet_resolved') %}
             {%- set ns = namespace(ok=0) %}
             {%- for ag_cab in all_ai_cabs %}
               {%- if states(ag_cab) not in ['unknown','unavailable'] %}
-                {%- if labels_cabs_ok and conv_avail and ag_cab in def_ai_cabs %}
+                {%- if labels_cabs_ok and conv_avail and ag_cab == def_cab %}
                   {%- set ns.ok = ns.ok + 1 %}
                 {%- endif %}
               {%- endif %}
@@ -396,8 +397,7 @@ template:
           # ACTIVE PERSONA (who is currently the default)
           ##################################################################
           active_persona: >-
-            {%- set def_cab = label_entities('zen_default_ai_user_cabinet')
-                              | select('match', 'sensor\\.') | list | first | default('') %}
+            {%- set def_cab = states('sensor.zen_default_ai_user_cabinet_resolved') %}
             {%- if def_cab == '' or states(def_cab) in ['unknown','unavailable'] %}
               none
             {%- else %}
@@ -452,8 +452,7 @@ template:
           {%- if stored not in ['', 'unknown', 'unavailable'] %}
             {{ stored }}
           {%- else %}
-            {%- set def_cab = label_entities('zen_default_ai_user_cabinet')
-                              | select('match', 'sensor\\.') | list | first | default('') %}
+            {%- set def_cab = states('sensor.zen_default_ai_user_cabinet_resolved') %}
             {%- if def_cab != '' and states(def_cab) not in ['unknown', 'unavailable'] %}
               {%- set ag_vars = state_attr(def_cab, 'variables') | default({}, true) %}
               {%- set ag_essence = ag_vars.get('zenai_essence', {}) %}

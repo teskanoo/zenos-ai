@@ -77,23 +77,9 @@ You can test the template output in **Developer Tools → Templates** before pas
 
 ---
 
-## Step 5 — Restart Home Assistant
+## Step 5 — Point Flynn at Your Conversation Agent
 
-A full restart is required for packages and templates to load. A configuration reload is not sufficient.
-
-After restart, watch the **Notifications** panel. Within a minute you should see one of:
-
-- **"ZenOS-AI: System Ready"** — all gates passed, system initialized
-- **"ZenOS-AI: Welcome — Let's name your AI"** — system initialized, OOBE pending (this is normal on first install)
-- Nothing visible yet — check `sensor.zen_agent_health` and `sensor.zen_cabinet_health` in Developer Tools → States
-
-If you see errors in the HA logs related to missing labels or cabinets, wait for Flynn to finish — it runs automatically and is self-correcting.
-
----
-
-## Step 6 — Point Flynn at Your Conversation Agent
-
-One input_text needs to be set for Flynn to bootstrap correctly:
+One input_text needs to be set for Flynn to bootstrap correctly. Do this **before** restarting so Flynn sees it on the first boot pass and completes all gates in one shot.
 
 **Settings → Helpers → ZenOS: Conversation Agent** (`input_text.zenos_conversation_agent`)
 
@@ -102,12 +88,17 @@ Set this to the entity ID of your HA conversation agent, for example:
 conversation.claude
 ```
 
-After setting this, trigger a restart or wait — Flynn re-runs on any health sensor change and will complete bootstrap on its next pass.
-
 > **Note:** Flynn confirms the entity exists and is reachable but does not perform a live inference test at boot. If your model is misconfigured or offline it will pass this gate — the failure surfaces at runtime when the summarizer first calls it.
 
 > **⚠️ WARNING — Background Summarization Costs:**
-> ZenOS-AI runs two AI agents in the background on a continuous schedule: the Ninja Summarizer (fires multiple times per hour) and the SuperSummary (minimum 4 times per hour). The entity set in `input_text.zenos_ai_task_entity` — which Flynn auto-configures from your conversation agent — is what drives these background jobs.
+> ZenOS-AI ships with the background summarizers **disabled by default** (`input_boolean.zen_summarizers_enabled` = `off`). This is intentional — you should configure your AI task entity and verify your setup before enabling them.
+>
+> When you are ready to enable background summarization, turn on the master switch and the individual switches in **Settings → Helpers**:
+> - `input_boolean.zen_summarizers_enabled` (master)
+> - `input_boolean.zen_ninja_summarizer_enabled`
+> - `input_boolean.zen_supersummarizer_enabled`
+>
+> Once enabled, ZenOS-AI runs two AI agents in the background on a continuous schedule: the Ninja Summarizer (fires multiple times per hour) and the SuperSummary (minimum 4 times per hour). The entity set in `input_text.zenos_ai_task_entity` — which Flynn auto-configures from your conversation agent — is what drives these background jobs.
 >
 > **Do NOT point your AI task entity at a paid inference API** (OpenAI, Anthropic, Google, etc.) unless you have explicitly budgeted for continuous automated inference. The token volume will generate a significant bill.
 >
@@ -128,6 +119,20 @@ After setting this, trigger a restart or wait — Flynn re-runs on any health se
 | ZenOS: Persona Name | `input_text.zenos_persona_name` | Your AI's name |
 
 If you leave these blank, OOBE will collect them conversationally. Only `zenos_conversation_agent` is required before first boot.
+
+---
+
+## Step 6 — Restart Home Assistant
+
+A full restart is required for packages and templates to load. A configuration reload is not sufficient.
+
+After restart, watch the **Notifications** panel. Within a minute you should see one of:
+
+- **"ZenOS-AI: System Ready"** — all gates passed, system initialized
+- **"ZenOS-AI: Welcome — Let's name your AI"** — system initialized, OOBE pending (this is normal on first install)
+- Nothing visible yet — check `sensor.zen_agent_health` and `sensor.zen_cabinet_health` in Developer Tools → States
+
+If you see errors in the HA logs related to missing labels or cabinets, wait for Flynn to finish — it runs automatically and is self-correcting.
 
 ---
 

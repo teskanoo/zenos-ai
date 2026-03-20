@@ -53,6 +53,90 @@ input_boolean:
 
 
 ###############################################################################
+# COMPANION SELECTS
+# Overlay UI controls for the four critical input_texts.
+# Each select reads its current value from the canonical input_text and writes
+# back to it on change — input_texts remain the canonical source of truth.
+# Options are dynamically resolved from HA state at render time.
+###############################################################################
+
+template:
+  - select:
+      - name: "ZenOS: Persona"
+        unique_id: zen_select_persona
+        icon: mdi:account-star
+        state: "{{ states('input_text.zenos_persona_name') }}"
+        options: >-
+          {%- set cabs = [states('sensor.zen_default_ai_user_cabinet_resolved')] -%}
+          {%- set names = namespace(list=[]) -%}
+          {%- for cab in cabs -%}
+            {%- set vars = state_attr(cab, 'variables') | default({}, true) -%}
+            {%- set essence_raw = vars.get('zenai_essence', {}) if vars is mapping else {} -%}
+            {%- set essence = essence_raw.get('value', essence_raw) if essence_raw is mapping else {} -%}
+            {%- set name = essence.get('identity', {}).get('name', '') | trim -%}
+            {%- if name not in ['', 'your AI', 'unknown'] -%}
+              {%- set names.list = names.list + [name] -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {{ names.list if names.list | length > 0 else ['unknown'] }}
+        select_option:
+          action: input_text.set_value
+          target:
+            entity_id: input_text.zenos_persona_name
+          data:
+            value: "{{ option }}"
+
+      - name: "ZenOS: Primary User"
+        unique_id: zen_select_primary_user
+        icon: mdi:account
+        state: "{{ states('input_text.zenos_primary_user') }}"
+        options: >-
+          {%- set people = namespace(list=[]) -%}
+          {%- for p in states.person -%}
+            {%- if state_attr(p.entity_id, 'user_id') is not none -%}
+              {%- set people.list = people.list + [p.name] -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {{ people.list if people.list | length > 0 else ['unknown'] }}
+        select_option:
+          action: input_text.set_value
+          target:
+            entity_id: input_text.zenos_primary_user
+          data:
+            value: "{{ option }}"
+
+      - name: "ZenOS: Conversation Agent"
+        unique_id: zen_select_conversation_agent
+        icon: mdi:robot
+        state: "{{ states('input_text.zenos_conversation_agent') }}"
+        options: >-
+          {%- set agents = states | selectattr('entity_id', 'match', '^conversation\.') | list -%}
+          {{ agents | map(attribute='entity_id') | list
+             if agents | length > 0 else ['unknown'] }}
+        select_option:
+          action: input_text.set_value
+          target:
+            entity_id: input_text.zenos_conversation_agent
+          data:
+            value: "{{ option }}"
+
+      - name: "ZenOS: AI Task"
+        unique_id: zen_select_ai_task
+        icon: mdi:robot-outline
+        state: "{{ states('input_text.zenos_ai_task_entity') }}"
+        options: >-
+          {%- set tasks = states | selectattr('entity_id', 'match', '^ai_task\.') | list -%}
+          {{ tasks | map(attribute='entity_id') | list
+             if tasks | length > 0 else ['unknown'] }}
+        select_option:
+          action: input_text.set_value
+          target:
+            entity_id: input_text.zenos_ai_task_entity
+          data:
+            value: "{{ option }}"
+
+
+###############################################################################
 # STEPGATE SENTINEL
 # Triggers on HA start + all 3 health sensor changes.
 # Walks gates top-down, stops at first non-green, takes corrective action.
@@ -95,9 +179,7 @@ automation:
       # Capture green state + OOBE state BEFORE delay
       - variables:
           was_green: "{{ is_state('binary_sensor.flynn_system_ready', 'on') }}"
-          _oobe_ai_cab: >-
-            {{ label_entities('zen_default_ai_user_cabinet')
-               | select('match', 'sensor.') | list | first | default('') }}
+          _oobe_ai_cab: "{{ states('sensor.zen_default_ai_user_cabinet_resolved') }}"
           _oobe_cab_vars: >-
             {{ state_attr(_oobe_ai_cab, 'variables') | default({}, true)
                if _oobe_ai_cab != '' else {} }}
@@ -109,7 +191,7 @@ automation:
           _oobe_name: >-
             {{ (_oobe_essence_val.get('identity', {}).get('name', '') | trim)
                if _oobe_essence_val is mapping else '' }}
-          _oobe_pending: "{{ not _oobe_complete and (_oobe_name in ['', 'your AI']) }}"
+          _oobe_pending: "{{ not _oobe_complete and (_oobe_name in ['', 'your AI', 'unknown']) }}"
       # Early exit: skip when all gates green (or monastery warn) AND oobe done.
       # warn = degraded-but-functional; no bootstrap needed, agent is usable.
       # If oobe is pending we must walk through to Gate 3.5 even on green systems.
@@ -243,9 +325,7 @@ automation:
       # fresh so we catch names written by Gate 3 bootstrap in this same run.
       #####################################################################
       - variables:
-          _g35_ai_cab: >-
-            {{ label_entities('zen_default_ai_user_cabinet')
-               | select('match', 'sensor.') | list | first | default('') }}
+          _g35_ai_cab: "{{ states('sensor.zen_default_ai_user_cabinet_resolved') }}"
           _g35_cab_vars: >-
             {{ state_attr(_g35_ai_cab, 'variables') | default({}, true)
                if _g35_ai_cab != '' else {} }}
@@ -262,7 +342,7 @@ automation:
           # Case 1: placeholder in cabinet but input_text has a name → write it and dismiss
           - conditions: >-
               {{ not _g35_complete
-                 and _g35_name in ['', 'your AI']
+                 and _g35_name in ['', 'your AI', 'unknown']
                  and _g35_input_name != '' }}
             sequence:
               - action: script.zen_dojotools_filecabinet
@@ -284,7 +364,7 @@ automation:
           # Case 2: placeholder in cabinet and input_text empty → genuine OOBE, notify
           - conditions: >-
               {{ not _g35_complete
-                 and _g35_name in ['', 'your AI']
+                 and _g35_name in ['', 'your AI', 'unknown']
                  and _g35_input_name == '' }}
             sequence:
               - action: persistent_notification.create
@@ -621,16 +701,14 @@ script:
                   set_timestamp: true
                   show_hidden_volumes: false
                   volume_entity_id:
-                    - "{{ label_entities('zen_default_household_cabinet') | select('match', 'sensor.') | first | default('') }}"
+                    - "{{ states('sensor.zen_default_household_cabinet_resolved') }}"
                   key: "_household_name"
                   value: "{{ household_name }}"
 
       # Read current AI cab name before writing — needed to guard both the
       # persona_name write (below) and the default seed write.
       - variables:
-          _seed_ai_cab: >-
-            {{ label_entities('zen_default_ai_user_cabinet')
-               | select('match', 'sensor.') | list | first | default('') }}
+          _seed_ai_cab: "{{ states('sensor.zen_default_ai_user_cabinet_resolved') }}"
           _seed_cab_vars: >-
             {{ state_attr(_seed_ai_cab, 'variables') | default({}, true)
                if _seed_ai_cab != '' else {} }}
@@ -646,7 +724,7 @@ script:
       # cabinet still holds the placeholder. force_action: true required to
       # overwrite the placeholder that bootstrap already wrote.
       - choose:
-          - conditions: "{{ persona_name | default('') != '' and _seed_name in ['', 'your AI'] }}"
+          - conditions: "{{ persona_name | default('') != '' and _seed_name in ['', 'your AI', 'unknown'] }}"
             sequence:
               - action: script.zen_dojotools_filecabinet
                 data:
@@ -655,7 +733,7 @@ script:
                   set_timestamp: true
                   show_hidden_volumes: false
                   volume_entity_id:
-                    - "{{ label_entities('zen_default_ai_user_cabinet') | select('match', 'sensor.') | first | default('') }}"
+                    - "{{ states('sensor.zen_default_ai_user_cabinet_resolved') }}"
                   key: "zenai_essence"
                   value: >-
                     {% import 'zenos_ai/zen_os_1rc.jinja' as zen %}
@@ -682,12 +760,8 @@ script:
 
       # Press zen_template (Kata) and kfc_template (Dojo) if either is missing
       - variables:
-          _b3_kata_cab: >-
-            {{ label_entities('Zen Kata Cabinet')
-               | select('match', 'sensor.') | list | first | default('') }}
-          _b3_dojo_cab: >-
-            {{ label_entities('Zen Dojo Cabinet')
-               | select('match', 'sensor.') | list | first | default('') }}
+          _b3_kata_cab: "{{ states('sensor.zen_kata_cabinet_resolved') }}"
+          _b3_dojo_cab: "{{ states('sensor.zen_dojo_cabinet_resolved') }}"
           _b3_has_zen_template: >-
             {{ 'zen_template' in (state_attr(_b3_kata_cab, 'variables') | default({}, true))
                if _b3_kata_cab != '' else false }}
@@ -1102,12 +1176,8 @@ script:
       # 1 — LOAD CURRENT STATE
       #########################################################################
       - variables:
-          ai_cab: >-
-            {{ label_entities('zen_default_ai_user_cabinet')
-               | select('match', 'sensor.') | list | first | default('') }}
-          hh_cab: >-
-            {{ label_entities('zen_default_household_cabinet')
-               | select('match', 'sensor.') | list | first | default('') }}
+          ai_cab: "{{ states('sensor.zen_default_ai_user_cabinet_resolved') }}"
+          hh_cab: "{{ states('sensor.zen_default_household_cabinet_resolved') }}"
           ai_cab_vars: >-
             {{ state_attr(ai_cab, 'variables') | default({}, true)
                if ai_cab != '' else {} }}

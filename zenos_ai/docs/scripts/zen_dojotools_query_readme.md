@@ -2,7 +2,7 @@
 
 ### **Deterministic Entity Selector for Home Assistant**
 
-**Version:** 4.2.0
+**Version:** 4.2.1
 **Namespace:** `script.zen_dojotools_query`
 **Icon:** `mdi:filter-cog`
 
@@ -88,6 +88,7 @@ log_result:        # boolean — write filter + baselist + result to logbook
 emit_event:        # boolean — emit structured zen_event
 target_entities:   # optional list of entity_ids
 filter_json:       # required JSON dict describing ZQ-1 filters
+output_fields:     # reserved — no-op in 4.2.1 (field shaping planned for future release)
 ```
 
 ### Mode Behavior
@@ -293,3 +294,12 @@ ZQ-1 is:
 * the “truth engine” for entity selection
 
 It is one of the most critical primitives in Project Friday’s internal reasoning stack.
+
+---
+
+## Version History
+
+| Version | Change |
+|---|---|
+| 4.2.1 | `output_fields` param added (reserved, no-op) — field shaping reserved for future release |
+| 4.2.0 | GA release |

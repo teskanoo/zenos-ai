@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI DojoTools: SystemTools Package
-# Version: 4.1.0
+# Version: 4.2.0
 #
 # Consolidated from: dojotools_ha_api.yaml + dojotools_system.yaml
 # Contains: zen_log_* shell_commands, ha_api rest_commands,
@@ -8,6 +8,9 @@
 #           zen_dojotools_ha_log_viewer (MCP), zen_dojotools_event_emitter (MCP)
 #
 # CHANGELOG:
+#   4.2.0 (2026-03-19) — zen_dojotools_systemtools: added zen_health_report (v1.6.0).
+#     Reads all three health sensors, returns overall ok/issues_found + per-sensor
+#     diagnosis string. Voice-ready. Migrated from admintools namespace.
 #   4.1.0 (2026-03-15) — zen_dojotools_systemtools: added ha_reload_all,
 #     ha_reload_scripts, ha_reload_automations, ha_reload_templates.
 #     Full reload/restart decision guide in tool description.
@@ -636,7 +639,7 @@ script:
               {
                 'tool': 'help',
                 'result': 'info',
-                'version': '1.4.0',
+                'version': '1.6.0',
                 'reload_response_contract': 'ha_reload_all and ha_reload_scripts reload the script domain and kill the running script before it can report back. No response = success. Nogo from config check is the only case this tool speaks. Silence after a passing preflight = reload fired. ha_reload_automations and ha_reload_templates do return responses (different domain). Treat all reloads as fire-and-done.',
                 'reload_tools': {
                   'ha_reload_all': 'All YAML domains: automations, scripts, scenes, groups, helpers, timers, counters, schedules, YAML template sensors, MQTT YAML entities, zones, rest/command_line, custom Jinja templates, themes, homeassistant: core block. Explicit config check runs first — blocked on nogo. DEFAULT CHOICE.',
@@ -646,16 +649,196 @@ script:
                 },
                 'restart_required': 'auth_providers/auth_mfa_modules changes, http: block (port/SSL/CORS/trusted_proxies), recorder: block (db_url/include/exclude), adding net-new integrations never bootstrapped, logger: YAML block. Use logger.set_level service for runtime log level changes — no restart needed.',
                 'other_tools': {
+                  'zen_resolver_refresh': 'Fire zen_resolver_refresh. Kicks cabinet resolvers, monastery health, and all resolver-subscribed sensors. Use after ha_reload_all to recover sensors from cold-start unavailable. On real HA restart, the scheduler fires this automatically via ha_start trigger.',
+                  'zen_health_report': 'Read all 5 health sensors + 7 resolver states. Returns overall ok/issues_found, resolver all_ok, timestamps, monk_status, schema_ok, kill switches, and plain-English diagnosis.',
                   'ha_config_check': 'YAML validation, go/nogo. No side effects. Safe to run anytime.',
                   'ha_restart': 'Full HA restart. Requires confirm=true. Config check runs automatically first — blocked if check fails.',
                   'ha_update_install': 'Install a pending update. Requires confirm=true + entity_id.',
                   'ha_update_skip': 'Skip a pending update. Requires confirm=true + entity_id.',
                   'ha_update_clear_skipped': 'Un-skip a skipped update. Requires confirm=true + entity_id.'
                 },
-                'when_in_doubt': 'Run ha_config_check, then ha_reload_all.',
+                'when_in_doubt': 'Run zen_health_report first. If issues found, run ha_config_check then ha_reload_all. If reloads do not fix it, use ha_restart.',
                 'halmark_fgs': ['FG-35: automation.reload kills in-flight automations', 'FG-36: reload_all silent abort on config check failure (mitigated here by explicit preflight)', 'FG-37: partial reload state from incorrect surgical reload sequencing']
               }
             }}"
+      - conditions:
+        - alias: Resolver Refresh
+          condition: template
+          value_template: '{{ tool == ''zen_resolver_refresh'' }}'
+        sequence:
+        - event: zen_resolver_refresh
+        - variables:
+            response:
+              tool: "{{ tool }}"
+              result: success
+              message: "zen_resolver_refresh fired. Cabinet resolvers, monastery health, and all zen_resolver_refresh subscribers will re-evaluate."
+      - conditions:
+        - alias: Health Report
+          condition: template
+          value_template: '{{ tool == ''zen_health_report'' }}'
+        sequence:
+        - variables:
+            _dojo: "{{ states('sensor.zen_dojo_cabinet_resolved') }}"
+            _kata: "{{ states('sensor.zen_kata_cabinet_resolved') }}"
+            _system: "{{ states('sensor.zen_system_cabinet_resolved') }}"
+            _household: "{{ states('sensor.zen_default_household_cabinet_resolved') }}"
+            _ai_user: "{{ states('sensor.zen_default_ai_user_cabinet_resolved') }}"
+            _family: "{{ states('sensor.zen_default_family_cabinet_resolved') }}"
+            _user: "{{ states('sensor.zen_default_user_cabinet_resolved') }}"
+        - variables:
+            _kata_vars: >-
+              {{ state_attr(_kata, 'variables') or {}
+                 if _kata not in ['unknown','unavailable','none',''] else {} }}
+        - variables:
+            _ts: "{{ _kata_vars.get('zen_summary', {}).get('timestamp', '') }}"
+            _sched_ts: "{{ _kata_vars.get('zen_scheduler', {}).get('timestamp', '') }}"
+            _monk_status: >-
+              {%- set _ss_raw = _kata_vars.get('zen_supersummary_status', {}) -%}
+              {%- set _ss_v1 = _ss_raw.get('value', _ss_raw) if _ss_raw is mapping else (_ss_raw | from_json if _ss_raw is string else {}) -%}
+              {%- set _ss_d = _ss_v1 if _ss_v1 is mapping else (_ss_v1 | from_json if _ss_v1 is string else {}) -%}
+              {{ _ss_d.get('status', 'unknown') if _ss_d is mapping else 'unknown' }}
+            _schema_ok: >-
+              {%- set _zt_raw = _kata_vars.get('zen_template', {}) -%}
+              {%- set _zt_v1 = _zt_raw.get('value', _zt_raw) if _zt_raw is mapping else (_zt_raw | from_json if _zt_raw is string else {}) -%}
+              {%- set _zt_d = _zt_v1 if _zt_v1 is mapping else (_zt_v1 | from_json if _zt_v1 is string else {}) -%}
+              {{ (_zt_d.get('structure', none) is mapping) if _zt_d is mapping else false }}
+            _resolver_all_ok: >-
+              {{ [_dojo, _kata, _system, _household, _ai_user, _family, _user]
+                 | select('in', ['unknown','unavailable','none',''])
+                 | list | count == 0 }}
+            _active_raw: "{{ state_attr('sensor.zen_monastery_health', 'active_components') | default('[]') }}"
+        - variables:
+            _ts_age_min: >-
+              {%- if _ts and _ts != '' -%}
+                {{ ((now() - as_datetime(_ts)).total_seconds() / 60) | round(1) }}
+              {%- else -%}none{%- endif -%}
+            _sched_age_min: >-
+              {%- if _sched_ts and _sched_ts != '' -%}
+                {{ ((now() - as_datetime(_sched_ts)).total_seconds() / 60) | round(1) }}
+              {%- else -%}none{%- endif -%}
+        - variables:
+            _diagnosis: >-
+              {%- set _ns = namespace(issues=[]) -%}
+              {%- if _dojo in ['unknown','unavailable','none',''] -%}
+                {%- set _ns.issues = _ns.issues + ['CRITICAL: dojo resolver unavailable — label zen_dojo_cabinet has no sensor entities'] -%}
+              {%- endif -%}
+              {%- if _kata in ['unknown','unavailable','none',''] -%}
+                {%- set _ns.issues = _ns.issues + ['CRITICAL: kata resolver unavailable — label zen_kata_cabinet has no sensor entities'] -%}
+              {%- endif -%}
+              {%- if _system in ['unknown','unavailable','none',''] -%}
+                {%- set _ns.issues = _ns.issues + ['CRITICAL: system resolver unavailable — label zen_system_cabinet has no sensor entities'] -%}
+              {%- endif -%}
+              {%- if _household in ['unknown','unavailable','none',''] -%}
+                {%- set _ns.issues = _ns.issues + ['CRITICAL: household resolver unavailable — label zen_default_household_cabinet has no sensor entities'] -%}
+              {%- endif -%}
+              {%- if _ai_user in ['unknown','unavailable','none',''] -%}
+                {%- set _ns.issues = _ns.issues + ['CRITICAL: ai_user resolver unavailable — label zen_default_ai_user_cabinet has no sensor entities'] -%}
+              {%- endif -%}
+              {%- if _family in ['unknown','unavailable','none',''] -%}
+                {%- set _ns.issues = _ns.issues + ['warn: family resolver unavailable — label zen_default_family_cabinet has no sensor entities'] -%}
+              {%- endif -%}
+              {%- if _user in ['unknown','unavailable','none',''] -%}
+                {%- set _ns.issues = _ns.issues + ['warn: user resolver unavailable — label zen_default_user_cabinet has no sensor entities'] -%}
+              {%- endif -%}
+              {%- set _mon_st = states('sensor.zen_monastery_health') -%}
+              {%- if _mon_st == 'unknown' -%}
+                {%- set _ns.issues = _ns.issues + ['Monastery health has not woken up yet. Run resolver refresh to kick it.'] -%}
+              {%- elif _mon_st == 'unavailable' -%}
+                {%- set _ns.issues = _ns.issues + ['Monastery health tried to evaluate but hit an error. Check HA logs for template errors.'] -%}
+              {%- elif _mon_st == 'critical' -%}
+                {%- set _ns.issues = _ns.issues + ['Monastery health is CRITICAL. Schema missing, resolver down, or summary very stale with monk errors.'] -%}
+              {%- elif _mon_st == 'warn' -%}
+                {%- set _ns.issues = _ns.issues + ['Monastery health is warning. Summary stale, monk error, or no active components — see timestamps and monk_status.'] -%}
+              {%- endif -%}
+              {%- set _ninja_st = states('sensor.zen_summarizer_health') -%}
+              {%- if _ninja_st == 'unknown' -%}
+                {%- set _ns.issues = _ns.issues + ['Ninja summarizer health has not woken up yet. Run resolver refresh.'] -%}
+              {%- elif _ninja_st == 'unavailable' -%}
+                {%- set _ns.issues = _ns.issues + ['Ninja summarizer health hit an error. Check HA logs.'] -%}
+              {%- elif _ninja_st == 'critical' -%}
+                {%- set _ns.issues = _ns.issues + ['Ninja summarizer health is CRITICAL. Kata resolver likely down.'] -%}
+              {%- elif _ninja_st == 'warn' -%}
+                {%- set _ns.issues = _ns.issues + ['Ninja summarizer health is warning. Scheduler stale or ai_task entity not set.'] -%}
+              {%- endif -%}
+              {%- set _ss_st = states('sensor.zen_supersummary_health') -%}
+              {%- if _ss_st == 'unknown' -%}
+                {%- set _ns.issues = _ns.issues + ['Supersummary health has not woken up yet. Run resolver refresh.'] -%}
+              {%- elif _ss_st == 'unavailable' -%}
+                {%- set _ns.issues = _ns.issues + ['Supersummary health hit an error. Check HA logs.'] -%}
+              {%- elif _ss_st == 'critical' -%}
+                {%- set _ns.issues = _ns.issues + ['Supersummary health is CRITICAL. Kata resolver likely down.'] -%}
+              {%- elif _ss_st == 'warn' -%}
+                {%- set _ns.issues = _ns.issues + ['Supersummary health is warning. Summary stale or monk returned an error.'] -%}
+              {%- endif -%}
+              {%- if not is_state('input_boolean.zen_summarizers_enabled', 'on') -%}
+                {%- set _ns.issues = _ns.issues + ['pipeline master kill switch OFF'] -%}
+              {%- endif -%}
+              {%- if not is_state('input_boolean.zen_ninja_summarizer_enabled', 'on') -%}
+                {%- set _ns.issues = _ns.issues + ['ninja summarizer kill switch OFF'] -%}
+              {%- endif -%}
+              {%- if not is_state('input_boolean.zen_supersummarizer_enabled', 'on') -%}
+                {%- set _ns.issues = _ns.issues + ['supersummary kill switch OFF'] -%}
+              {%- endif -%}
+              {%- if _schema_ok == 'False' -%}
+                {%- set _ns.issues = _ns.issues + ['CRITICAL: zen_template schema missing — run zen_admintools_reset_template'] -%}
+              {%- endif -%}
+              {%- if states('input_text.zenos_ai_task_entity') | trim in ['','unknown','unavailable'] -%}
+                {%- set _ns.issues = _ns.issues + ['ai_task entity not set (input_text.zenos_ai_task_entity empty)'] -%}
+              {%- endif -%}
+              {%- if _ts == '' -%}
+                {%- set _ns.issues = _ns.issues + ['no zen_summary timestamp — pipeline has never run or kata not bootstrapped'] -%}
+              {%- elif _ts_age_min != 'none' and _ts_age_min | float > 30 -%}
+                {%- set _ns.issues = _ns.issues + ['zen_summary critically stale (' ~ _ts_age_min ~ ' min, threshold 30 min)'] -%}
+              {%- elif _ts_age_min != 'none' and _ts_age_min | float > 15 -%}
+                {%- set _ns.issues = _ns.issues + ['zen_summary stale (' ~ _ts_age_min ~ ' min, threshold 15 min)'] -%}
+              {%- endif -%}
+              {%- if _sched_ts == '' -%}
+                {%- set _ns.issues = _ns.issues + ['no scheduler timestamp — ninja has never run'] -%}
+              {%- elif _sched_age_min != 'none' and _sched_age_min | float > 20 -%}
+                {%- set _ns.issues = _ns.issues + ['ninja scheduler stale (' ~ _sched_age_min ~ ' min, threshold 20 min)'] -%}
+              {%- endif -%}
+              {%- if _monk_status in ['error','timeout','none','null','unknown'] -%}
+                {%- set _ns.issues = _ns.issues + ['supersummary monk status: ' ~ _monk_status] -%}
+              {%- endif -%}
+              {%- if _ns.issues | count == 0 -%}
+                All gates nominal.
+              {%- else -%}
+                {{ _ns.issues | join(' | ') }}
+              {%- endif -%}
+        - variables:
+            response:
+              generated: "{{ now().isoformat() }}"
+              overall: "{{ 'ok' if 'All gates nominal.' in _diagnosis else 'issues_found' }}"
+              resolvers:
+                dojo: "{{ _dojo }}"
+                kata: "{{ _kata }}"
+                system: "{{ _system }}"
+                household: "{{ _household }}"
+                ai_user: "{{ _ai_user }}"
+                family: "{{ _family }}"
+                user: "{{ _user }}"
+                all_ok: "{{ _resolver_all_ok }}"
+              health_sensors:
+                monastery: "{{ states('sensor.zen_monastery_health') }}"
+                ninja_summarizer: "{{ states('sensor.zen_summarizer_health') }}"
+                supersummary: "{{ states('sensor.zen_supersummary_health') }}"
+                cabinet: "{{ states('sensor.zen_cabinet_health') }}"
+                agents: "{{ states('sensor.zen_agent_health') }}"
+              kill_switches:
+                pipeline_master: "{{ is_state('input_boolean.zen_summarizers_enabled', 'on') }}"
+                ninja_enabled: "{{ is_state('input_boolean.zen_ninja_summarizer_enabled', 'on') }}"
+                supersummary_enabled: "{{ is_state('input_boolean.zen_supersummarizer_enabled', 'on') }}"
+              schema_ok: "{{ _schema_ok }}"
+              ai_task_entity: "{{ states('input_text.zenos_ai_task_entity') | trim }}"
+              ai_task_set: "{{ states('input_text.zenos_ai_task_entity') | trim not in ['','unknown','unavailable'] }}"
+              timestamps:
+                zen_summary: "{{ _ts | default('none') }}"
+                zen_summary_age_min: "{{ _ts_age_min }}"
+                zen_scheduler: "{{ _sched_ts | default('none') }}"
+                zen_scheduler_age_min: "{{ _sched_age_min }}"
+              monk_status: "{{ _monk_status }}"
+              active_components: "{{ _active_raw }}"
+              diagnosis: "{{ _diagnosis }}"
       default:
       - variables:
           response: "{{\n  {\n    \"tool\": tool | default('N/A'),\n    \"confirm\":
@@ -664,7 +847,9 @@ script:
     - stop: return
       response_variable: response
     alias: Zen DojoTools SystemTools
-    description: "Zen DojoTools SystemTools (1.4.0)\n\
+    description: "Zen DojoTools SystemTools (1.6.0)\n\
+      \nHEALTH: zen_health_report — reads all 5 health sensors + 7 resolver states.\n\
+      \nReturns overall ok/issues_found, resolver all_ok, timestamps, monk_status, schema_ok, kill switches, diagnosis.\n\
       \nRELOAD RESPONSE: ha_reload_all/ha_reload_scripts kill the running script —\n\
       \nno response = success. Only nogo from preflight config check speaks.\n\
       \nSilence = reload fired. Trust the preflight.\n\
@@ -683,6 +868,8 @@ script:
         selector:
           select:
             options:
+            - zen_resolver_refresh
+            - zen_health_report
             - help
             - ha_reload_all
             - ha_reload_scripts

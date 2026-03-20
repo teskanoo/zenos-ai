@@ -47,9 +47,7 @@ script:
         default: false
     sequence:
     - variables:
-        zen_default_house_cab: "{{ expand(label_entities('Zen Default Household Cabinet'))\n
-          \ | selectattr('domain','eq','sensor')\n  | map(attribute='entity_id')\n  |
-          list\n  | first\n  | default() }}"
+        zen_default_house_cab: "{{ states('sensor.zen_default_household_cabinet_resolved') }}"
         manifest_key: zen_library_manifest
         read_hidden: '{{ show_hidden | default(false) }}'
         read_extended: '{{ extended | default(false) }}'

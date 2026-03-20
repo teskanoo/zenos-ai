@@ -104,6 +104,5 @@ script:
           response_variable: result
     - stop: Return Variable {{ result }}
       response_variable: result
-    - set_conversation_response: '{{ result }}'
     mode: parallel
     icon: mdi:desktop-classic

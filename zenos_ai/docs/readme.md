@@ -2,6 +2,8 @@
 
 > **Version:** 4.2.0 | **Last Updated:** March 2026 | **License:** MIT
 
+→ [Project Overview & Install](../../README.md)
+
 ---
 
 Welcome to the **ZenOS-AI Documentation** — the full map of the architecture, tools, cognitive model, and operational philosophy behind *Friday’s Party*.
@@ -24,10 +26,11 @@ This directory contains **11 documentation suites**, each aligned with a major s
 
 New to ZenOS-AI? Start here.
 
-* `install.md` — File copy, configuration.yaml setup, conversation agent prompt, helper configuration, health verification
+* `install.md` — File copy, configuration.yaml setup, conversation agent prompt, set conversation agent before restart, restart, health verification
 * `first_run.md` — First boot walkthrough, OOBE conversation, persona selector, editing profiles, troubleshooting
 * `entity_exposure.md` — What to expose to your conversation agent: actionable vs contextable vs invisible, the three-tier model
 * `oobe.md` — OOBE walkthrough: the six-step first-boot configuration protocol to your conversation agent: actionable vs contextable vs invisible, the three-tier model
+* `troubleshooting.md` — Gauges → Kill Switches → Repair Tools. Health sensor quick-reads, summarizer kill switches, and a seven-step graduated repair sequence (resolver refresh → reseed → label reset → nuclear cabinet reset)
 
 If you just installed ZenOS-AI and want to know what to do next, start here.
 
@@ -143,7 +146,7 @@ Documentation for every Zen DojoTool and script module.
 
 Includes:
 
-* `zen_dojotools_admintools_readme.md` — AdminTools: KungFu Writer, cabinet repair, template press, prompt loader
+* `zen_dojotools_admintools_readme.md` — AdminTools: KungFu Writer, cabinet repair, template press, prompt loader, nuclear label reset, reset_all cabinet sequence
 * `zen_dojotools_scheduler_readme.md` — Scheduler architecture, trigger IDs, component subscription, hardware trigger pattern
 * `zen_dojotools_filecabinet_readme.md` — Cabinet read/write controller, clone action, Highlander mode
 * `zen_dojotools_manifest_readme.md`
@@ -163,9 +166,9 @@ Scripts are the motor cortex. They turn reasoning into action.
 
 **Folder:** `docs/sensors/`
 
-Layered health monitoring stack — labels, cabinets, cognition pipeline, agent bootability.
+Layered health monitoring stack — cabinet resolvers, cognition pipeline, agent bootability.
 
-* `readme.md` — full reference: all 8 sensors, states, conditions, attributes, troubleshooting quick-reference
+* `readme.md` — full reference: 7 always-live cabinet resolver sensors + 5 trigger-based health sensors, states, conditions, attributes, troubleshooting quick-reference. Includes `zen_health_report` (full system diagnostic) and `zen_resolver_refresh` (cold-start recovery).
 
 ---
 
@@ -231,15 +234,13 @@ This is Friday’s trust spine — the system that decides which parts of the wo
 
 **File:** `docs/roadmap.md`
 
-Tracks development goals for:
+Current milestone: **1.0 GA**
 
-* Cabinet v3 and redirects
-* MCP channel
-* Summarizer Engine 2
-* HyperIndex extensions
-* Identity v2
-* Persona bootflow
-* Recovery and rollback contracts
+* RC2 — complete (KF4, Dojo-driven scheduler, FileCabinet v4)
+* GA Stability Gates — Highlander resolver architecture delivered (2026-03-19)
+* GA deliverables — bootstrap, legacy import, cabinet loader, governance, Flynn finalization
+* SP1 — queued post-GA
+* v.next — KFC v1.1 (state key, master-switch-free controller), deeper memory, governance modules
 
 ---
 

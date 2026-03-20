@@ -1,4 +1,4 @@
-# Zen DojoTools Index — 4.2.0
+# Zen DojoTools Index — 4.2.1
 **File:** `zen_dojotools_zen_index_readme.md`  
 **Type:** Technical Documentation  
 
@@ -63,33 +63,29 @@ Flow:
 This supports high-intelligence, LLM-originated queries using a structured query DSL.
 
 ### 🔎 Optional Entity Expansion via Zen Inspect
-When `expand_entities: true`, the Zen Index:
+When `expand_entities: true`, the Zen Index invokes `script.zen_dojotools_inspect`
+with the resolved entity set, passing through `output_fields` and `label_targets`.
 
-- Invokes `script.dojotools_zen_inspect`
-- Gathers relationship-expanded entities  
-- Returns them alongside the base entity set  
+Inspect returns enriched entity data plus `drawers` — a dict of label-targeted
+blurbs from FileCabinet. Index surfaces both in the result.
 
-This is how Friday walks the “adjacent graph” around selected entities.
+This is how Friday walks the entity graph and reads Dojo context in one call.
 
 ### 🏷 Label Aggregation & Adjacency
 The Zen Index automatically computes which labels appear across:
 
-- the resolved entities  
-- the expanded entities  
-- drawers discovered via the Zen Indexer  
+- the resolved entities
+- the expanded entities
 
 Adjacency lists give Friday an understanding of **local label neighborhoods** —
 useful for predictive associations, clustering, and similarity queries.
 
-### 🗄 Drawer Resolution
-If the Zen Indexer returns drawer matches (optional), the script:
+### 🗄 Drawer Blurbs
+When `expand_entities: true` and `label_targets` resolves to matched drawers,
+the result includes `drawers` — a dict of `{drawer_key: blurb_text}` entries.
 
-- parses drawer JSON safely  
-- extracts drawer-level labels  
-- flattens and deduplicates them  
-- exposes “drawer adjacency” as an output field
-
-This forms the basis of **drawer-based graph traversal** for future modules.
+These are brief summaries only (the index is an index, not a book).
+For full drawer content, use FileCabinet directly.
 
 ### 🛡 Fully Safe Parsing & Concurrency
 The Zen Index uses:
@@ -108,27 +104,29 @@ The result is deterministic, drift-free, and LLM-safe.
 The Zen Index always returns a unified JSON envelope:
 
 ```
-
 {
-"result": {
-"simple": [...],              # The core entity set
-"expanded": [...],            # Expanded via Zen Inspect (optional)
-"adjacent_labels": [...],     # Labels near the result set
-"index": [...],               # [entity_id, [labels...]]
-"drawers": [...],             # Drawer matches (optional)
-"drawer_adjacent_labels": [...] # Aggregated drawer labels
-},
-"operator": "AND|OR|NOT|XOR|*",
-"inputs": {
-"entities_1": [...],
-"label_1": "string",
-"entities_2": [...],
-"label_2": "string",
-"expand_entities": false
-},
-"error": null | "Timeout …"
+  "result": {
+    "simple": [...],              # The core entity set
+    "expanded": [...],            # Enriched via Zen Inspect (expand_entities=true)
+    "adjacent_labels": [...],     # Labels near the result set
+    "index": [...],               # [entity_id, [labels...]]
+    "drawers": {                  # Label-targeted blurbs (expand_entities=true + label_targets)
+      "drawer_key": "blurb text",
+      ...
+    }
+  },
+  "operator": "AND|OR|NOT|XOR|*",
+  "inputs": {
+    "entities_1": [...],
+    "label_1": "string",
+    "entities_2": [...],
+    "label_2": "string",
+    "expand_entities": false,
+    "output_fields": [...],
+    "label_targets": [...]
+  },
+  "error": null | "Timeout …"
 }
-
 ```
 
 The operator `' * '` is returned when no inputs are supplied
@@ -141,12 +139,12 @@ and the system falls back to the global label index.
 ### ▶️ Standard Mode (no index_command)
 Uses `entities_1`, `entities_2`, `label_1`, `label_2`:
 
-1. Resolve labels → entity lists  
-2. Apply set operator  
-3. Optionally expand  
-4. Compute adjacency  
-5. Compute drawer relations (if available)  
-6. Render unified output  
+1. Resolve labels → entity lists
+2. Apply set operator
+3. Optionally expand via Inspect (passes `output_fields` + `label_targets` derived from `label_1`/`label_2`)
+4. Read `drawers` from Inspect response
+5. Compute adjacency
+6. Render unified output
 
 ### ▶️ Index Command Mode
 Designed for high-level, LLM-driven queries.
@@ -193,13 +191,22 @@ entities_1:
 
 ```
 
-### Expand entity graph
+### Expand entity graph with device data
 ```
-
 entities_1: group.master_suite
 expand_entities: true
-
+output_fields: "+attributes"
 ```
+
+### Expand with Dojo context
+```
+label_1: kung_fu
+expand_entities: true
+output_fields: "-timestamps"
+label_targets: "kung_fu,zen"
+```
+
+Returns enriched entity list plus `drawers: {drawer_key: blurb}` for matched labels.
 
 ### Advanced: DSL-driven query
 ```
@@ -240,18 +247,20 @@ This is the *search brainstem* of ZenOS-AI.
 
 ## Summary
 
-The Zen Index 4.2.0 provides:
+The Zen Index 4.2.1 provides:
 
-- A fully featured, label/entity correlation engine  
-- Integrated set logic with four operators  
-- Zen Indexer DSL support  
-- Optional Zen Inspect expansion  
-- Label adjacency & drawer adjacency  
-- Strict JSON safety  
-- Hardened event-driven execution  
-- Deterministic and LLM-stable outputs  
+- A fully featured, label/entity correlation engine
+- Integrated set logic with four operators
+- Zen Indexer DSL support
+- Optional Zen Inspect expansion with `output_fields` passthrough
+- Label-targeted drawer blurbs via `label_targets` → Inspect → FileCabinet
+- `result.drawers` is a dict of blurbs, not a list of key names
+- Label adjacency
+- Strict JSON safety
+- Hardened event-driven execution
+- Deterministic and LLM-stable outputs
 
-If the Manifest is the MRI  
-and FileCabinet is the filesystem driver  
-then the Zen Index is Friday’s **graph engine** —  
+If the Manifest is the MRI
+and FileCabinet is the filesystem driver
+then the Zen Index is Friday’s **graph engine** —
 the way she understands where everything is and how it connects.

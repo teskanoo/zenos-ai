@@ -302,17 +302,13 @@ script:
           _explicit: "{{ target | default('') | trim }}"
           _default_target: >-
             {%- if _type == 'ai_user' -%}
-              {{ label_entities('zen_default_ai_user_cabinet')
-                 | select('match', 'sensor.') | list | first | default('') }}
+              {{ states('sensor.zen_default_ai_user_cabinet_resolved') }}
             {%- elif _type == 'household' -%}
-              {{ label_entities('zen_default_household_cabinet')
-                 | select('match', 'sensor.') | list | first | default('') }}
+              {{ states('sensor.zen_default_household_cabinet_resolved') }}
             {%- elif _type == 'family' -%}
-              {{ label_entities('zen_default_family_cabinet')
-                 | select('match', 'sensor.') | list | first | default('') }}
+              {{ states('sensor.zen_default_family_cabinet_resolved') }}
             {%- elif _type == 'user' -%}
-              {{ label_entities('zen_default_user_cabinet')
-                 | select('match', 'sensor.') | list | first | default('') }}
+              {{ states('sensor.zen_default_user_cabinet_resolved') }}
             {%- else -%}
             {%- endif -%}
           _target: "{{ _explicit if _explicit != '' else _default_target }}"

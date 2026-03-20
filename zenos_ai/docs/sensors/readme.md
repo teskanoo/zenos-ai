@@ -1,4 +1,4 @@
-# ZenOS-AI Health Sensors
+# ZenOS-AI Health Sensors — 4.2.2
 
 *System observability stack — labels, cabinets, cognition, agents*
 
@@ -6,14 +6,17 @@
 
 ## Overview
 
-ZenOS-AI ships a layered health monitoring system. Every sensor reports one of four states:
+ZenOS-AI ships a layered health monitoring system. Every sensor reports one of five states:
 
 | State | Meaning |
 |---|---|
 | `ok` | All checks pass |
+| `disabled` | Pipeline intentionally off via kill switch — not an error |
 | `warn` | Degraded but functional — system can run, something needs attention |
 | `error` | Functional impaired — action required |
 | `critical` | Bootstrap blocked — Flynn will engage |
+
+State ladder (severity): `critical > error > warn > disabled > ok`. `disabled` is a clean, intentional state — not a fault. Turning a kill switch back on returns the sensor to `ok` and triggers an auto-refire of the pipeline (see Kill Switches below).
 
 Sensors are arranged in a dependency stack. Label health feeds cabinet health, which feeds monastery health, which feeds Flynn health, which feeds agent health. A problem at the bottom propagates up.
 
@@ -143,6 +146,7 @@ sensor.zen_label_health          ← updates every 1 minute
 |---|---|
 | `critical` | Kata cabinet unavailable/unknown/missing |
 | `warn` | AI task entity not configured or unavailable; OR `zen_scheduler` drawer missing; OR drawer timestamp >20 minutes stale |
+| `disabled` | `input_boolean.zen_ninja_summarizer_enabled` or `input_boolean.zen_summarizers_enabled` is `off` |
 | `ok` | AI task configured, scheduler drawer exists, timestamp ≤20 minutes old |
 
 **Key attributes:**
@@ -166,6 +170,7 @@ sensor.zen_label_health          ← updates every 1 minute
 |---|---|
 | `critical` | Kata cabinet unavailable/unknown/missing |
 | `warn` | Monk status is error/timeout/none/null; OR summary >15 minutes stale; OR summary 15–30 minutes stale |
+| `disabled` | `input_boolean.zen_supersummarizer_enabled` or `input_boolean.zen_summarizers_enabled` is `off` |
 | `ok` | Monk status ok AND summary ≤15 minutes old |
 
 **Key attributes:**
@@ -251,15 +256,46 @@ Use `current_gate` and `next_step` when troubleshooting a stuck boot — they te
 
 ---
 
-## UI Selectors
+## UI Selectors and Kill Switches
 
-Three template selects provide UI-level control:
+### Companion Input Selects
+
+| Entity | Drives | Options Source |
+|---|---|---|
+| `select.zenos_persona` | `input_text.zenos_persona_name` | AI user cabinet essence names |
+| `select.zenos_primary_user` | `input_text.zenos_primary_user` | `person.*` with `user_id` attr |
+| `select.zenos_conversation_agent` | `input_text.zenos_conversation_agent` | `conversation.*` domain |
+| `select.zenos_ai_task` | `input_text.zenos_ai_task_entity` | `ai_task.*` domain |
+
+Options resolve dynamically at render time. Each select writes back to its input_text on change — input_texts remain canonical.
+
+### Legacy Selects
 
 | Entity | Purpose |
 |---|---|
 | `select.zenos_active_persona` | Switch between registered AI personas |
 | `select.zenos_reasoning_task` | Select the active reasoning task entity |
-| `select.zenos_cabinet_selector` | Inspect/select cabinet slots (shows missing and invalid slots) |
+| `select.zenos_cabinet_selector` | Inspect/select cabinet slots |
+
+### Summarizer Kill Switches
+
+| Entity | Default | Purpose |
+|---|---|---|
+| `input_boolean.zen_summarizers_enabled` | `on` | Master — gates both summarizers |
+| `input_boolean.zen_supersummarizer_enabled` | `on` | SuperSummary on/off |
+| `input_boolean.zen_ninja_summarizer_enabled` | `on` | Ninja Summarizer on/off |
+
+Master is checked first. If off, both summarizers exit immediately regardless of their individual switches. Turning any switch off is non-destructive — schedules, automations, and cabinet data are untouched.
+
+**Auto-refire on re-enable:** `automation.zen_pipeline_autofire_on_enable` watches all three kill switches. When any switch is turned back `on`, it fires the appropriate force event immediately — no waiting for the next scheduled run:
+
+| Switch turned on | Event fired |
+|---|---|
+| `zen_summarizers_enabled` (master) | `zen_event: {kind: supersummary_force}` |
+| `zen_ninja_summarizer_enabled` | `zen_event: {kind: ninja_force}` |
+| `zen_supersummarizer_enabled` | `zen_event: {kind: supersummary_force}` |
+
+This means the summarizer is live again within seconds of being re-enabled, not at the next quarter-hour or hourly tick.
 
 ---
 
@@ -269,7 +305,10 @@ Three template selects provide UI-level control:
 |---|---|
 | Friday won't wake up | `sensor.zen_agent_health` → `roster` attribute |
 | Summaries are stale | `sensor.zen_supersummary_health` → `monk_status` |
+| Summaries stopped running | Check `input_boolean.zen_summarizers_enabled` and individual kill switches — all three must be `on`. If a switch was just turned back on, `zen_pipeline_autofire_on_enable` fires automatically; wait ~10s before assuming it's stuck. |
+| Summarizer health shows `disabled` | Kill switch is off — intentional. Turn the switch back on; pipeline will auto-restart. |
 | Scheduler not firing | `sensor.zen_summarizer_health` → `ai_task_entity` and `last_timestamp` |
 | Flynn stuck at boot | `sensor.zen_flynn_health` → `current_gate` and `next_step` |
 | Labels not assigning | `sensor.zen_label_health` → `missing_label_ids` and `unassigned_label_ids` |
 | Cabinet missing | `sensor.zen_cabinet_health` → `missing_cabinets` |
+| Resolver sensors stuck unavailable | Check `label_entities()` calls use slug IDs — display names return `[]` on strict HA versions. Fire `zen_resolver_refresh` after fixing. |

@@ -381,13 +381,30 @@ This allows the system to preserve context while maintaining token efficiency.
 
 ZenOS-AI includes a layered health monitoring system.
 
-| Sensor                        | Purpose                              |
-| ----------------------------- | ------------------------------------ |
-| `sensor.zen_label_health`     | label validation                     |
-| `sensor.zen_cabinet_health`   | cabinet entity validation            |
-| `sensor.zen_monastery_health` | cognition pipeline rollup            |
-| `sensor.zen_agent_health`     | agent bootability roster + Flynn     |
-| `sensor.zen_summarizer_health`| scheduler heartbeat + AI task status |
+**Cabinet Resolvers** — 7 always-live template sensors. Evaluate at HA startup, no race window. Every tool and sensor in the OS reads cabinet entity IDs exclusively from these.
+
+| Resolver                                        | Cabinet                   |
+| ----------------------------------------------- | ------------------------- |
+| `sensor.zen_dojo_cabinet_resolved`              | Dojo                      |
+| `sensor.zen_kata_cabinet_resolved`              | Kata                      |
+| `sensor.zen_system_cabinet_resolved`            | System                    |
+| `sensor.zen_default_household_cabinet_resolved` | Default Household         |
+| `sensor.zen_default_ai_user_cabinet_resolved`   | Default AI User           |
+| `sensor.zen_default_family_cabinet_resolved`    | Default Family            |
+| `sensor.zen_default_user_cabinet_resolved`      | Default User              |
+
+**Health Sensors** — trigger-based, read from resolvers.
+
+| Sensor                         | Purpose                              |
+| ------------------------------ | ------------------------------------ |
+| `sensor.zen_label_health`      | label validation                     |
+| `sensor.zen_cabinet_health`    | cabinet entity validation            |
+| `sensor.zen_monastery_health`  | cognition pipeline rollup            |
+| `sensor.zen_agent_health`      | agent bootability roster + Flynn     |
+| `sensor.zen_summarizer_health` | scheduler heartbeat + AI task status |
+| `sensor.zen_supersummary_health` | supersummary pipeline status       |
+
+**Diagnostic tools:** `zen_health_report` — one call returns all 7 resolver states, all health sensors, kill switches, timestamps, and plain-English diagnosis. `zen_resolver_refresh` — post-reload cold-start recovery.
 
 States:
 
@@ -404,13 +421,14 @@ critical
 
 | Name           | Title                       | Specialty                  |
 | -------------- | --------------------------- | -------------------------- |
-| Friday         | Chief Enlightenment Officer | Coordination and cognition |
-| Veronica       | Supervisor                  | Clarity and orchestration  |
-| Kronk          | Curator of the Monastery    | Context wrangler           |
-| Rosie          | Mistress of Cleanliness     | Logs and state hygiene     |
-| High Priestess | Automation Overseer         | Deep reasoning             |
-| Cait           | Lead Developer              | Strategy to shipping       |
-| Nyx            | Lead Test                   | Live install, zero mercy   |
+| Friday         | Chief Enlightenment Officer         | Coordination and cognition        |
+| Veronica       | Supervisor                          | Clarity and orchestration         |
+| Kronk          | Curator of the Monastery            | Context wrangler                  |
+| Rosie          | Mistress of Cleanliness             | Logs and state hygiene            |
+| High Priestess | Automation Overseer                 | Deep reasoning                    |
+| Cayt           | Lead Developer                      | Strategy to shipping              |
+| Nyx            | Lead Test                           | Live install, zero mercy          |
+| Vera           | HALMark Board Governance Steward    | Failure mode ratification         |
 
 They are not perfect.
 

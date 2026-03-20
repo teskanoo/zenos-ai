@@ -1,6 +1,6 @@
 {
-  "version": 5,
-  "generated": "2026-03-14",
+  "version": 7,
+  "generated": "2026-03-19",
   "description": "Index of ZenOS-AI documentation modules.",
   "sections": {
     "getting_started": {
@@ -10,7 +10,8 @@
         { "id": "install", "file": "install.md", "title": "Install Guide", "type": "doc" },
         { "id": "first_run", "file": "first_run.md", "title": "First Run Guide", "type": "doc" },
         { "id": "entity_exposure", "file": "entity_exposure.md", "title": "What to Expose to Your Conversation Agent", "type": "doc" },
-        { "id": "oobe", "file": "oobe.md", "title": "OOBE — Out-of-Box Experience", "type": "doc" }
+        { "id": "oobe", "file": "oobe.md", "title": "OOBE — Out-of-Box Experience", "type": "doc" },
+        { "id": "troubleshooting", "file": "troubleshooting.md", "title": "Troubleshooting Guide", "type": "doc" }
       ]
     },
     "root": {

@@ -1,4 +1,4 @@
-# Zen DojoTools Inspect — 4.2.0
+# Zen DojoTools Inspect — 4.2.2
 **File:** `zen_dojotools_inspect_readme.md`  
 **Type:** Technical Documentation  
 
@@ -30,18 +30,20 @@ Inspect is the **eyes** of ZenOS-AI.
 ### 🔍 Entity Snapshot (Safe-Mode)
 For each entity inspected, the module returns:
 
-- entity_id  
-- friendly_name  
-- state  
-- domain  
-- timestamps  
-- labels  
-- sanitized attributes  
-- cabinet header metadata (if applicable)  
-- Home Assistant statistics eligibility  
-- optional extended device/integration forensics  
+- entity_id
+- friendly_name
+- state
+- domain
+- timestamps (suppressible via `-timestamps`)
+- labels (as `{slug: description}` dict — description is empty string if unset)
+- device block (suppressible via `-device`)
+- sanitized attributes (opt-in via `+attributes`)
+- cabinet header metadata (if applicable)
+- Home Assistant statistics eligibility (opt-in via `+statistics`)
+- optional extended device tree (`extended: true`)
+- drawer blurbs keyed by label (`label_targets`)
 
-Unsafe or unserializable values (objects, unsupported types, HA stringified dicts)  
+Unsafe or unserializable values (objects, unsupported types, HA stringified dicts)
 are automatically normalized into JSON-compatible equivalents.
 
 This guarantees *all* Inspect results are future-safe for LLM consumption.
@@ -129,23 +131,67 @@ Friday uses this in analytics, trend analysis, and future forecasting modules.
 
 ---
 
-### 🔧 Extended Mode (Device/Integration Forensics)
-When `extended: true`:
+### 🔧 Device Block (Always-On)
+When an entity has an associated device, Inspect always includes a `device` block:
 
-Inspect extracts:
+```
+{
+  "device_id": "...",
+  "name": "...",
+  "manufacturer": "...",
+  "model": "...",
+  "area_id": "...",
+  "integration": "..."
+}
+```
 
-- device_id  
-- area_id  
-- identifiers  
+Suppress with `-device` in `output_fields`. When no device is associated, the field is omitted.
 
-This is limited but highly useful for:
+### 🌲 Device Tree (Extended Mode)
+When `extended: true`, entities with a device also include a `device_tree` block:
 
-- correlating device groups  
-- resolving integration IDs  
-- mapping room context  
-- cross-checking entity clusters  
+```
+{
+  "via_device_id": "..." | null,
+  "parent_name": "..." | null,
+  "siblings": [...],
+  "config_entries": [...]
+}
+```
 
-Extended mode never exposes harmful or overly deep device metadata.
+This is useful for:
+
+- mapping parent/child device relationships
+- resolving integration config entries
+- discovering sibling entities on the same device
+
+### 🎛 Output Fields (Caller-Controlled)
+The `output_fields` parameter controls which optional fields appear in each entity result.
+
+Defaults-on (suppress with `-`):
+
+| Token | Effect |
+|---|---|
+| `-timestamps` | Omit `last_changed` / `last_updated` |
+| `-device` | Omit `device` block |
+| `-volume` | Omit `volume` block (cabinet sensors only) |
+
+Opt-in (add with `+`):
+
+| Token | Effect |
+|---|---|
+| `+attributes` | Include sanitized `attributes` dict |
+| `+statistics` | Include `statistics` eligibility block |
+
+`output_fields` may be passed as a list or comma-separated string.
+Parsed once at init — zero overhead per entity.
+
+### 🏷 Label-Targeted Drawer Blurbs
+When `label_targets` is provided, Inspect calls FileCabinet after the entity loop
+and returns a `drawers` dict in the response — one blurb per matched drawer key.
+
+This is the bridge between entity context and Dojo knowledge.
+The blurbs are brief summaries only; full drawer content requires FileCabinet directly.
 
 ---
 
@@ -172,36 +218,57 @@ Valid range: 30–300 seconds
 Inspect outputs a unified, LLM-safe envelope:
 
 ```
-
 {
-"results": [
-{
-"entity_id": "...",
-"friendly_name": "...",
-"domain": "...",
-"state": "...",
-"last_changed": "ISO-8601",
-"last_updated": "ISO-8601",
-"labels": [...],
-"attributes": {...},
-"volume": {...},         # Cabinet header only
-"statistics": {
-"eligible": true|false,
-"reason": "..."
-},
-"extended": {...}        # optional, see Extended Mode
-},
-...
-],
-"inputs": {
-"entity_id": [...],
-"extended": false,
-"infer": false,
-"timeout": 60
-},
-"error": null
+  "results": [
+    {
+      "entity_id": "...",
+      "friendly_name": "...",
+      "domain": "...",
+      "state": "...",
+      "last_changed": "ISO-8601",    # present unless -timestamps
+      "last_updated": "ISO-8601",    # present unless -timestamps
+      "labels": {                    # {slug: description} — description '' if unset
+        "water": "Domain label for all water entities; label:water.",
+        "spa": ""
+      },
+      "device": {                    # present unless -device or no device
+        "device_id": "...",
+        "name": "...",
+        "manufacturer": "...",
+        "model": "...",
+        "area_id": "...",
+        "integration": "..."
+      },
+      "volume": {...},               # cabinet sensors only, unless -volume
+      "attributes": {...},           # opt-in: +attributes
+      "statistics": {                # opt-in: +statistics
+        "eligible": true|false,
+        "reason": "..."
+      },
+      "device_tree": {               # extended=true only
+        "via_device_id": "..." | null,
+        "parent_name": "..." | null,
+        "siblings": [...],
+        "config_entries": [...]
+      },
+      "drawer": {...}                # per-entity drawer data (when matched)
+    },
+    ...
+  ],
+  "drawers": {                       # label-targeted blurbs (when label_targets set)
+    "drawer_key": "blurb text",
+    ...
+  },
+  "inputs": {
+    "entity_id": [...],
+    "extended": false,
+    "output_fields": [...],
+    "label_targets": [...],
+    "infer": false,
+    "timeout": 60
+  },
+  "error": null
 }
-
 ```
 
 All entities appear in the order provided.
@@ -221,8 +288,7 @@ entity_list = [ ... ]
 ```
 
 ### 2. Labels Are Always Safe
-Labels are always returned as a clean list;  
-string edge cases are normalized.
+Labels are always returned as a `{slug: description}` dict. If a label has no description set, its value is an empty string. String edge cases are normalized. This dict is the primary semantic token for label-driven reasoning — the description travels inline so the agent does not need a separate lookup.
 
 ### 3. Cabinet Sensors Are Protected
 Agents cannot read drawers or Cabinet contents through Inspect.  
@@ -256,31 +322,33 @@ extended: false
 
 ```
 
-### Inspect with extended device metadata
+### Inspect with device tree (extended)
 ```
-
 entity_id:
-
-* sensor.office_climate
-  extended: true
-
+  - sensor.office_climate
+extended: true
 ```
 
-### Multiple entities
+### Multiple entities with selected fields
 ```
-
 entity_id:
-
-* sensor.a
-* switch.kitchen_lights
-
+  - sensor.a
+  - switch.kitchen_lights
+output_fields: "+attributes,-timestamps"
 ```
+
+### With label-targeted drawer blurbs
+```
+entity_id:
+  - sensor.zenos_dojo_cabinet
+label_targets: "zen"
+```
+
+Returns entity results plus `drawers: {kfc_template: "...blurb..."}` in the response.
 
 ### Cabinet sensor recognition
 ```
-
 entity_id: sensor.family_cabinet
-
 ```
 
 Inspect returns Cabinet header metadata only.
@@ -321,17 +389,21 @@ it's because Inspect told her what it is — safely.
 
 ## Summary
 
-The Zen DojoTools Inspect 4.2.0 provides:
+The Zen DojoTools Inspect 4.2.1 provides:
 
-- multi-entity snapshot  
-- fully sanitized attributes  
-- safe cabinet identification  
-- statistics eligibility detection  
-- optional device forensics  
-- JSON-compatible, LLM-stable outputs  
-- strict no-write behavior  
-- guaranteed safety against HA quirks  
+- multi-entity snapshot
+- caller-controlled output fields (`output_fields`)
+- always-on device block with integration resolution
+- extended device tree with sibling + config entry mapping
+- fully sanitized attributes (opt-in)
+- safe cabinet identification
+- statistics eligibility detection (opt-in)
+- label-targeted drawer blurbs via FileCabinet (`label_targets`)
+- inline label descriptions via `{slug: description}` dict on every entity
+- JSON-compatible, LLM-stable outputs
+- strict no-write behavior
+- guaranteed safety against HA quirks
 
-Inspect is Friday’s **safe x-ray machine**.  
-It shows everything she needs —  
+Inspect is Friday’s **safe x-ray machine**.
+It shows everything she needs —
 and nothing she shouldn’t see.

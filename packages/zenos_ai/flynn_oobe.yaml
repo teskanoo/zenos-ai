@@ -39,9 +39,7 @@ script:
       # RESOLVE DEFAULT AI USER CABINET (all modes need it)
       ###########################################################################
       - variables:
-          _ai_cab: >-
-            {{ label_entities('zen_default_ai_user_cabinet')
-               | select('match', 'sensor.') | list | first | default('') }}
+          _ai_cab: "{{ states('sensor.zen_default_ai_user_cabinet_resolved') }}"
           _ai_vars: >-
             {{ state_attr(_ai_cab, 'variables') | default({}, true)
                if _ai_cab != '' else {} }}
@@ -65,7 +63,7 @@ script:
                     status: ok
                     mode: status
                     oobe_complete: "{{ _oobe_done }}"
-                    oobe_pending: "{{ not _oobe_done and _persona_name in ['', 'your AI'] }}"
+                    oobe_pending: "{{ not _oobe_done and _persona_name in ['', 'your AI', 'unknown'] }}"
                     persona_name: "{{ _persona_name }}"
                     ai_cabinet: "{{ _ai_cab }}"
               - stop: OOBE status returned

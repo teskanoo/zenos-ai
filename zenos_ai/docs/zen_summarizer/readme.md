@@ -256,6 +256,27 @@ A mindful system:
 
 ---
 
+# 🔌 Pipeline Kill Switches
+
+Three `input_boolean` entities provide non-destructive on/off control over the summarization pipeline. All default to `on`.
+
+| Entity | Scope |
+|---|---|
+| `input_boolean.zen_summarizers_enabled` | Master — gates both summarizers |
+| `input_boolean.zen_supersummarizer_enabled` | SuperSummary only |
+| `input_boolean.zen_ninja_summarizer_enabled` | Ninja Summarizer only |
+
+The master switch is checked first. Each script exits at step 0a before doing any work. Turning a switch off does not affect schedules, cabinet data, or anything else in the pipeline — it just prevents the script from running when called.
+
+Use cases:
+- Temporarily pause summarization during maintenance
+- Disable SuperSummary to reduce inference load while debugging Ninja output
+- Kill the full pipeline during a cabinet reset/rebuild sequence
+
+Toggle from **Settings → Helpers** or any dashboard card.
+
+---
+
 # 🤝 Contributing
 
 New events?

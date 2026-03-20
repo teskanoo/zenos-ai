@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI DojoTools: Labels
-# Version: 4.0.0 RC2
+# Version: 4.1.0
 #
 # Scripts:
 #   zen_dojotools_labels — Label CRUD. Read/modify the HA label index.
@@ -28,13 +28,13 @@ script:
           in user_labels %}\n    \"{{ lbl }}\": {\n      \"description\": \"{{ label_description(
           lbl ) | default('') }}\"\n    }{{ \",\" if not loop.last else \"\" }}\n  {%-
           endfor %}\n  }\n{% else %}\n  {}\n{% endif %}"
-        minihelp: 'Minihelp: actions = tag, untag, create, delete, summary, update'
+        minihelp: 'Minihelp: actions = create, read, delete, tag, untag, update, reset'
         results_list: []
         failures_list: []
     - choose:
       - conditions:
         - condition: template
-          value_template: '{{ action not in [''tag'',''untag'',''create'',''delete'',''summary'',''update'',''read'']
+          value_template: '{{ action not in [''tag'',''untag'',''create'',''delete'',''update'',''read'',''reset'']
             }}'
           alias: Error - invalid Action
         sequence:
@@ -44,7 +44,7 @@ script:
               error: Invalid action_type '{{ action_type }}'. {{ minihelp }}
               index: '{{ label_index }}'
         - stop: response
-          response_variable: Pass Car Scope
+          response_variable: response
       - conditions:
         - condition: template
           value_template: '{{ action == ''create'' }}'
@@ -84,12 +84,24 @@ script:
         - repeat:
             for_each: '{{ target_labels }}'
             sequence:
-            - action: homeassistant.create_label
-              metadata: {}
-              data:
-                name: '{{ repeat.item }}'
-                description: tbd
-                color: primary
+            - if:
+              - condition: template
+                value_template: '{{ new_icon | default('''', true) != '''' }}'
+              then:
+              - action: homeassistant.create_label
+                metadata: {}
+                data:
+                  name: '{{ repeat.item }}'
+                  description: '{{ new_description | default('''', true) }}'
+                  icon: '{{ new_icon }}'
+                  color: '{{ new_color | default(''primary'', true) }}'
+              else:
+              - action: homeassistant.create_label
+                metadata: {}
+                data:
+                  name: '{{ repeat.item }}'
+                  description: '{{ new_description | default('''', true) }}'
+                  color: '{{ new_color | default(''primary'', true) }}'
         - variables:
             created_count: '{{ target_labels | count }}'
             response:
@@ -140,7 +152,7 @@ script:
             - variables:
                 response:
                   status: error
-                  error: Create requires at least one label. {{ minihelp }}
+                  error: Delete requires at least one label. {{ minihelp }}
                   index: '{{ label_index }}'
             - stop: pass var scope
               response_variable: response
@@ -167,7 +179,7 @@ script:
             sequence:
             - action: homeassistant.delete_label
               data:
-                label_id: '{{ repeat.item | slugify }}'
+                label_id: '{{ repeat.item | slugify(separator=''_'') }}'
         - variables:
             deleted_count: '{{ target_labels | count }}'
             response:
@@ -264,6 +276,161 @@ script:
               affected_entities: '{{ target_ent_list }}'
         - stop: pass var scope
           response_variable: response
+      - conditions:
+        - alias: RESET (soft)
+          condition: template
+          value_template: '{{ action == ''reset'' }}'
+        sequence:
+        - if:
+          - condition: template
+            value_template: '{{ not confirm }}'
+          then:
+          - variables:
+              response:
+                status: error
+                error: >-
+                  RESET requires confirm: true. This untags ALL entities from ALL
+                  zen_ labels. Labels survive — only assignments are wiped. Use
+                  when label IDs exist but assignments are wrong or missing. For
+                  nuclear (delete labels too) use zen_admintools_reset_labels.
+          - stop: confirm required
+            response_variable: response
+        - variables:
+            zen_labels: '{{ labels() | select(''match'', ''^zen_'') | list }}'
+        - repeat:
+            for_each: '{{ zen_labels }}'
+            sequence:
+            - variables:
+                lbl_entities: '{{ label_entities(repeat.item) | list }}'
+            - if:
+              - condition: template
+                value_template: '{{ lbl_entities | length > 0 }}'
+              then:
+              - action: homeassistant.remove_label_from_entity
+                data:
+                  label_id: '{{ repeat.item }}'
+                  entity_id: '{{ lbl_entities }}'
+        - event: zen_resolver_refresh
+        - variables:
+            response:
+              status: ok
+              action: reset
+              labels_cleared: '{{ zen_labels | length }}'
+              message: >-
+                Soft reset complete. {{ zen_labels | length }} zen_ label(s)
+                cleared. All assignments wiped. zen_resolver_refresh fired —
+                Flynn will re-assign on next label health check.
+        - stop: pass var scope
+          response_variable: response
+      - conditions:
+        - alias: UPDATE
+          condition: template
+          value_template: '{{ action == ''update'' }}'
+        sequence:
+        - choose:
+          - conditions:
+            - condition: template
+              value_template: '{{ user_labels | length == 0 }}'
+              alias: No label specified
+            sequence:
+            - variables:
+                response:
+                  status: error
+                  error: Update requires exactly one label. {{ minihelp }}
+                  index: '{{ label_index }}'
+            - stop: pass var scope
+              response_variable: response
+          - conditions:
+            - condition: template
+              value_template: '{{ user_labels | length > 1 }}'
+              alias: Too many labels
+            sequence:
+            - variables:
+                response:
+                  status: error
+                  error: Update operates on one label at a time. {{ minihelp }}
+                  index: '{{ label_index }}'
+            - stop: pass var scope
+              response_variable: response
+        - variables:
+            _upd_name: '{{ user_labels[0] }}'
+            _upd_id: '{{ user_labels[0] | slugify(separator=''_'') }}'
+            _upd_desc: '{{ new_description | default('''', true) }}'
+            _upd_icon: '{{ new_icon | default('''', true) }}'
+            _upd_color: '{{ new_color | default(''primary'', true) }}'
+            _has_change: '{{ new_description | default('''', true) != '''' or new_icon
+              | default('''', true) != '''' or new_color | default('''', true) != '''' }}'
+        - choose:
+          - conditions:
+            - condition: template
+              value_template: '{{ not _has_change }}'
+            sequence:
+            - variables:
+                response:
+                  status: error
+                  error: Update requires at least one of new_description, new_icon, new_color.
+            - stop: pass var scope
+              response_variable: response
+        - if:
+          - condition: template
+            value_template: '{{ not confirm }}'
+          then:
+          - variables:
+              response:
+                status: start
+                action: update
+                label: '{{ _upd_name }}'
+                label_id: '{{ _upd_id }}'
+                new_description: '{{ _upd_desc }}'
+                new_icon: '{{ _upd_icon }}'
+                new_color: '{{ _upd_color }}'
+                warning: Delete and recreate — icon not preserved if omitted. Color
+                  defaults to primary if not provided.
+                message: Confirmation required. Update will delete and recreate the
+                  label then restore all entity associations.
+          - stop: confirm required
+            response_variable: response
+        - variables:
+            _upd_entities: '{{ label_entities(_upd_id) | list }}'
+        - action: homeassistant.delete_label
+          data:
+            label_id: '{{ _upd_id }}'
+        - if:
+          - condition: template
+            value_template: '{{ _upd_icon != '''' }}'
+          then:
+          - action: homeassistant.create_label
+            data:
+              name: '{{ _upd_name }}'
+              description: '{{ _upd_desc }}'
+              icon: '{{ _upd_icon }}'
+              color: '{{ _upd_color }}'
+          else:
+          - action: homeassistant.create_label
+            data:
+              name: '{{ _upd_name }}'
+              description: '{{ _upd_desc }}'
+              color: '{{ _upd_color }}'
+        - if:
+          - condition: template
+            value_template: '{{ _upd_entities | length > 0 }}'
+          then:
+          - action: homeassistant.add_label_to_entity
+            data:
+              label_id: '{{ _upd_id }}'
+              entity_id: '{{ _upd_entities }}'
+        - variables:
+            response:
+              status: ok
+              action: update
+              label: '{{ _upd_name }}'
+              label_id: '{{ _upd_id }}'
+              retagged_count: '{{ _upd_entities | length }}'
+              message: "Update complete. {{ _upd_entities | length }} entity association(s) restored."
+        - stop: pass var scope
+          response_variable: response
+        alias: UPDATE
+
     - choose:
       - conditions:
         - alias: No response defined yet
@@ -276,15 +443,14 @@ script:
         - stop: Return
           response_variable: response
     alias: Zen DojoTools Labels
-    description: 'Zen DojoTools Labels (1.0.0) (was Label CRUD) Read, modify the index
-      tags, tag and untag entities. Label manager for Home Assistant. Tool does NOT
-      support overwrite. Hint: Read details for one or more labels to find out what
-      those labels are...
-  
-      '
+    description: 'Zen DojoTools Labels (4.1.0) — Label CRUD. Read, modify the index,
+      tag and untag entities, create, delete, and update labels. Update (description,
+      icon, color) deletes and recreates the label then restores all entity associations.
+      Hint: Read details for one or more labels to find out what those labels are...'
     fields:
       action_type:
-        description: '''create'', ''read'', ''delete'', ''tag'', ''untag'''
+        description: '''create'', ''read'', ''delete'', ''tag'', ''untag'', ''update'',
+          ''reset'''
         required: true
         selector:
           select:
@@ -294,21 +460,39 @@ script:
             - delete
             - tag
             - untag
+            - update
+            - reset
         default: read
       target_entities:
-        description: List of entity_ids to apply labels to or summarize. Required for
-          'tag', 'untag', and 'summary' actions.
+        description: List of entity_ids to tag or untag. Required for 'tag' and 'untag'
+          actions.
         required: false
         selector:
           entity:
             multiple: true
       label_list:
         description: List of labels (case-insensitive). Required for 'tag', 'untag',
-          'create', and 'delete'.
+          'create', 'delete', and 'update' (exactly one for update).
         required: false
         selector:
           text:
             multiple: true
+      new_description:
+        description: Label description. Used by 'create' and 'update'.
+        required: false
+        selector:
+          text:
+      new_icon:
+        description: MDI icon slug (e.g. mdi:home). Used by 'create' and 'update'.
+          Omit to use HA default. Empty string is rejected by HA.
+        required: false
+        selector:
+          text:
+      new_color:
+        description: Label color. Used by 'create' (default primary) and 'update'.
+        required: false
+        selector:
+          text:
       confirm:
         description: Required for writable / destructive actions, Function will alert
           when Confirmation is required - expect it for Create, Delete, Update.  Confirms

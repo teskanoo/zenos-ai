@@ -1,6 +1,6 @@
-# Zen DojoTools Labels — 4.2.0
+# Zen DojoTools Labels — 4.1.0
 
-*Create, read, delete, and assign labels in the Home Assistant label index*
+*Create, read, update, delete, and assign labels in the Home Assistant label index*
 
 ---
 
@@ -10,7 +10,7 @@
 
 Labels are the connective tissue of the system. The Scheduler, Ninja Summarizer, and HyperIndex all work by traversing labels — not by reading hardcoded entity lists. If a label isn't right, the index finds the wrong things (or nothing).
 
-This script is **not MCP-exposed by default**. It is an admin tool. Friday can read the label index for context, but label creation and assignment are operator tasks.
+This script is **MCP-exposed**. Friday can read the label index and create or update labels. Write operations (`create`, `update`, `delete`, `reset`) are gated behind `confirm: true` — they require an explicit operator confirmation before executing.
 
 ---
 
@@ -18,10 +18,13 @@ This script is **not MCP-exposed by default**. It is an admin tool. Friday can r
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `action_type` | select | `read` | `create`, `read`, `delete`, `tag`, `untag` |
-| `label_list` | list of text | `[]` | Label names (case-insensitive). Required for create, delete, tag, untag |
+| `action_type` | select | `read` | `create`, `read`, `update`, `delete`, `tag`, `untag`, `reset` |
+| `label_list` | list of text | `[]` | Label names (case-insensitive). Required for create, update, delete, tag, untag |
 | `target_entities` | list of entity_ids | `[]` | Entities to tag/untag. Required for tag and untag |
-| `confirm` | boolean | `false` | Required `true` for create and delete |
+| `new_description` | text | — | Description to set on the label (create and update) |
+| `new_icon` | text | — | MDI icon slug (e.g. `mdi:water`). Omit to leave unset (create and update) |
+| `new_color` | text | — | HA label color. Omit to use `primary` (create and update) |
+| `confirm` | boolean | `false` | Required `true` for create, update, delete, and reset |
 
 ---
 
@@ -57,12 +60,15 @@ Creates new labels in the HA label index. Requires `confirm: true`.
 
 Without confirmation, returns a `status: start` preview showing which labels would be created and which already exist — useful for dry-running before committing.
 
+Accepts `new_description`, `new_icon`, and `new_color` to stamp meaning on the label at creation time. `new_description` is recommended — it travels inline with every entity in Inspect output and is the primary semantic token for that label.
+
 ```yaml
 action_type: create
 label_list:
   - water
   - irrigation
   - pool
+new_description: "Domain label for all water-related entities; label:water."
 confirm: true
 ```
 
@@ -75,6 +81,35 @@ confirm: true
   "message": "Create Action Complete."
 }
 ```
+
+---
+
+### `update`
+
+Updates an existing label's metadata: description, icon, and/or color. Requires `confirm: true`.
+
+HA does not support in-place label mutation — update is implemented as delete → recreate → retag. All entity assignments are preserved automatically; the label returns with the same slug and all the same entities tagged.
+
+Without confirmation, returns a `status: start` preview showing what would change.
+
+```yaml
+action_type: update
+label_list:
+  - water
+new_description: "Domain label for all water-related entities; label:water. Includes spa, irrigation, and leak sensors."
+confirm: true
+```
+
+```json
+{
+  "status": "ok",
+  "action": "update",
+  "updated_labels": ["water"],
+  "message": "Update Action Complete."
+}
+```
+
+> **Note:** `update` is non-destructive on entity assignments — retag happens automatically. You do not need to re-run `tag` after updating a label.
 
 ---
 
@@ -112,6 +147,32 @@ Removes one or more labels from one or more entities. No confirmation required.
 
 ---
 
+### `reset`
+
+Wipes all entity assignments from every `zen_` label. Labels survive — only the assignments are cleared. Use this when label IDs are correct but entity tagging is wrong or missing (for example, after a partial install or a label migration gone sideways).
+
+`confirm: true` is required. The script will refuse without it.
+
+After reset, `zen_resolver_refresh` is fired automatically. Flynn re-engages on the next `zen_label_health` state change and re-assigns via Gate 1.
+
+```yaml
+action_type: reset
+confirm: true
+```
+
+```json
+{
+  "status": "ok",
+  "action": "reset",
+  "labels_cleared": 16,
+  "message": "Soft reset complete. 16 zen_ label(s) cleared. All assignments wiped. zen_resolver_refresh fired — Flynn will re-assign on next label health check."
+}
+```
+
+> **This is the soft reset.** For the nuclear option (delete labels entirely and trigger full Flynn rebuild), use `script.zen_admintools_reset_labels`.
+
+---
+
 ## Response Status Values
 
 | Status | Meaning |
@@ -124,6 +185,24 @@ Removes one or more labels from one or more entities. No confirmation required.
 ---
 
 ## Label Best Practices
+
+### Write descriptions at creation time
+
+Every label should have a description. It's one sentence, written once, and it travels inline with every entity in every Inspect call. Without a description, the AI sees a slug — a tag with no meaning. With one, she sees a concept.
+
+The format: one sentence, include `label:slug` for self-reference, stay under 255 characters.
+
+```
+# Good
+"Domain label for all water-related entities; label:water. Includes spa, irrigation, and leak sensors."
+
+# Weak — no self-reference, too vague
+"Water stuff"
+```
+
+Use `new_description` on `create`. Use `update` to refine descriptions later — retag is automatic.
+
+---
 
 ### Cross-entity labels outperform single-use labels
 
@@ -190,3 +269,4 @@ Checklist when adding a component:
 | `homeassistant.delete_label` | Delete labels |
 | `homeassistant.add_label_to_entity` | Tag entities |
 | `homeassistant.remove_label_from_entity` | Untag entities |
+| `zen_resolver_refresh` event | Fired after reset to re-trigger resolver sensors |

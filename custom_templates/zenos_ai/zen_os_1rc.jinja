@@ -556,9 +556,7 @@
   {%- set ns = namespace(result={}) -%}
   {#- Default registered agent for this install — fallback on any resolution failure.
       Empty means pre-bootstrap: cabinets not yet initialized, system not ready. -#}
-  {%- set _default_entity = label_entities('zen_default_ai_user_cabinet')
-        | select('match', 'sensor\.')
-        | list | first | default('') -%}
+  {%- set _default_entity = states('sensor.zen_default_ai_user_cabinet_resolved') -%}
   {%- if not _default_entity %}
     {%- set ns.result = {
       "status": "system_not_ready",
@@ -839,9 +837,9 @@
 
     {% set h = zen_health_block() | from_json %}
 
-    {% set label_ok = h.zen_health.label_health in ['ok','warn'] %}
-    {% set cab_ok   = h.zen_health.cabinet_health in ['ok','warn'] %}
-    {% set mon_ok   = h.zen_health.monastery_health in ['ok','warn'] %}
+    {% set label_ok = h.zen_health.label_health in ['ok','warn','disabled'] %}
+    {% set cab_ok   = h.zen_health.cabinet_health in ['ok','warn','disabled'] %}
+    {% set mon_ok   = h.zen_health.monastery_health in ['ok','warn','disabled'] %}
 
     {% if label_ok and cab_ok and mon_ok %}
         healthy
@@ -927,7 +925,7 @@
   -%}
 
   {# Pull the System Cabinet #}
-  {%- set sys_cab = label_entities('Zen System Cabinet') | first | default('') %}
+  {%- set sys_cab = states('sensor.zen_system_cabinet_resolved') %}
 
   {%- if not sys_cab %}
     {%- set ns.result = ns.result | combine({"status": "missing_system_cabinet"}, recursive=true) %}
@@ -1015,10 +1013,7 @@
 
 {# ================== MANIFEST LOADER ================== #}
 {%- macro manifest_loader() -%}
-  {%- set mani_cab = expand(label_entities('Zen Default Household Cabinet'))
-      | selectattr('domain','eq','sensor')
-      | map(attribute='entity_id')
-      | list | first | default('') -%}
+  {%- set mani_cab = states('sensor.zen_default_household_cabinet_resolved') -%}
 
   {%- set manifest = {} -%}
 
@@ -1051,10 +1046,7 @@
   mode: build_compact_index to populate/refresh.
 #}
 {%- macro root_index() -%}
-  {%- set hcab = expand(label_entities('Zen Default Household Cabinet'))
-      | selectattr('domain','eq','sensor')
-      | map(attribute='entity_id')
-      | list | first | default('') -%}
+  {%- set hcab = states('sensor.zen_default_household_cabinet_resolved') -%}
   {%- set ci_entry = {} -%}
   {%- if hcab -%}
     {%- set hc_vars = state_attr(hcab, 'variables') or {} -%}
@@ -1154,7 +1146,7 @@
 
   {# system-priority drawers: include urgency+attention micro-signal from kata only #}
   {%- if value['priority'] | default('') == 'system' -%}
-    {%- set kata_cab = label_entities('Zen Kata Cabinet') | first | default('') -%}
+    {%- set kata_cab = states('sensor.zen_kata_cabinet_resolved') -%}
     {%- set kata_node = (state_attr(kata_cab, 'variables') or {}).get(drawer, {}) -%}
     {%- set kata_val = kata_node.get('value', kata_node) if kata_node is mapping else {} -%}
     {%- set kata_signal = {
@@ -1170,8 +1162,8 @@
 
 {# ================== MAIN DOJO LOADER ================== #}
 {%- macro dojo_loader() -%}
-  {% set dojo_cab = label_entities('Zen Dojo Cabinet') | first | default('') %}
-  {% set kata_cab = label_entities('Zen Kata Cabinet') | first | default('') %}
+  {% set dojo_cab = states('sensor.zen_dojo_cabinet_resolved') %}
+  {% set kata_cab = states('sensor.zen_kata_cabinet_resolved') %}
   {% set dojo = state_attr(dojo_cab, 'variables') or {} %}
   {% set kata_vars = state_attr(kata_cab, 'variables') or {} %}
   {% set meta = (dojo_kungfu_meta(dojo) | default('{}')) | from_json %}
@@ -1188,6 +1180,8 @@
     {% endif %}
     {% if node is mapping and 'value' in node and node['value'] is mapping %}
       {% set value = node['value'] %}
+    {% elif node is mapping and 'value' in node and node['value'] is string %}
+      {% set value = node['value'] | from_json %}
     {% elif node is mapping %}
       {% set value = node %}
     {% else %}

@@ -1,4 +1,4 @@
-# Flynn — Stepgate Sentinel & Bootstrap Engine — 4.2.0
+# Flynn — Stepgate Sentinel & Bootstrap Engine — 4.2.1
 
 *ZenOS-AI's boot guard, initializer, and onboarding driver*
 
@@ -150,6 +150,8 @@ Runs after Gate 3, with a 10-second delay to let Gate 3 writes settle.
 - The AI user cabinet's `zenai_essence` has `identity.name` = `''` or `'your AI'` (placeholder)
 - AND no `_oobe_complete` flag exists in the cabinet
 
+**Pending name values:** `''`, `'your AI'`, `'unknown'` (all treated as placeholder — system will prompt for a real name)
+
 Three cases:
 
 | Situation | What Flynn Does |
@@ -186,6 +188,23 @@ An interactive configuration tool for setting up the system through conversation
 | `oobe` | Delegates to the full OOBE protocol. |
 
 All `build` writes are non-destructive — existing values are never overwritten.
+
+---
+
+## Companion Selects
+
+Four `template: select` entities provide UI-level dropdowns for the critical input helpers. Each select reads the current value of its corresponding `input_text` and writes back to it on change. The `input_text` entities remain the canonical source of truth — selects are overlay controls only.
+
+| Select Entity | Drives | Options Source |
+|---|---|---|
+| `select.zenos_persona` | `input_text.zenos_persona_name` | AI user cabinet essence names |
+| `select.zenos_primary_user` | `input_text.zenos_primary_user` | `person.*` with `user_id` attr (login-bound only) |
+| `select.zenos_conversation_agent` | `input_text.zenos_conversation_agent` | All `conversation.*` domain entities |
+| `select.zenos_ai_task` | `input_text.zenos_ai_task_entity` | All `ai_task.*` domain entities |
+
+Options resolve dynamically at render time. The persona select only shows personas with a valid name in their essence — `unknown`, `your AI`, and empty strings are excluded.
+
+**Fastest setup path:** Use these selects from Settings → Helpers instead of typing entity IDs manually.
 
 ---
 
@@ -236,7 +255,7 @@ All `build` writes are non-destructive — existing values are never overwritten
 
 Flynn stopped in `bootstrap_content` because `input_text.zenos_conversation_agent` is empty or the entity is unavailable.
 
-**Fix:** Settings → Helpers → `zenos_conversation_agent` → set to your conversation agent entity ID. Verify the entity is available in Developer Tools.
+**Fix:** Settings → Helpers → use the **ZenOS: Conversation Agent** select — it shows all available `conversation.*` entities as a dropdown. Or set `zenos_conversation_agent` manually. Verify the entity is available in Developer Tools.
 
 ---
 
@@ -286,5 +305,10 @@ Resolver sensors haven't settled after label assignment. Flynn gates on resolver
 | `binary_sensor.flynn_system_ready` | Early exit gate |
 | `input_text.zenos_conversation_agent` | Bootstrap validation |
 | `input_text.zenos_persona_name` | OOBE persona name |
+| `input_text.zenos_primary_user` | Bootstrap primary user seed |
 | `input_text.zenos_reasoning_task` | Auto-resolved at bootstrap |
 | `input_text.zenos_ai_task_entity` | Auto-resolved at bootstrap |
+| `select.zenos_persona` | Companion UI for persona name |
+| `select.zenos_primary_user` | Companion UI for primary user |
+| `select.zenos_conversation_agent` | Companion UI for conversation agent |
+| `select.zenos_ai_task` | Companion UI for AI task entity |

@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI DojoTools: Index Cluster
-# Version: 4.0.0 RC2
+# Version: 4.2.1
 #
 # Scripts:
 #   zen_dojotools_query   — ZQ-1 entity filter/query engine
@@ -24,7 +24,7 @@ script:
 
   zen_dojotools_query:
     alias: Zen DojoTools Query
-    description: "Zen DojoTools Query “ZQ-1” (4.0.0 RC2)\nQuery is a deterministic entity
+    description: "Zen DojoTools Query “ZQ-1” (4.2.1)\nQuery is a deterministic entity
       selector. It takes a starting list of entity_ids (or an empty/null list) and runs
       them through a series of filters—domain, labels, areas, device_id, device_class,
       states, numeric ranges, regex, and semantic shortcuts. Each filter narrows the
@@ -73,6 +73,14 @@ script:
         default: '{} '
         description: 'Optional filter_json json dict containing a valid ZenQuery filter
           dictionary - MUST see help for schema and use. Default {} '
+      output_fields:
+        name: Output Fields
+        required: false
+        default: []
+        selector:
+          text:
+        description: 'Reserved. No-op in current version — Query returns entity IDs
+          only.'
     sequence:
     - alias: Show Help
       choose:
@@ -82,7 +90,7 @@ script:
         sequence:
         - variables:
             help_json: "{{\n  {\n    \"tool\": \"Zen DojoTools Query (ZQ-1)\",\n    \"version\":
-              \"4.0.0 RC2\",\n    \"overview\":\n      \"ZQ-1 is a deterministic, multi-stage
+              \"4.2.1\",\n    \"overview\":\n      \"ZQ-1 is a deterministic, multi-stage
               entity filtering engine designed for Home Assistant. It consumes flexible
               JSON filter definitions and produces a fully evaluated list of entity_ids.
               Every filter acts conjunctively (logical AND), meaning each stage narrows
@@ -234,39 +242,52 @@ script:
         infer_mode: '{{ infer | default(false) }}'
         timeout_s: '{{ timeout | default(60) }}'
         results: []
+        label_targets_input: "{% set _lt = label_targets | default([]) %}\n{% if _lt
+          is iterable and _lt is not string %}\n  {{ _lt | map('trim') | map('lower')
+          | reject('equalto', '') | list }}\n{% elif _lt is string and _lt | trim |
+          length > 0 %}\n  {{ _lt | trim | lower | replace(' ', '') | regex_findall('[^,]+') }}\n{% else %}\n  []\n{% endif %}"
         drawer_key_input: "{% set _dk = drawer_key | default('') %}{% if _dk is iterable
           and _dk is not string %}\n  {{ _dk | map('trim') | map('lower') | reject('equalto',
           '') | list }}\n{% elif _dk is string and _dk | trim | length > 0 %}\n  {{
           [_dk | trim | lower] }}\n{% else %}\n  []\n{% endif %}"
+        output_fields_input: "{% set _of = output_fields | default([]) %}\n{% if _of
+          is string and _of | trim | length > 0 %}\n  {{ _of | trim | lower | replace('
+          ', '') | regex_findall('[^,]+') }}\n{% elif _of is iterable and _of is not
+          string %}\n  {{ _of | map('lower') | map('trim') | list }}\n{% else %}\n  []\n{%
+          endif %}"
+        _show_timestamps: "{{ '-timestamps' not in output_fields_input }}"
+        _show_device: "{{ '-device' not in output_fields_input }}"
+        _show_volume: "{{ '-volume' not in output_fields_input }}"
+        _show_attributes: "{{ '+attributes' in output_fields_input }}"
+        _show_statistics: "{{ '+statistics' in output_fields_input }}"
     - repeat:
         for_each: '{{ entity_list }}'
         sequence:
         - variables:
             current_entity: '{{ repeat.item | string }}'
-            state_obj: '{% set s = states[current_entity] %}
-  
-              {{ s if s is not none else none }}'
-            has_state_obj: '{{ state_obj is not none }}'
             domain: "{% set dot = current_entity.find('.') %}\n{% if dot > 0 %}\n  {{
               current_entity[:dot] }}\n{% else %}\n  unknown\n{% endif %}"
             friendly_name: "{{ state_attr(current_entity, 'friendly_name')\n   | default(current_entity)
               }}"
-            state_str: '{{ states(current_entity) if has_state_obj else ''unknown''
-              }}'
-            last_changed: "{% if has_state_obj %}\n  {{ as_timestamp(state_obj.last_changed,
-              default=0)\n       | timestamp_local }}\n{% else %} {{ '' }} {% endif
-              %}"
-            last_updated: "{% if has_state_obj %}\n  {{ as_timestamp(state_obj.last_updated,
-              default=0)\n       | timestamp_local }}\n{% else %} {{ '' }} {% endif
-              %}"
+            has_attrs: '{{ state_attr(current_entity, ''friendly_name'') is not none }}'
+            state_str: '{{ states(current_entity) if has_attrs else ''unknown'' }}'
+            last_changed: "{% if has_attrs %}\n  {% set _ts = states[current_entity]
+              %}\n  {% if _ts is not none and _ts is not string %}\n    {{ as_timestamp(_ts.last_changed,
+              default=0) | timestamp_local }}\n  {% else %} {{ '' }} {% endif %}\n{%
+              else %} {{ '' }} {% endif %}"
+            last_updated: "{% if has_attrs %}\n  {% set _ts = states[current_entity]
+              %}\n  {% if _ts is not none and _ts is not string %}\n    {{ as_timestamp(_ts.last_updated,
+              default=0) | timestamp_local }}\n  {% else %} {{ '' }} {% endif %}\n{%
+              else %} {{ '' }} {% endif %}"
             labels_raw: '{{ labels(current_entity) | default([]) }}'
             safe_labels: "{% if labels_raw is iterable and (labels_raw is not string)
               %}\n  {{ labels_raw | list }}\n{% else %} [] {% endif %}"
+            label_details: "{%- set ns = namespace(d={}) %}{%- for lbl in safe_labels
+              %}{%- set ns.d = ns.d | combine({lbl: label_description(lbl) | default('',
+              true)}) %}{%- endfor %}{{ ns.d }}"
             attrs_raw: "{% set s = states[current_entity] %} {% if s is not none and
               s.attributes is mapping %}\n  {{ s.attributes }}\n{% else %}\n  {}\n{%
               endif %}"
-            has_attrs: '{% set s = states[current_entity] %} {{ s is not none and s.attributes
-              is mapping }}'
             attrs_is_stringified: '{{ attrs_raw is string }}'
             cabinet_header: "{% set raw = attrs_raw %}\n{% if raw is mapping %}\n  {%
               set vars = raw.get('variables') %}\n  {% if vars is mapping %}\n    {%
@@ -296,7 +317,7 @@ script:
               true) | string }}"
             stats_eligible: "{{ stat_class in ['measurement','total','total_increasing']\n
               \  and stat_uom != '' }}"
-            stats_reason: "{% if not has_state_obj %}\n  Entity not found.\n{% elif
+            stats_reason: "{% if not has_attrs %}\n  Entity not found.\n{% elif
               stats_eligible %}\n  Eligible based on state_class and unit_of_measurement.\n{%
               elif stat_class == '' and stat_uom == '' %}\n  Missing state_class and
               unit_of_measurement.\n{% elif stat_class == '' %}\n  Missing state_class.\n{%
@@ -304,12 +325,23 @@ script:
               state_class for statistics.\n{% endif %}"
             statistics_result: "{{ {\n  \"eligible\": stats_eligible,\n  \"reason\":
               stats_reason\n} }}"
-            extended_block: "{% if extended_mode %}\n  {% set dev_id = state_attr(current_entity,
-              'device_id') %}\n  {% set dev = dev_id if dev_id is not none else none
-              %}\n  {% set area = dev and device_attr(dev, 'area_id') or none %}\n  {%
-              set identifiers = dev and device_attr(dev, 'identifiers') or none %}\n\n
-              \ {{ {\n    \"device_id\": dev,\n    \"area_id\": area,\n    \"identifiers\":
-              identifiers\n  } }}\n{% else %}\n  {}\n{% endif %}"
+            device_block: "{% set dev_id = device_id(current_entity) %}\n{% if dev_id
+              is not none %}\n  {% set idents = (device_attr(dev_id,
+              'identifiers') or []) | list %}\n  {% set first = idents | first | default([])
+              | list %}\n  {% set integ = first[0] if first | length > 0 else none %}\n  {{ {\n    'device_id':
+              dev_id,\n    'name': device_attr(dev_id, 'name'),\n    'manufacturer':
+              device_attr(dev_id, 'manufacturer'),\n    'model': device_attr(dev_id,
+              'model'),\n    'area_id': device_attr(dev_id, 'area_id'),\n    'integration':
+              integ\n  } }}\n{% else %}\n  none\n{% endif %}"
+            device_tree: "{% if extended_mode %}\n  {% set dev_id = device_id(current_entity)
+              %}\n  {% if dev_id is not none %}\n    {% set via = device_attr(dev_id,
+              'via_device_id') %}\n    {% set siblings = device_entities(dev_id) |
+              reject('equalto', current_entity) | list %}\n    {% set config_entries
+              = (device_attr(dev_id, 'config_entries') or []) | list %}\n    {{ {\n      'via_device_id':
+              via,\n      'parent_name': device_attr(via, 'name') if via is not none
+              else none,\n      'siblings': siblings,\n      'config_entries': config_entries\n
+              \   } }}\n  {% else %}\n    none\n  {% endif %}\n{% else %}\n  none\n{%
+              endif %}"
             safe_attributes: "{% if is_cabinet_sensor %}\n  {\n    \"notice\": \"Attributes
               suppressed for cabinet sensor. Use FileCabinet tools for full volume access.\"\n
               \ }\n{% else %}\n  {# --- ORIGINAL SANITIZER BLOCK (UNCHANGED) --- #}\n\n
@@ -354,15 +386,45 @@ script:
               data'}}) %}\n      {%- endif
               %}\n    {%- endif %}\n  {%- endfor %}\n  {{ ns.out }}\n{% else %}\n  none\n{%
               endif %}"
-            entity_result: "{{ {\n  \"entity_id\": current_entity,\n  \"friendly_name\":
-              friendly_name,\n  \"domain\": domain,\n  \"state\": state_str,\n  \"last_changed\":
-              last_changed,\n  \"last_updated\": last_updated,\n  \"labels\": safe_labels,\n
-              \ \"attributes\": safe_attributes,\n  \"volume\": volume_result,\n  \"statistics\":
-              statistics_result,\n  \"extended\": extended_block,\n  \"drawer\": drawer_result,\n} }}"
+            entity_result: "{% set ns = namespace(out={\n  'entity_id': current_entity,\n
+              \  'friendly_name': friendly_name,\n  'domain': domain,\n  'state': state_str,\n
+              \  'labels': label_details\n}) %}\n{% if _show_timestamps %}\n  {% set ns.out
+              = ns.out | combine({'last_changed': last_changed, 'last_updated': last_updated})
+              %}\n{% endif %}\n{% if _show_device and device_block is not none and device_block
+              is mapping %}\n  {% set ns.out = ns.out | combine({'device': device_block})
+              %}\n{% endif %}\n{% if _show_volume and is_cabinet_sensor %}\n  {% set ns.out = ns.out | combine({'volume':
+              volume_result}) %}\n{% endif %}\n{% if _show_attributes %}\n  {% set ns.out
+              = ns.out | combine({'attributes': safe_attributes}) %}\n{% endif %}\n{% if
+              _show_statistics %}\n  {% set ns.out = ns.out | combine({'statistics': statistics_result})
+              %}\n{% endif %}\n{% if extended_mode and device_tree is not none and device_tree
+              is mapping %}\n  {% set ns.out = ns.out | combine({'device_tree': device_tree})
+              %}\n{% endif %}\n{% if drawer_result is not none and drawer_result != 'none'
+              %}\n  {% set ns.out = ns.out | combine({'drawer': drawer_result}) %}\n{%
+              endif %}\n{{ ns.out }}"
             results: '{{ (results + [entity_result]) | list }}'
+    - alias: Read drawer blurbs by label_targets
+      choose:
+      - conditions:
+        - condition: template
+          value_template: '{{ label_targets_input | length > 0 }}'
+        sequence:
+        - action: script.zen_dojotools_filecabinet
+          data:
+            action_type: read
+            volume_entity_id: "{{ states('sensor.zen_dojo_cabinet_resolved') }}"
+            label_targets: '{{ label_targets_input | join('','') }}'
+          response_variable: _fc_label_response
+        - variables:
+            _fc_raw: "{{ _fc_label_response.result | default('{}') }}"
+            drawer_blurbs: "{{ ((_fc_raw | from_json) if _fc_raw is string else _fc_raw
+              | default({})).get('drawers', {}) | tojson }}"
+      default:
+      - variables:
+          drawer_blurbs: '{{ {} | tojson }}'
     - variables:
         inspect_result:
           results: '{{ results }}'
+          drawers: '{{ drawer_blurbs }}'
           inputs:
             entity_id: '{{ entity_list }}'
             extended: '{{ extended_mode }}'
@@ -373,7 +435,7 @@ script:
       response_variable: inspect_result
     alias: Zen DojoTOOLS Inspect
     mode: parallel
-    description: Inspect (4.0.0 RC2). Deep dive on one or more entities. Attributes
+    description: Inspect (4.2.1). Deep dive on one or more entities. Attributes
       are key-scanned for safety. Cabinet sensors expose header metadata only; use cabinet
       tools for full volume access.
     fields:
@@ -387,7 +449,22 @@ script:
         default: false
         selector:
           boolean:
-        description: Light device/integration forensics.
+        description: Adds device_tree (via_device_id, parent, siblings, config_entries).
+      output_fields:
+        required: false
+        default: []
+        selector:
+          text:
+        description: "Field selection. Defaults on: timestamps, device, volume. Opt-in:
+          +attributes, +statistics. Suppress defaults: -timestamps, -device, -volume.
+          Comma-separated string or list."
+      label_targets:
+        required: false
+        default: []
+        selector:
+          text:
+        description: Labels to resolve drawer blurbs from the Dojo cabinet. Passed
+          by Index; may also be used in direct calls. Comma-separated or list.
       infer:
         required: false
         selector:
@@ -428,7 +505,7 @@ script:
         - variables:
             query_help: '{{ zen_query_help | default({}) | tojson }}'
             help_json: "{{\n  {\n    \"tool\": \"Zen DojoTools Index\",\n    \"version\":
-              \"4.0.0 RC2\",\n    \"intent\": \"High-resolution reasoning. Convert
+              \"4.2.1\",\n    \"intent\": \"High-resolution reasoning. Convert
               arbitrary entity + label sets into a unified hypergraph suitable for fusion,
               summarization, planning, and contextual inference.\",\n    \"you_should_use_this_tool_when\":
               [\n      \"You need to combine labels, entities, or both into a logical
@@ -514,9 +591,7 @@ script:
         - stop: Return help JSON
           response_variable: help_json
     - variables:
-        zen_household_cab: "{{ expand(label_entities('Zen Default Household Cabinet'))\n
-          \  | selectattr('domain','eq','sensor')\n  | map(attribute='entity_id')\n
-          \  | list | first | default('') }}"
+        zen_household_cab: "{{ states('sensor.zen_default_household_cabinet_resolved') }}"
         _ci_vars: '{{ state_attr(zen_household_cab, ''variables'') or {} }}'
         _ci_entry: "{% set e = _ci_vars.get('_compact_index') if _ci_vars is mapping
           else none %} {{ e if e is mapping else {} }}"
@@ -667,7 +742,7 @@ script:
           target_entities: '{{ entities_base }}'
         response_variable: response_zen_query
       - variables:
-          response_entities: '{{ response_zen_query.result | from_json([]) }}'
+          response_entities: "{{ (response_zen_query.result | from_json) if response_zen_query.result is string else response_zen_query.result | default([]) }}"
           fallback_entities_base: '{{ entities_base | default([]) }}'
           strict_mode: '{{ strict | default(false) }}'
           entities_base: "{% if strict_mode %}\n  {{ response_entities }}\n{% else %}\n
@@ -682,33 +757,24 @@ script:
         - action: script.zen_dojotools_inspect
           data:
             entity_id: '{{ entities_base | list }}'
-            drawer_key: "{% set _l1 = label_1 | default('') | trim %}\n{% set _l2 =
-              label_2 | default('') | trim %}\n{{ ([_l1] if _l1 else []) + ([_l2] if
-              _l2 else []) }}"
+            output_fields: '{{ output_fields | default([]) }}'
+            label_targets: "{% set _l1 = label_1 | default('') | trim %}\n{% set _l2
+              = label_2 | default('') | trim %}\n{{ ([_l1] if _l1 else []) + ([_l2]
+              if _l2 else []) }}"
           response_variable: response
         - variables:
             expanded_entities: '{{ response.results | default([]) }}'
-            matched_drawers: '{{ response.drawers | default(''[]'') }}'
-            matched_drawer_labels: '{{ response.adjacent_labels | default(''[]'') }}'
       - conditions: []
         sequence:
         - variables:
             expanded_entities: '{{ entities_base }}'
-            matched_drawers: '[]'
-            matched_drawer_labels: '[]'
+            response: '{}'
         alias: Expand = false
       alias: 'Prepare [ Expand ] Result Set '
     - variables:
-        _label_idx_drawers: "{%- set cab = label_entities('Zen Dojo Cabinet') | first
-          | default('') -%}\n{%- set idx = (state_attr(cab, 'variables') or {}).get('_label_index',
-          {}).get('value', {}) if cab else {} -%}\n{%- set idx = idx if idx is mapping
-          else {} -%}\n{%- set ns = namespace(out=[]) -%}\n{%- for lbl in [label_1
-          | default(''), label_2 | default('')] if lbl | length > 0 -%}\n  {%- set
-          ns.out = ns.out + (idx.get(lbl, []) | list) -%}\n{%- endfor -%}\n{{ ns.out
-          | unique | list }}"
-        matched_drawers: "{%- set ex = matched_drawers if (matched_drawers is sequence
-          and matched_drawers is not string) else [] -%}\n{{ (ex | list + _label_idx_drawers)
-          | unique | list }}"
+        matched_drawers: "{{ {} if (entities_base | default([]) | list | length == 0)
+          else ((response.drawers | from_json) if response.drawers is string else
+          response.drawers | default({})) }}"
     - variables:
         adjacent_labels: "{%- set ns = namespace(labels=[]) -%} {%- for e in entities_base
           -%}\n  {%- set ns.labels = ns.labels + (labels(e) | list) -%}\n{%- endfor
@@ -726,8 +792,7 @@ script:
           entities_base | default([]) | list,\n      \"expanded\": expanded_entities
           | default({}),\n      \"adjacent_labels\": adjacent_labels | default([]) |
           list,\n      \"index\": result_index | default([]),\n      \"drawers\": matched_drawers
-          | default([]) | list,\n      \"drawer_adjacent_labels\": matched_drawer_labels
-          | default([]) | list,\n      \"hypergraph\": hypergraph | default({})\n    },\n
+          | default({}),\n      \"hypergraph\": hypergraph | default({})\n    },\n
           \   \"inputs\": {\n      \"mode\": mode | default('normal'),\n      \"entities_1\":
           entities_1 | default([]) | list,\n      \"label_1\": label_1 | default(''),\n
           \     \"entities_2\": entities_2 | default([]) | list,\n      \"label_2\":
@@ -740,7 +805,7 @@ script:
     - stop: Zen DojoTools Index Complete
       response_variable: label_entity_logic_result
     alias: Zen DojoTools Index
-    description: 'Zen DojoTools (Hyper)Index (4.0.0 RC2). Universal HyperGraph Index
+    description: 'Zen DojoTools (Hyper)Index (4.2.1). Universal HyperGraph Index
       for entity and label reasoning.
   
       Merges labels, entities, drawers, and metadata into a unified, deterministic result
@@ -851,6 +916,15 @@ script:
         default: false
         selector:
           boolean:
+      output_fields:
+        name: Output Fields
+        required: false
+        default: []
+        selector:
+          text:
+        description: "Passed to Inspect when expand_entities=true. Defaults on: timestamps,
+          device, volume. Opt-in: +attributes, +statistics. Suppress: -timestamps,
+          -device, -volume."
     mode: parallel
     max: 10
     icon: mdi:graphql
@@ -860,7 +934,7 @@ automation:
 
   - id: '1749771199185'
     alias: DojoTools Zen Index Event Handler
-    description: 'Event Listener (4.0.0 RC2) to recurse index calls.  REQUIRES DojoTOOLS
+    description: 'Event Listener (4.2.1) to recurse index calls.  REQUIRES DojoTOOLS
       Zen Index (2.0.0 or greater)
   
       '

@@ -45,14 +45,14 @@ template:
           motion_active: >
             {{
               states
-              | selectattr('entity_id','in', this.attributes.motion_entities)
+              | selectattr('entity_id','in', this.attributes.get('motion_entities', []))
               | selectattr('state','eq','on')
               | list
               | count > 0
             }}
 
           last_motion_age: >
-            {% set ents = this.attributes.motion_entities %}
+            {% set ents = this.attributes.get('motion_entities', []) %}
             {% set oldest = 999999 %}
             {% for e in ents %}
               {% if states[e] is defined and states[e].last_changed %}
@@ -70,7 +70,7 @@ template:
           occupied: >
             {{
               states
-              | selectattr('entity_id','in', this.attributes.occupancy_entities)
+              | selectattr('entity_id','in', this.attributes.get('occupancy_entities', []))
               | selectattr('state','eq','on')
               | list
               | count > 0
@@ -79,7 +79,7 @@ template:
           asleep: >
             {{
               states
-              | selectattr('entity_id','in', this.attributes.sleep_entities)
+              | selectattr('entity_id','in', this.attributes.get('sleep_entities', []))
               | selectattr('state','eq','on')
               | list
               | count > 0
@@ -90,9 +90,9 @@ template:
           # --------------------------------------------------------------------
           wasp_flag: >
             {{
-              (this.attributes.motion_active == false)
-              and (this.attributes.last_motion_age > 1800)
-              and (this.attributes.occupied == false)
+              (this.attributes.get('motion_active', false) == false)
+              and (this.attributes.get('last_motion_age', 0) > 1800)
+              and (this.attributes.get('occupied', false) == false)
             }}
 
           # --------------------------------------------------------------------

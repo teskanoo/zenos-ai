@@ -106,6 +106,27 @@ Where RC2 proves deployability, GA proves durability, clean boundaries, and main
 
 ---
 
+## GA Stability Gates — Delivered
+
+### Highlander Resolver Architecture (2026-03-19)
+
+Boss Add. Support team demand. Shipped in `fix/ga-batch-1`, UAT-passed on live install.
+
+Cabinet entity ID resolution is now deterministic system-wide. There can be only one source of
+truth per cabinet — resolver sensors (`sensor.zen_*_cabinet_resolved`). All OS code reads cabinet
+entity IDs from these sensors exclusively. No `label_entities()` for single-cabinet resolution
+anywhere in OS code.
+
+**What shipped:**
+- 7 always-live resolver sensors (dojo, kata, system, household, ai_user, family, user)
+- Full resolver canonization sweep across all OS files (dojotools, sensors, flynn, templates)
+- `zen_health_report` v4.3.0 — all 7 resolver states, 5 health sensors, FG-38-safe diagnosis
+- `zen_resolver_refresh` — exposed MCP tool + ha_start cold-start retrigger
+- FG-38 v3 (double-encoded JSON) — three-round normalization pattern, patched in all affected paths
+- HALMark FG-38 v3 candidate filed for Vera's ratification review
+
+---
+
 ## GA Deliverables
 
 ### 1. Clean Bootstrap from Scratch
@@ -224,18 +245,33 @@ A misconfigured, offline, or rate-limited model will pass the boot gate silently
 
 ---
 
+# 1.0 SP1 — Queued
+
+Post-GA service pack. Token-related items deferred from `fix/ga-batch-1`.
+
+---
+
 # v.next
 
 Following GA, ZenOS-AI can evolve toward:
 
 - Dynamic extension mapping
-- Richer KFC ecosystem
 - Deeper long-horizon memory
 - Stronger governance modules (multi-level ACL, audit log)
 - Improved portability templates
 - Multi-agent or persona coordination improvements
 - Architectural simplification and cleanup passes
 - Public persona registry
+
+### KFC v1.1 — State Key + Master-Switch-Free Controller
+
+Replace the `master_switch` field in KFC drawer schema with a `state` key. Remove the
+kill-switch visibility requirement from the scheduler dispatch path. Introduce a dedicated
+KFC controller that owns component lifecycle (enable, disable, reset) as a first-class
+operation rather than a side-effect of master switch state.
+
+Scope: Dojo cabinet schema, Scheduler dispatch loop, KungFu Writer, Flynn gate-3 bootstrap
+validation.
 
 ---
 
