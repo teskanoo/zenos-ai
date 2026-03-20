@@ -834,6 +834,10 @@ script:
             key: "{{ _slug }}"
             value: "{{ _payload }}"
             label_input: "{{ 'kfc, dojo, zen, ' ~ (label | default('')) }}"
+            meta:
+              no_autoexpire: true
+              no_autorecycle: true
+              description: "KFC component definition — permanent, do not expire"
           response_variable: _write_response
         - variables:
             result: >-
@@ -890,13 +894,15 @@ script:
           elif 'chat_history' in lbls or cabinet_type | lower == 'chat history cabinet'
           %}secure\n  {% elif 'archive_cabinet' in lbls or cabinet_type | lower == 'archive
           cabinet' %}system\n  {% else %}standard{% endif %}\n{% endif %}"
-        flags: "{% set fp = flag_profile %} {% if fp == 'system' %}\n  {{ {'system':
-          True, 'hidden': False, 'read_only': True, 'secure_mode': True} }}\n{% elif
+        flags: "{% set fp = flag_profile %}\n{% set is_kata = 'kata' in (cabinet_type
+          | lower) %}\n{% if fp == 'system' %}\n  {{ {'system': True, 'hidden': False,
+          'read_only': True, 'secure_mode': True, 'gc_eligible': is_kata} }}\n{% elif
           fp == 'secure' %}\n  {{ {'system': False, 'hidden': True, 'read_only': True,
-          'secure_mode': True} }}\n{% elif fp == 'public' %}\n  {{ {'system': False,
-          'hidden': False, 'read_only': False, 'secure_mode': False} }}\n{% else %}\n
+          'secure_mode': True, 'gc_eligible': false} }}\n{% elif fp == 'public' %}\n
           \ {{ {'system': False, 'hidden': False, 'read_only': False, 'secure_mode':
-          False} }}\n{% endif %}"
+          False, 'gc_eligible': false} }}\n{% else %}\n  {{ {'system': False, 'hidden':
+          False, 'read_only': False, 'secure_mode': False, 'gc_eligible': false} }}\n{%
+          endif %}"
         acl_family: "{% set fam_guid = family_guid | default('default-guid') %} {% set
           manifest = state_attr('sensor.zen_library_manifest','value') | default({},
           true) %} {% set fam_name = 'My Family' %} {% if manifest is mapping %}\n  {%

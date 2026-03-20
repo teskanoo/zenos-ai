@@ -349,10 +349,20 @@ script:
                         {%- endfor -%}
                       {%- endif -%}
                       {{ ns.stale }}
+                    _vol_info_raw: >-
+                      {%- set _vi = cab_drawers.get('AI_Cabinet_VolumeInfo', {}) -%}
+                      {%- set _v1 = _vi.get('value', _vi) if _vi is mapping else {} -%}
+                      {{ _v1 if _v1 is mapping else (_v1 | from_json if _v1 is string else {}) }}
+                    _cab_flags: >-
+                      {{ _vol_info_raw.get('flags', {}) if _vol_info_raw is mapping else {} }}
+                    gc_flag_present: >-
+                      {{ 'gc_eligible' in _cab_flags }}
+                    gc_eligible: >-
+                      {{ _cab_flags.get('gc_eligible', false) | bool }}
                 - alias: Hide expired visible drawers (foo → .foo)
                   if:
                     - condition: template
-                      value_template: "{{ not dry_run and to_hide | length > 0 }}"
+                      value_template: "{{ not dry_run and gc_eligible and to_hide | length > 0 }}"
                   then:
                     - repeat:
                         for_each: "{{ to_hide }}"
@@ -372,7 +382,7 @@ script:
                 - alias: Delete expired hidden drawers (.foo → gone)
                   if:
                     - condition: template
-                      value_template: "{{ not dry_run and to_delete | length > 0 }}"
+                      value_template: "{{ not dry_run and gc_eligible and to_delete | length > 0 }}"
                   then:
                     - repeat:
                         for_each: "{{ to_delete }}"
@@ -384,7 +394,7 @@ script:
                 - alias: Evict legacy stale drawers (no expires_after, old timestamp)
                   if:
                     - condition: template
-                      value_template: "{{ not dry_run and stale_drawers | length > 0 }}"
+                      value_template: "{{ not dry_run and gc_eligible and stale_drawers | length > 0 }}"
                   then:
                     - repeat:
                         for_each: "{{ stale_drawers }}"
@@ -393,6 +403,22 @@ script:
                             event_data:
                               key: "{{ repeat.item }}"
                               volume_entity: "{{ current_cab }}"
+                - alias: Self-heal — stamp gc_eligible default if absent from header
+                  if:
+                    - condition: template
+                      value_template: "{{ not dry_run and not gc_flag_present }}"
+                  then:
+                    - variables:
+                        _new_flags: >-
+                          {{ _cab_flags | combine({'gc_eligible': false}) if _cab_flags is mapping else {'gc_eligible': false} }}
+                        _new_vol_info: >-
+                          {{ _vol_info_raw | combine({'flags': _new_flags}) if _vol_info_raw is mapping else {'flags': _new_flags} }}
+                    - event: set_variable_legacy
+                      event_data:
+                        key: AI_Cabinet_VolumeInfo
+                        value: "{{ _new_vol_info | tojson }}"
+                        set_timestamp: false
+                        volume_entity: "{{ current_cab }}"
 
       # ── 5. Post-prune supersummary ─────────────────────────────────────────
       - alias: Trigger supersummary after gc
