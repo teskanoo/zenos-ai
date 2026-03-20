@@ -152,6 +152,7 @@ automation:
     # ---------------------------------------------------------
     # Only trigger on state change of health cabinets (enum) - not on attributes
     # @todo - might be able to use. not_to: unavailable
+    # @todo - might need to include disabled for some of these - they should perhaps be selects
     # ---------------------------------------------------------
       - trigger: state
         entity_id: sensor.zen_label_health
