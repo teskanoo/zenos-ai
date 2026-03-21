@@ -206,7 +206,7 @@ template:
               {%- if ents | count == 0 -%}
                 {%- set ns.m = ns.m | combine({ slot: 'absent' }) -%}
               {%- else -%}
-                {%- set eid = (ents | first).entity_id -%}
+                {%- set eid = (ents | first) -%}
                 {%- set _v = state_attr(eid, 'variables') -%}
                 {%- set cab_state = 'online' if (_v is mapping and 'AI_Cabinet_VolumeInfo' in _v) else 'init' -%}
                 {%- set ns.m = ns.m | combine({ slot: cab_state }) -%}
