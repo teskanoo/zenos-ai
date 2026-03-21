@@ -481,7 +481,7 @@ script:
     - choose:
       - conditions:
         - condition: template
-          value_template: "{{ action_type in ['create',update'] and (key == '' or raw_value == '') }}"
+          value_template: "{{ action_type in ['create','update'] and (key == '' or raw_value == '') }}"
           alias: Error - Create Update, Drawer (Key) or Value Missing
         sequence:
         - variables:
