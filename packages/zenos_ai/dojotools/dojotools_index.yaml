@@ -90,6 +90,13 @@ script:
         description: 'Reserved. Governance stub — echoed in response. SP1 enforcement
           not yet active.'
     sequence:
+
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
+
     - alias: Show Help
       choose:
       - conditions:
@@ -244,6 +251,12 @@ script:
 
   zen_dojotools_inspect:
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
+
     - variables:
         entity_list: "{% if entity_id is iterable and (entity_id is not string) %}\n
           \ {{ entity_id }}\n{% else %}\n  [{{ entity_id }}]\n{% endif %}"
@@ -509,6 +522,13 @@ script:
 
   zen_dojotools_index:
     sequence:
+
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
+
     - alias: Show Help
       choose:
       - conditions:

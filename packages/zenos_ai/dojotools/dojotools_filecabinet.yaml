@@ -21,6 +21,12 @@ script:
       variables:
         ignore_me_here_to_split_traces: true
 
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
+
     - variables:
         routing_status: init
         normalized_label_targets: "{{ [] }}"

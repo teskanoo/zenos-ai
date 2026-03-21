@@ -30,6 +30,12 @@
 script:
   zen_dojotools_teams:
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
+
     - variables:
         chat_sensor: sensor.homeassistant_chat
         teams_status_sensor: sensor.homeassistant_status
@@ -265,6 +271,11 @@ script:
 
   zen_dojotools_mail:
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
     - variables:
         action_type: '{{ action_type | default(''help'') }}'
         folder: '{{ folder | default(''Inbox'') }}'
@@ -572,6 +583,11 @@ script:
       `todo.add_item`, `todo.update_item`, and `todo.remove_item` services. Default
       action_type is `read`.
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
     - variables:
         action_type: '{{ action_type | default(''read'') }}'
         items: "{%- if items is defined and items is iterable and items|length > 0\
@@ -884,6 +900,11 @@ script:
       See help for tips on locating event_id. Supports targeting calendar entities by
       label.'
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
     - variables:
         action_type: '{{ action_type | default(''read'') }}'
         calendar_name: '{{ calendar_name | default('''') }}'

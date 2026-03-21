@@ -84,6 +84,11 @@ script:
         description: 'Reserved. Governance stub — echoed in response. SP1 enforcement
           not yet active.'
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
     - variables:
         user_label: '{{ user_label | default('''') }}'
         user_cabinet: '{{ user_cabinet | default('''') }}'

@@ -28,6 +28,12 @@
 script:
   zen_dojotools_history:
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
+
     - variables:
         error_msgs: "{%- set ns = namespace(msgs=[]) -%}\n{%- if statistic_ids is not defined or statistic_ids
           is none or statistic_ids == '' or statistic_ids == [] -%}\n  {%- set ns.msgs = ns.msgs + [\"Missing

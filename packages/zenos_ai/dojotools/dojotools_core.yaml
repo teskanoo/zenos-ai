@@ -131,6 +131,12 @@ script:
 
     sequence:
 
+      # --------------------------------------------------------------
+      # Always normalize User/AI inputs so we don't have to react JIT
+      # --------------------------------------------------------------
+      - variables:
+          caller_token: "{{- caller_token | default('') -}}"
+
       # ── 1. Resolve inputs ──────────────────────────────────────────────────
       - alias: Resolve inputs
         variables:

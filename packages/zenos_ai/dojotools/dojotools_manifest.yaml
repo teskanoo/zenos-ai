@@ -54,6 +54,11 @@ script:
         description: 'Reserved. Governance stub — echoed in response. SP1 enforcement
           not yet active.'
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
     - variables:
         zen_default_house_cab: "{{ states('sensor.zen_default_household_cabinet_resolved') }}"
         manifest_key: zen_library_manifest

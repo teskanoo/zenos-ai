@@ -276,6 +276,11 @@ script:
           text:
 
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
     - if:
       - condition: template
         value_template: '{{ not confirm }}'
@@ -388,6 +393,11 @@ script:
       variables:
         ignore_me_here_to_split_traces: true
 
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
     - variables:
         canon_ring0_cabinets:
         - sensor.zenos_system_cabinet
@@ -732,6 +742,12 @@ script:
         selector:
           text:
     sequence:
+
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
 
     - variables:
         _act: "{{ action | default('help') }}"
@@ -1178,6 +1194,11 @@ script:
         selector:
           text:
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
     - variables:
         _cv: >-
           {%- set raw = cortex_version | default('latest') | string | lower | trim

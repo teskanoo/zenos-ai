@@ -166,6 +166,13 @@ script:
         selector:
           text:
     sequence:
+
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
+
     - variables:
         op: '{{ action_type }}'
         requested_path: '{{ path | default('''') }}'
@@ -444,6 +451,11 @@ script:
 
   zen_dojotools_systemtools:
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
     - variables:
         tool: '{{ tool | default('''') }}'
         confirm: '{{ confirm_action | default(false) }}'
@@ -985,6 +997,12 @@ script:
         selector:
           text:
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
+
     - variables:
         m: '{{ mode }}'
         p: '{{ pattern | default('''') }}'
@@ -1230,6 +1248,12 @@ script:
           text:
     mode: parallel
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
+
     - choose:
       - conditions:
         - condition: template

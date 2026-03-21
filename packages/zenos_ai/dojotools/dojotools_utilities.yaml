@@ -80,6 +80,12 @@ script:
         selector:
           text:
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
+
     - variables:
         n1: '{{ number_1 | default(0) | float(0) }}'
         n2: '{{ number_2 | default(0) | float(0) }}'
@@ -168,6 +174,11 @@ script:
         selector:
           text:
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
     - variables:
         md: '{{ mode | lower }}'
         dice: '{{ dice_notation | default(''d6'') }}'
@@ -276,6 +287,12 @@ script:
       \ Don't overuse."
   zen_dojotools_music_search:
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
+
     - action: music_assistant.search
       data:
         config_entry_id: 01JFR5BN8CTH8FWXG9GWKC2QG8
@@ -372,6 +389,12 @@ script:
         selector:
           text:
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
+
     - variables:
         tool_version: "4.0.0 RC2"
         os_version: "4.0.0 RC2"
@@ -481,6 +504,12 @@ script:
 
   zen_dojotools_wait:
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
+
     - delay:
         hours: 0
         minutes: 0
@@ -554,6 +583,12 @@ script:
         selector:
           text:
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
+
     - variables:
         _labels_in: >-
           {%- set raw = (required_labels | default('')) | replace(',', ' ') | trim -%}
@@ -807,6 +842,11 @@ script:
         selector:
           text:
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
     - variables:
         notification_devices: "{% set t = ( notification_targets | string ) | trim %}
           {% if t[0] == '[' and t[-1] == ']' %}\n  {{ t | tojson | from_json }}\n{%

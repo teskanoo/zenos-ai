@@ -131,6 +131,12 @@ script:
 
     sequence:
 
+      # --------------------------------------------------------------
+      # Always normalize User/AI inputs so we don't have to react JIT
+      # --------------------------------------------------------------
+      - variables:
+          caller_token: "{{- caller_token | default('') -}}"
+
       # ── 0a. Kill switch — master + supersummarizer ─────────────────────────
       - alias: SuperSummary kill switch
         if:
@@ -469,6 +475,11 @@ script:
           text:
 
     sequence:
+      # --------------------------------------------------------------
+      # Always normalize User/AI inputs so we don't have to react JIT
+      # --------------------------------------------------------------
+      - variables:
+          caller_token: "{{- caller_token | default('') -}}"
 
       # ── 0a. Kill switch — master + ninja summarizer ────────────────────────
       - alias: Ninja Summarizer kill switch

@@ -57,6 +57,12 @@ script:
         selector:
           text:
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
+
     - variables:
         tool_call: '{{ tool | lower }}'
         result: []
