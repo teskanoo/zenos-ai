@@ -145,19 +145,19 @@ script:
           {% set
           parsed = none %} 
           {% if _v == '' %}
-            {% set error = \"Write failed: Input value is blank.\" %}
+            {% set error = "Write failed: Input value is blank." %}
           {% else %}
             {% set temp = _v %}
             {% set try_json = false %}
             {% if temp[:1] in ['{', '['] or temp in ['true', 'false', 'null'] %}
               {% set try_json = true %}
-            {% elif temp | regex_match('^-?\\\\d+$') %}
+            {% elif temp | regex_match('^-?\d+$') %}
               {% set try_json = true %}
             {% endif %}
             {% if try_json %}
               {% set parsed = temp | from_json %}
               {% if parsed is none %}
-                {% set error = \"Write failed: Input value is not valid JSON. Please reformat using proper JSON syntax (e.g., escaped quotes, valid brackets).\" %}
+                {% set error = "Write failed: Input value is not valid JSON. Please reformat using proper JSON syntax (e.g., escaped quotes, valid brackets)." %}
               {% endif %}
             {% else %}
               {% set js = temp
@@ -167,10 +167,10 @@ script:
                 | replace('\\n', '\\\\n')
                 | replace('\\t', '\\\\t')
               %}
-              {% set wrapped = '\"' ~ js ~ '\"' %}
+              {% set wrapped = '"' ~ js ~ '"' %}
               {% set parsed = wrapped | from_json %}
               {% if parsed is none %}
-                {% set error = \"Write failed: Could not coerce string to JSON—possibly invalid input or encoding.\" %}
+                {% set error = "Write failed: Could not coerce string to JSON—possibly invalid input or encoding." %}
               {% endif %}
             {% endif %}
           {% endif %}
@@ -694,7 +694,7 @@ script:
               {% set vol = read_volume if read_volume is mapping else {} %}
               {% if vol|length == 0 %}
                 {{ 
-                  {\"error\": \"Volume attribute missing or empty.\"} 
+                  {"error": "Volume attribute missing or empty."} 
               }}
               {% else %}
                 {% set targets = normalized_label_targets %}
@@ -721,28 +721,29 @@ script:
                   {% endfor %}
                   {{
                     {
-                      \"mode\": \"label\",
-                      \"label_targets\": targets,
-                      \"resolved_drawers\": drawers,
-                      \"count\": ns.out|length,
-                      \"drawers\": ns.out,
-                      \"note\": \"Label read returns blurbs only. Use direct read for full drawer content.\",
-                      \"message\": (
-                        \"No drawers found for requested labels.\" if ns.out|length == 0 else \"OK\" )
+                      "mode": "label",
+                      "label_targets": targets,
+                      "resolved_drawers": drawers,
+                      "count": ns.out|length,
+                      "drawers": ns.out,
+                      "note": "Label read returns blurbs only. Use direct read for full drawer content.",
+                      "message": (
+                        "No drawers found for requested labels." if ns.out|length == 0 else "OK" )
                     }
                   }}
                 {% else %}
                   {{ {
-                    \"error\": \"Label mode requested but no labels found.\",
-                    \"label_targets\": targets
+                    "error": "Label mode requested but no labels found.",
+                    "label_targets": targets
                   } }}
                 {% endif %}
               {% endif %}
         - variables:
             final_response:
-              status: "{{ 'error' if (read_payload is string and read_payload[:8] == '{\"error\"') else 'success' }}"
+              status: >
+                {{ 'error' if (read_payload is string and read_payload[:8] == '{"error"') else 'success' }}
               message: >
-                {% if read_payload is string and read_payload[:8] == '{\"error\"' %}
+                {% if read_payload is string and read_payload[:8] == '{"error"' %}
                   There was a problem reading from the volume.
                 {%- else -%} 
                   Read succeeded.
@@ -783,9 +784,9 @@ script:
               {%- import 'zenos_ai/library_index.jinja' as library_index -%}
               {%- set cabs_json = library_index.parse_index_command('AI Data Storage Cabinet') -%}
               {%- set fixed_json = cabs_json 
-                                  | replace(\"['\", '[\"')
-                                  | replace(\"']\", '\"]') 
-                                  | replace(\"', '\", '\", \"') | trim 
+                                  | replace("['", '["')
+                                  | replace("']", '"]') 
+                                  | replace("', '", '", "') | trim 
               -%}
               {%- set cabs = fixed_json | from_json -%}
               {%- set sensors = states['sensor'] | map(attribute='entity_id') | list -%}
@@ -844,9 +845,10 @@ script:
               {% endif %}
         - variables:
             final_response:
-              status: "{{ 'error' if (read_payload is string and read_payload[:8] == '{\"error\"') else 'success' }}"
+              status: >
+                {{ 'error' if (read_payload is string and read_payload[:8] == '{"error"') else 'success' }}
               message: >
-                {%- if read_payload is string and read_payload[:8] == '{\"error\"' -%}
+                {%- if read_payload is string and read_payload[:8] == '{"error"' -%}
                 There was a problem reading drawers in the volume.
                 {%- else -%}
                 Directory read succeeded.
