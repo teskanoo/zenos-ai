@@ -149,6 +149,11 @@ automation:
     triggers:
       - trigger: homeassistant
         event: start
+      # Recovery net: re-evaluates every 5 min so sentinel self-heals after
+      # ha_reload_all kills in-flight runs without a health state change.
+      # Fast early-exit (was_green check) makes this cheap when system is ok.
+      - trigger: time_pattern
+        minutes: /5
     # ---------------------------------------------------------
     # Only trigger on state change of health cabinets (enum) - not on attributes
     # @todo - might be able to use. not_to: unavailable
@@ -340,13 +345,10 @@ automation:
             {{ state_attr(_g35_ai_cab, 'variables') | default({}, true)
                if _g35_ai_cab != '' else {} }}
           _g35_complete: "{{ '_oobe_complete' in _g35_cab_vars }}"
-          _g35_essence_raw: "{{ _g35_cab_vars.get('zenai_essence', {}) }}"
-          _g35_essence_val: >-
-            {{ _g35_essence_raw.get('value', _g35_essence_raw)
-               if _g35_essence_raw is mapping else {} }}
           _g35_name: >-
-            {{ (_g35_essence_val.get('identity', {}).get('name', '') | trim)
-               if _g35_essence_val is mapping else '' }}
+            {%- import 'zenos_ai/zenos_health.jinja' as health -%}
+            {%- set _probe = health.essence_probe(_g35_ai_cab) | from_json -%}
+            {{ (_probe.get('name', '') | trim) if _probe is mapping else '' }}
           _g35_input_name: "{{ states('input_text.zenos_persona_name') | trim }}"
       - choose:
           # Case 1: placeholder in cabinet but input_text has a name → write it and dismiss
@@ -520,6 +522,10 @@ script:
             default_family: "Family Cabinet"
             default_user: "User Cabinet"
             default_ai_user: "AI User Cabinet"
+            secondary_user: "User Cabinet"
+            tertiary_user: "User Cabinet"
+            quaternary_user: "User Cabinet"
+            secondary_ai_user: "AI User Cabinet"
             history: "History Cabinet"
             index: "Index Cabinet"
 
@@ -786,6 +792,47 @@ script:
       # Trigger prompt loader to stamp purpose/directives/cortex
       - action: script.zen_admintools_zenos_prompt_loader
         data: {}
+
+      # Stamp gc_eligible flag into AI_Cabinet_VolumeInfo for all canonical cabinets.
+      # force_action: false — only writes if drawer absent (fresh install path).
+      # Existing installs already have this field via GC self-heal; skip is correct.
+      # If gc_eligible is already true on a cabinet, force_action: false honors it —
+      # the drawer exists, so the write is skipped entirely.
+      # Kata gets gc_eligible: true — runtime churn cabinet, GC should run by default.
+      # All others default to false — operator opt-in.
+      # force_action: false honors any existing value (e.g. operator already set true).
+      - variables:
+          _b3_all_cabs: >-
+            {{ [
+              states('sensor.zen_dojo_cabinet_resolved'),
+              states('sensor.zen_default_household_cabinet_resolved'),
+              states('sensor.zen_default_family_cabinet_resolved'),
+              states('sensor.zen_default_user_cabinet_resolved'),
+              states('sensor.zen_default_ai_user_cabinet_resolved')
+            ] | reject('in', ['', 'unknown', 'unavailable']) | list }}
+      - repeat:
+          for_each: "{{ _b3_all_cabs }}"
+          sequence:
+            - action: script.zen_dojotools_filecabinet
+              data:
+                action_type: create
+                force_action: false
+                set_timestamp: false
+                show_hidden_volumes: false
+                volume_entity_id:
+                  - "{{ repeat.item }}"
+                key: AI_Cabinet_VolumeInfo
+                value: '{"flags": {"gc_eligible": false}}'
+      - action: script.zen_dojotools_filecabinet
+        data:
+          action_type: create
+          force_action: false
+          set_timestamp: false
+          show_hidden_volumes: false
+          volume_entity_id:
+            - "{{ states('sensor.zen_kata_cabinet_resolved') }}"
+          key: AI_Cabinet_VolumeInfo
+          value: '{"flags": {"gc_eligible": true}}'
 
       # Write _onboarding flag
       - action: script.flynn_unified_engine

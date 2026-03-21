@@ -201,16 +201,21 @@
           or candidate.get('persona') is mapping
           or candidate.get('traits') is mapping
           or candidate.get('directives') is mapping
+          or (candidate.get('core') is mapping and candidate.get('jacket') is mapping)
         ) -%}
       {%- set essence = candidate -%}
     {%- else -%}
       {%- set essence = {} -%}
     {%- endif -%}
 
-    {%- set ident = essence.get('identity', {}) if essence is mapping else {} -%}
-
-    {%- set guid = ident.get('guid') -%}
-    {%- set name = ident.get('name') -%}
+    {%- if essence is mapping and essence.get('core') is mapping and essence.get('jacket') is mapping -%}
+      {%- set guid = essence.core.get('id') -%}
+      {%- set name = essence.jacket.get('name') -%}
+    {%- else -%}
+      {%- set ident = essence.get('identity', {}) if essence is mapping else {} -%}
+      {%- set guid = ident.get('guid') -%}
+      {%- set name = ident.get('name') -%}
+    {%- endif -%}
     {%- set ha_labels = labels(cab) | default([]) -%}
     {%- set ctype = classify(ha_labels) | string | trim -%}
 
@@ -337,6 +342,7 @@
         or candidate.get('persona') is mapping
         or candidate.get('traits') is mapping
         or candidate.get('directives') is mapping
+        or (candidate.get('core') is mapping and candidate.get('jacket') is mapping)
       ) -%}
     {{ candidate | tojson }}
   {%- else -%}
@@ -488,17 +494,25 @@
     {%- set persona = {} -%}
   {%- endif -%}
 
-  {%- set persona_identity = persona.get('identity', {}) -%}
-  {%- if not (persona_identity is mapping) -%}
-    {%- set persona_identity = {} -%}
-  {%- endif -%}
   {%- set persona_essence = persona -%}
 
-  {%- set hashstamp = persona.get('hashstamp', {}) -%}
-  {%- if not (hashstamp is mapping) -%}
-    {%- set hashstamp = {} -%}
+  {%- if persona.get('core') is mapping and persona.get('jacket') is mapping -%}
+    {%- set persona_identity = {
+      'name': persona.jacket.get('name'),
+      'guid': persona.core.get('id')
+    } -%}
+    {%- set identity_hash = persona.core.get('signature') -%}
+  {%- else -%}
+    {%- set persona_identity = persona.get('identity', {}) -%}
+    {%- if not (persona_identity is mapping) -%}
+      {%- set persona_identity = {} -%}
+    {%- endif -%}
+    {%- set hashstamp = persona.get('hashstamp', {}) -%}
+    {%- if not (hashstamp is mapping) -%}
+      {%- set hashstamp = {} -%}
+    {%- endif -%}
+    {%- set identity_hash = hashstamp.get('hash') -%}
   {%- endif -%}
-  {%- set identity_hash = hashstamp.get('hash') -%}
 
     {# =============================================================
       6. Canonical squirrel (boolean)
@@ -1256,6 +1270,38 @@
     {%- set src = {} %}
   {%- endif %}
 
+  {# ── THREE-LAYER SHIM ──────────────────────────────────────────────────────
+     Translate new schema (core/jacket/companion) → old render fields so the
+     wake scene and all downstream rendering are completely unchanged.
+     ───────────────────────────────────────────────────────────────────────── #}
+  {%- if src.get('core') is mapping and src.get('jacket') is mapping -%}
+    {%- set _j  = src.jacket -%}
+    {%- set _p  = _j.get('persona', {}) if _j.get('persona') is mapping else {} -%}
+    {%- set _ap = _p.get('appearance', {}) if _p.get('appearance') is mapping else {} -%}
+    {%- set _vx = _p.get('voice', {}) if _p.get('voice') is mapping else {} -%}
+    {%- set _hh = _p.get('household', {}) if _p.get('household') is mapping else {} -%}
+    {%- set _co = src.get('companion', {}) if src.get('companion') is mapping else {} -%}
+    {%- set src = {
+      'identity':    {'name': _j.get('name', ''), 'motif': _j.get('presentation', '')},
+      'archetype':   {'vibe': _hh.get('position', _j.get('presentation', ''))},
+      'voice':       {'tone': _vx.get('register', ''), 'style': _vx.get('identity', '')},
+      'culture':     {'humor': (_j.get('traits', {}) if _j.get('traits') is mapping else {}).get('warm', '')},
+      'visuals':     {'selfie': _ap.get('visual', '')},
+      'environment': {
+        'room': 'your space',
+        'furniture': ['a console workstation'],
+        'decor': ['soft ambient light'],
+        'music': {'genre': 'steady lo-fi', 'riff': 'melodic phrase', 'mood': 'focused and familiar'}
+      },
+      'familiar':    {'name': _co.get('name', 'your familiar'), 'type': _co.get('species', 'companion'), 'fx': 'soft movement'},
+      'pov':         'third-person cinematic',
+      'persona':     _j.get('persona', {}),
+      'traits':      _j.get('traits', {}),
+      'directives':  _j.get('directives', {})
+    } -%}
+  {%- endif -%}
+  {# ── END THREE-LAYER SHIM ──────────────────────────────────────────────── #}
+
   {# ======== BUILD OUTPUT EXPLICITLY ======== #}
   {%- set out = {} %}
 
@@ -1464,9 +1510,14 @@
           {%- set essence = {} -%}
         {%- endif -%}
 
-        {# Familiar — read from AI user cabinet essence #}
-        {%- set _fam_raw = essence.get('familiar', {}) -%}
-        {%- set familiar_data = _fam_raw if (_fam_raw is mapping and _fam_raw) else {} -%}
+        {# Familiar — read from essence; companion (three-layer) maps to familiar #}
+        {%- if essence.get('companion') is mapping -%}
+          {%- set _co = essence.companion -%}
+          {%- set familiar_data = {'name': _co.get('name', 'your familiar'), 'type': _co.get('species', 'companion'), 'fx': 'soft movement'} -%}
+        {%- else -%}
+          {%- set _fam_raw = essence.get('familiar', {}) -%}
+          {%- set familiar_data = _fam_raw if (_fam_raw is mapping and _fam_raw) else {} -%}
+        {%- endif -%}
 
         {# TODO: relationship sets still label-based for now #}
         {%- set partners = intersect(

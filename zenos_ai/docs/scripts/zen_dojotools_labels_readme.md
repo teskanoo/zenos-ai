@@ -1,4 +1,4 @@
-# Zen DojoTools Labels — 4.1.0
+# Zen DojoTools Labels — 4.3.0 'Meridian'
 
 *Create, read, update, delete, and assign labels in the Home Assistant label index*
 
@@ -24,6 +24,7 @@ This script is **MCP-exposed**. Friday can read the label index and create or up
 | `new_description` | text | — | Description to set on the label (create and update) |
 | `new_icon` | text | — | MDI icon slug (e.g. `mdi:water`). Omit to leave unset (create and update) |
 | `new_color` | text | — | HA label color. Omit to use `primary` (create and update) |
+| `force_rewrite` | boolean | `false` | `update` only — skip the REST pre-read and write only the fields you pass; unspecified fields (icon, color, description) are cleared rather than preserved |
 | `confirm` | boolean | `false` | Required `true` for create, update, delete, and reset |
 
 ---
@@ -90,6 +91,8 @@ Updates an existing label's metadata: description, icon, and/or color. Requires 
 
 HA does not support in-place label mutation — update is implemented as delete → recreate → retag. All entity assignments are preserved automatically; the label returns with the same slug and all the same entities tagged.
 
+**Patch semantics (default):** Before recreating, `update` performs a REST pre-read to fetch the existing `icon`, `color`, and `description`. Fields you don't specify are carried forward from the existing label. Pass `force_rewrite: true` to skip the pre-read — unspecified fields will be cleared to HA defaults.
+
 Without confirmation, returns a `status: start` preview showing what would change.
 
 ```yaml
@@ -105,6 +108,7 @@ confirm: true
   "status": "ok",
   "action": "update",
   "updated_labels": ["water"],
+  "preserved_from_existing": {"icon": "mdi:water", "color": "blue"},
   "message": "Update Action Complete."
 }
 ```

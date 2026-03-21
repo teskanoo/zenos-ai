@@ -2,7 +2,7 @@ ZenOS-AI Template Engine: zen_os_1rc.jinja
 
 Technical Specification & Prompt Loader Requirements
 
-Version: 4.2.0
+Version: 4.3.0 'Meridian'
 Status: Stable & Required for All Front-Line Agents
 
 
@@ -98,8 +98,28 @@ whose zenai_essence.identity.name matches ai_user.
 
 What the user must provide
 
-A cabinet entity with:
+A cabinet entity with either schema:
 
+**Three-layer schema (current):**
+```yaml
+state: "loaded"
+attributes:
+  zenai_essence:
+    core:
+      id: "<UUID>"
+      minted_for: "person.nathan"
+      household_guid: "<UUID>"
+    jacket:
+      name: "Friday"
+      signed_by: "person.nathan"
+    companion:
+      name: "Byte"
+labels:
+  - Zen AI Cabinet
+```
+
+**Legacy schema (still supported via shim in normalize_essence):**
+```yaml
 state: "loaded"
 attributes:
   zenai_essence:
@@ -109,15 +129,16 @@ attributes:
     ...
 labels:
   - Zen AI Cabinet
+```
 
-Identity block must contain:
+Identity fields by schema:
 
-Field	Required	Purpose
-
-name	✔️	Canonical persona name
-guid	✔️	Stable identity key
-cabinet	optional	auto-filled by resolver
-identity_hash	optional	for future cabinet integrity
+| Field | Three-layer path | Legacy path | Required | Purpose |
+|-------|-----------------|-------------|----------|---------|
+| name | `jacket.name` | `identity.name` | ✔️ | Canonical persona name |
+| guid | `core.id` | `identity.guid` | ✔️ | Stable identity key |
+| cabinet | auto-filled | auto-filled | optional | resolved by zen_cabinets |
+| identity_hash | `core.signature` | `hashstamp.hash` | optional | cabinet integrity |
 
 
 
@@ -160,20 +181,35 @@ zenai_essence:
     identity:
       name: Friday
 
-✔️ REQUIRED:
+✔️ REQUIRED (three-layer, current):
+
+zenai_essence:
+  core:
+    id: "b7e3f091-1cd6-83f8-frid-ay0000000001"
+  jacket:
+    name: "Friday"
+    presentation: "quiet brilliance"
+    persona:
+      voice:
+        register: "warm"
+  companion:
+    name: "Byte"
+    species: "digital English bulldog"
+
+✔️ ALSO VALID (legacy schema — shim in normalize_essence translates at render time):
 
 zenai_essence:
   identity:
     name: "Friday"
     guid: "abc123"
-  persona:
+  voice:
     tone: "warm, conversational"
-  wake_scene:
-    intro: "lights rise inside her dojo"
   ...
 
 If essence is absent or malformed →
 identity_format() fails → no persona block → no prompt.
+
+The normalize_essence shim in zen_os_1rc.jinja handles schema translation transparently — the wake scene, capsule, and identity card render identically for both schemas.
 
 
 ---

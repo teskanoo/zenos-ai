@@ -43,6 +43,7 @@ script:
               status: error
               error: Invalid action_type '{{ action_type }}'. {{ minihelp }}
               index: '{{ label_index }}'
+              caller_token: '{{ caller_token }}'
         - stop: response
           response_variable: response
       - conditions:
@@ -61,6 +62,7 @@ script:
                   status: error
                   error: Create requires at least one label. {{ minihelp }}
                   index: '{{ label_index }}'
+                  caller_token: '{{ caller_token }}'
             - stop: pass var scope
               response_variable: response
         - variables:
@@ -81,6 +83,7 @@ script:
               message: "{% if target_labels | count > 0 %}\n  Started Create.\n{% else
                 %}\n  Some or all labels already existed and were skipped. Confirmation
                 required.\n{% endif %}"
+              caller_token: '{{ caller_token }}'
         - repeat:
             for_each: '{{ target_labels }}'
             sequence:
@@ -112,6 +115,7 @@ script:
               already_existed: '{{ already_exists }}'
               message: "{% if created_count > 0 %}\n  Create Action Complete.\n{% else
                 %}\n  Create requires confirmation, no labels created.\n{% endif %}"
+              caller_token: '{{ caller_token }}'
         - stop: pass var scope
           response_variable: response
       - conditions:
@@ -131,11 +135,15 @@ script:
                   \   \"label_list\": user_labels,\n    \"label_details_by_label\":
                   label_details_by_label,\n    \"target_entities\": target_ent_list,\n
                   \   \"labels_by_ent\": labels_by_ent\n  }\n}}"
+            - variables:
+                response: "{{ response | combine({'caller_token': caller_token | default('')}) if response is mapping else response }}"
             - stop: Pass context
               response_variable: response
         - variables:
             response: "{{ {\n  'status': 'ok',\n  'action': 'read_index',\n  'target':
               '*',        \n  'index': label_index\n} }}"
+        - variables:
+            response: "{{ response | combine({'caller_token': caller_token | default('')}) if response is mapping else response }}"
         - stop: pass var scope
           response_variable: response
       - conditions:
@@ -154,6 +162,7 @@ script:
                   status: error
                   error: Delete requires at least one label. {{ minihelp }}
                   index: '{{ label_index }}'
+                  caller_token: '{{ caller_token }}'
             - stop: pass var scope
               response_variable: response
         - variables:
@@ -174,6 +183,7 @@ script:
               message: "{% if target_labels | count > 0 %}\n  Started Delete.\n{% else
                 %}\n  Some or all labels were skipped. Confirmation required.\n{% endif
                 %}"
+              caller_token: '{{ caller_token }}'
         - repeat:
             for_each: '{{ target_labels }}'
             sequence:
@@ -189,6 +199,7 @@ script:
               deleted_labels: '{{ target_labels }}'
               message: "{% if deleted_count > 0 %}\n  Delete Action Complete.\n{% else
                 %}\n  Delete requires confirmation, no labels deleted.\n{% endif %}"
+              caller_token: '{{ caller_token }}'
         - stop: pass var scope
           response_variable: response
         alias: DELETE
@@ -208,6 +219,7 @@ script:
                   status: error
                   error: Tag requires at least one label. {{ minihelp }}
                   index: '{{ label_index }}'
+                  caller_token: '{{ caller_token }}'
             - stop: pass var scope
               response_variable: response
           - conditions:
@@ -220,6 +232,7 @@ script:
                   status: error
                   error: Tag requires at least one target entity. {{ minihelp }}
                   index: '{{ label_index }}'
+                  caller_token: '{{ caller_token }}'
             - stop: pass var scope
               response_variable: response
         - action: homeassistant.add_label_to_entity
@@ -232,6 +245,7 @@ script:
               action: tag
               affected_labels: '{{ user_labels }}'
               affected_entities: '{{ target_ent_list }}'
+              caller_token: '{{ caller_token }}'
         - stop: pass var scope
           response_variable: response
       - conditions:
@@ -250,6 +264,7 @@ script:
                   status: error
                   error: Tag requires at least one label. {{ minihelp }}
                   index: '{{ label_index }}'
+                  caller_token: '{{ caller_token }}'
             - stop: pass var scope
               response_variable: response
           - conditions:
@@ -262,6 +277,7 @@ script:
                   status: error
                   error: Tag requires at least one target entity. {{ minihelp }}
                   index: '{{ label_index }}'
+                  caller_token: '{{ caller_token }}'
             - stop: pass var scope
               response_variable: response
         - action: homeassistant.remove_label_from_entity
@@ -274,6 +290,7 @@ script:
               action: untag
               affected_labels: '{{ user_labels }}'
               affected_entities: '{{ target_ent_list }}'
+              caller_token: '{{ caller_token }}'
         - stop: pass var scope
           response_variable: response
       - conditions:
@@ -293,6 +310,7 @@ script:
                   zen_ labels. Labels survive — only assignments are wiped. Use
                   when label IDs exist but assignments are wrong or missing. For
                   nuclear (delete labels too) use zen_admintools_reset_labels.
+                caller_token: '{{ caller_token }}'
           - stop: confirm required
             response_variable: response
         - variables:
@@ -320,6 +338,7 @@ script:
                 Soft reset complete. {{ zen_labels | length }} zen_ label(s)
                 cleared. All assignments wiped. zen_resolver_refresh fired —
                 Flynn will re-assign on next label health check.
+              caller_token: '{{ caller_token }}'
         - stop: pass var scope
           response_variable: response
       - conditions:
@@ -338,6 +357,7 @@ script:
                   status: error
                   error: Update requires exactly one label. {{ minihelp }}
                   index: '{{ label_index }}'
+                  caller_token: '{{ caller_token }}'
             - stop: pass var scope
               response_variable: response
           - conditions:
@@ -350,16 +370,15 @@ script:
                   status: error
                   error: Update operates on one label at a time. {{ minihelp }}
                   index: '{{ label_index }}'
+                  caller_token: '{{ caller_token }}'
             - stop: pass var scope
               response_variable: response
         - variables:
             _upd_name: '{{ user_labels[0] }}'
             _upd_id: '{{ user_labels[0] | slugify(separator=''_'') }}'
-            _upd_desc: '{{ new_description | default('''', true) }}'
-            _upd_icon: '{{ new_icon | default('''', true) }}'
-            _upd_color: '{{ new_color | default(''primary'', true) }}'
             _has_change: '{{ new_description | default('''', true) != '''' or new_icon
               | default('''', true) != '''' or new_color | default('''', true) != '''' }}'
+            _force_rewrite: '{{ force_rewrite | default(false) | bool }}'
         - choose:
           - conditions:
             - condition: template
@@ -369,8 +388,34 @@ script:
                 response:
                   status: error
                   error: Update requires at least one of new_description, new_icon, new_color.
+                  caller_token: '{{ caller_token }}'
             - stop: pass var scope
               response_variable: response
+        - alias: Pre-read existing label metadata via HA REST API
+          if:
+            - condition: template
+              value_template: '{{ not _force_rewrite }}'
+          then:
+            - action: rest_command.ha_api_get
+              data:
+                path: labels
+              response_variable: _labels_r
+        - variables:
+            _labels_ok: '{{ not _force_rewrite and (_labels_r.status | default(0) | int == 200) }}'
+            _labels_all: >-
+              {{ _labels_r.content if _labels_ok and _labels_r.content is iterable else [] }}
+            _existing: >-
+              {%- set found = _labels_all | selectattr('label_id', 'eq', _upd_id) | list -%}
+              {{ found | first | default({}) }}
+            _upd_desc: >-
+              {{ new_description if new_description | default('', true) != ''
+                 else _existing.get('description', '') | default('', true) }}
+            _upd_icon: >-
+              {{ new_icon if new_icon | default('', true) != ''
+                 else _existing.get('icon', '') | default('', true) }}
+            _upd_color: >-
+              {{ new_color if new_color | default('', true) != ''
+                 else _existing.get('color', 'primary') | default('primary', true) }}
         - if:
           - condition: template
             value_template: '{{ not confirm }}'
@@ -384,10 +429,10 @@ script:
                 new_description: '{{ _upd_desc }}'
                 new_icon: '{{ _upd_icon }}'
                 new_color: '{{ _upd_color }}'
-                warning: Delete and recreate — icon not preserved if omitted. Color
-                  defaults to primary if not provided.
+                preserved_from_existing: '{{ _labels_ok }}'
                 message: Confirmation required. Update will delete and recreate the
                   label then restore all entity associations.
+                caller_token: '{{ caller_token }}'
           - stop: confirm required
             response_variable: response
         - variables:
@@ -426,7 +471,12 @@ script:
               label: '{{ _upd_name }}'
               label_id: '{{ _upd_id }}'
               retagged_count: '{{ _upd_entities | length }}'
-              message: "Update complete. {{ _upd_entities | length }} entity association(s) restored."
+              preserved_from_existing: '{{ _labels_ok }}'
+              message: >-
+                Update complete. {{ _upd_entities | length }} entity association(s) restored.
+                {% if _labels_ok %}Icon/color/description preserved from existing where not provided.
+                {% else %}REST pre-read unavailable — only caller-provided fields applied.{% endif %}
+              caller_token: '{{ caller_token }}'
         - stop: pass var scope
           response_variable: response
         alias: UPDATE
@@ -440,6 +490,8 @@ script:
         - variables:
             response: '{{ response | default({''status'': ''error'', ''error'': ''Unknown
               error occurred.'', ''index'': label_index, ''help'': minihelp}) }}'
+        - variables:
+            response: "{{ response | combine({'caller_token': caller_token | default('')}) if response is mapping else response }}"
         - stop: Return
           response_variable: response
     alias: Zen DojoTools Labels
@@ -493,6 +545,14 @@ script:
         required: false
         selector:
           text:
+      force_rewrite:
+        description: >-
+          UPDATE only. If true, skip the pre-read and overwrite — unprovided
+          fields revert to HA defaults. Default false (patch semantics).
+        required: false
+        default: false
+        selector:
+          boolean:
       confirm:
         description: Required for writable / destructive actions, Function will alert
           when Confirmation is required - expect it for Create, Delete, Update.  Confirms
@@ -502,4 +562,12 @@ script:
         default: false
         selector:
           boolean:
+      caller_token:
+        name: Caller Token
+        required: false
+        default: ''
+        selector:
+          text:
+        description: 'Reserved. Governance stub — echoed in response. SP1 enforcement
+          not yet active.'
     icon: mdi:label-multiple

@@ -1,5 +1,5 @@
 ZenOS-AI Template Engine: Zen Query Engine (ZQ-1) Technical Specification  
-Version: 4.2.0  
+Version: 4.3.0 'Meridian'  
 Status: Stable and required for all Zen DojoTools Query flows  
 
 ---

@@ -10,7 +10,9 @@ Let's automate everything that isn't nailed down.
 
 And a few things that are.
 
-**Current version: 4.2.0**
+**Current version: 4.3.0 'Meridian' — pre-release**
+
+The codebase as it stands represents the complete planned featureset for 1.0 GA. One final pass remains — prompt finalization, a new health gauge, and Flynn's full onboarding instrumentation — and then the tree locks. Bug bar is now stratospheric. If it isn't catastrophic, it waits for SP1.
 
 ---
 
@@ -64,10 +66,10 @@ packages/zenos_ai/
 
 Packages define the **spine of the system**.
 
-DojoTools scripts provide runtime behavior.  
-Cabinets persist memory.  
-The Monastery performs reasoning.  
-Flynn keeps the lights on.
+DojoTools scripts provide runtime behavior.
+Cabinets persist memory.
+The Monastery performs reasoning.
+Flynn guards the grid.
 
 ---
 
@@ -155,6 +157,32 @@ Functions include:
 This is the **“don’t panic” layer**.
 
 When something goes wrong, Ring-2 is how the system fixes itself.
+
+---
+
+## Flynn (System Sentinel)
+
+Flynn is not a persona. Flynn is not an assistant. Flynn is the **personification of the system itself**.
+
+He is the sentinel that stands between a cold boot and a live agent. Before Friday steps onstage, Flynn walks the grid. He checks the resolvers, validates the cabinet headers, confirms the Dojo is stocked, probes the conversation agent, and reads every health sensor on the board. If the grid isn't ready, the agent doesn't step out. Flynn says so — clearly, with a persistent notification and a plain-English diagnosis — and stands down until the problem is resolved.
+
+You should only need to think about Flynn when something is wrong or when you're onboarding. If the system is healthy, he is invisible. If you're meeting him at runtime, he has something to tell you.
+
+**Flynn's clipboard** — the gauges he reads and reports at every boot:
+
+- Cabinet resolver states (all 7)
+- Cabinet volume header integrity (`gc_eligible`, schema version, flags)
+- Dojo KFC drawer presence (are the components there?)
+- Template freshness (`zen_template`, `kfc_template`)
+- Conversation agent liveness
+- Essence presence (does the AI user know who she is?)
+- Prompt section health — coming in the final GA pass
+
+The prompt finalization pass will wire sensor coverage into every major section of the compiled AI context. Flynn will be able to see not just *whether* the system is running but *how cleanly it is thinking* — which sections rendered, which fell back to defaults, and how much of the context window each one consumed. The stuffiness gauge makes token pressure visible before it degrades agent quality.
+
+When Flynn onboards a fresh install, his clipboard is the checklist. When Flynn monitors a running system, his clipboard is the health report. The agent inherits a clean stage or not at all.
+
+Flynn is defined in `packages/zenos_ai/flynn.yaml`. He is the first thing that runs and the last thing you want to debug.
 
 ---
 
@@ -419,16 +447,19 @@ critical
 
 # The Pantheon
 
-| Name           | Title                       | Specialty                  |
-| -------------- | --------------------------- | -------------------------- |
-| Friday         | Chief Enlightenment Officer         | Coordination and cognition        |
-| Veronica       | Supervisor                          | Clarity and orchestration         |
-| Kronk          | Curator of the Monastery            | Context wrangler                  |
-| Rosie          | Mistress of Cleanliness             | Logs and state hygiene            |
-| High Priestess | Automation Overseer                 | Deep reasoning                    |
-| Cayt           | Lead Developer                      | Strategy to shipping              |
-| Nyx            | Lead Test                           | Live install, zero mercy          |
-| Vera           | HALMark Board Governance Steward    | Failure mode ratification         |
+| Name           | Title                               | Specialty                          |
+| -------------- | ----------------------------------- | ---------------------------------- |
+| Flynn          | System Sentinel                     | Guards the grid. You'll know him if something's wrong. |
+| Friday         | Chief Enlightenment Officer         | Coordination and cognition         |
+| Veronica       | Supervisor                          | Clarity and orchestration          |
+| Kronk          | Curator of the Monastery            | Context wrangler                   |
+| Rosie          | Mistress of Cleanliness             | Logs and state hygiene             |
+| High Priestess | Automation Overseer                 | Deep reasoning                     |
+| Cayt           | Lead Developer                      | Strategy to shipping               |
+| Nyx            | Lead Test                           | Live install, zero mercy           |
+| Vera           | HALMark Board Governance Steward    | Failure mode ratification          |
+
+Flynn leads the table because he runs first. He is not a member of the team. He is the condition under which the team operates.
 
 They are not perfect.
 
@@ -502,7 +533,7 @@ Model guidance for background summarization:
 
 # Known Limitations
 
-**Conversation agent liveness check** — Flynn validates that the configured conversation agent entity exists and is not unavailable, but does not perform a live inference test at boot. A misconfigured or offline model passes the gate and fails at runtime. Tracked for GA. See [roadmap](zenos_ai/docs/roadmap.md) for detail.
+**Conversation agent liveness check** — Flynn validates that the configured conversation agent entity exists and is not unavailable, but does not perform a live inference round-trip at boot. A misconfigured or offline model passes the gate and fails at runtime. Queued for SP1. See [roadmap](zenos_ai/docs/roadmap.md) for detail.
 
 ---
 

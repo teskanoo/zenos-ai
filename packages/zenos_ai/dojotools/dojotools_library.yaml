@@ -50,6 +50,12 @@ script:
         selector:
           text:
             multiline: false
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
     sequence:
     - variables:
         tool_call: '{{ tool | lower }}'
@@ -67,6 +73,8 @@ script:
               {{ command_interpreter.interpreter( query ) }}
 
               '
+        - variables:
+            result: "{{ result | combine({'caller_token': caller_token | default('')}) if result is mapping else result }}"
         - stop: Return Variable {{ result }}
           response_variable: result
       - conditions:
@@ -78,6 +86,8 @@ script:
             result: "{%- import 'zenos_ai/command_interpreter.jinja' as command_interpreter
               %} {{\n  {\n    \"query\": query,\n    \"output\": command_interpreter.interpreter(\
               \ query )\n  }\n}}\n"
+        - variables:
+            result: "{{ result | combine({'caller_token': caller_token | default('')}) if result is mapping else result }}"
         - stop: Return Variable {{ result }}
           response_variable: result
       - conditions:
@@ -89,6 +99,8 @@ script:
             result: "{%- import 'zenos_ai/command_interpreter.jinja' as command_interpreter
               %} {{\n  {\n    \"tool\": 'md5',\n    \"query\": query,\n    \"output\"\
               :  query | md5 | default('')\n  }\n}}\n"
+        - variables:
+            result: "{{ result | combine({'caller_token': caller_token | default('')}) if result is mapping else result }}"
         - stop: Return Variable {{ result }}
           response_variable: result
       - conditions:
@@ -100,8 +112,12 @@ script:
             result: "{%- import 'zenos_ai/command_interpreter.jinja' as command_interpreter
               %} {{\n  {\n    \"tool\": 'slugify',\n    \"query\": query,\n    \"output\"\
               :  query | slugify() | default('')\n  }\n}}\n"
+        - variables:
+            result: "{{ result | combine({'caller_token': caller_token | default('')}) if result is mapping else result }}"
         - stop: Return Variable {{ result }}
           response_variable: result
+    - variables:
+        result: "{{ result | combine({'caller_token': caller_token | default('')}) if result is mapping else result }}"
     - stop: Return Variable {{ result }}
       response_variable: result
     mode: parallel

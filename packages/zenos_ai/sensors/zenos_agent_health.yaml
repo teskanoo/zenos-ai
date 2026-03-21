@@ -283,14 +283,12 @@ template:
                                   and hh_vars.get('zen_library_manifest') | string | trim != '' %}
 
             {#--- who is the currently active default persona? ---#}
+            {%- import 'zenos_ai/zenos_health.jinja' as health %}
             {%- set def_cab = states('sensor.zen_default_ai_user_cabinet_resolved') %}
             {%- set def_ns = namespace(loaded_name='') %}
             {%- if def_cab != '' and states(def_cab) not in ['unknown','unavailable'] %}
-              {%- set def_vars = state_attr(def_cab, 'variables') | default({}, true) %}
-              {%- set def_essence = def_vars.get('zenai_essence', {}) %}
-              {%- set def_ev = def_essence.get('value', def_essence) if def_essence is mapping else {} %}
-              {%- set def_ns.loaded_name = (def_ev.get('identity', {}).get('name', '')
-                                            if def_ev is mapping else '') | lower | trim %}
+              {%- set _def_probe = health.essence_probe(def_cab) | from_json %}
+              {%- set def_ns.loaded_name = (_def_probe.get('name', '') if _def_probe is mapping else '') | lower | trim %}
             {%- endif %}
 
             {#--- enumerate agent cabinets dynamically ---#}
@@ -300,13 +298,11 @@ template:
             {%- for ag_cab in all_ai_cabs %}
               {%- if states(ag_cab) not in ['unknown','unavailable'] %}
 
-                {#--- resolve agent name from essence ---#}
-                {%- set ag_vars = state_attr(ag_cab, 'variables') | default({}, true) %}
-                {%- set ag_essence = ag_vars.get('zenai_essence', {}) %}
-                {%- set ag_ev = ag_essence.get('value', ag_essence) if ag_essence is mapping else {} %}
-                {%- set ag_identity = ag_ev.get('identity', {}) if ag_ev is mapping else {} %}
-                {%- set ag_name = (ag_identity.get('name', ag_cab) | string | trim)
-                                  if ag_identity is mapping else ag_cab %}
+                {#--- probe essence: name + full diagnostic ---#}
+                {%- set ag_probe = health.essence_probe(ag_cab) | from_json %}
+                {%- set ag_ess_status = ag_probe.get('status', 'error') if ag_probe is mapping else 'error' %}
+                {%- set ag_name = (ag_probe.get('name', '') | string | trim) if ag_probe is mapping else '' %}
+                {%- set ag_name = ag_name if ag_name != '' else ag_cab %}
 
                 {%- set ag_is_default = ag_cab == def_cab %}
 
@@ -319,6 +315,7 @@ template:
                   'system_directives':  'ok' if directives_ok else 'warn',
                   'dojo_loaded':        'ok' if dojo_loaded   else 'warn',
                   'kata_summary':       'ok' if kata_summary  else 'warn',
+                  'essence':            ag_ess_status,
                   'system_cortex':      'ok' if cortex_ok     else 'warn',
                   'manifest':           'ok' if manifest_ok   else 'warn'
                 } %}
@@ -327,7 +324,7 @@ template:
                 {%- set req = [
                   agent.infra, agent.conversation_agent, agent.default_persona,
                   agent.system_purpose, agent.system_directives,
-                  agent.dojo_loaded, agent.kata_summary
+                  agent.dojo_loaded, agent.kata_summary, agent.essence
                 ] %}
                 {%- set status =
                   'critical' if 'critical' in req else
@@ -350,16 +347,20 @@ template:
                   {%- set note = 'dojo_not_loaded' %}
                 {%- elif not kata_summary %}
                   {%- set note = 'kata_summary_missing' %}
+                {%- elif ag_ess_status != 'ok' %}
+                  {%- set _miss = ag_probe.get('missing', []) | join(',') if ag_probe is mapping else '' %}
+                  {%- set note = 'essence_' ~ ag_ess_status ~ ':' ~ _miss %}
                 {%- else %}
                   {%- set note = 'ready' %}
                 {%- endif %}
 
                 {%- set row = {
-                  'name':   ag_name,
-                  'cab':    ag_cab,
-                  'status': status,
-                  'agent':  agent,
-                  'note':   note
+                  'name':    ag_name,
+                  'cab':     ag_cab,
+                  'status':  status,
+                  'agent':   agent,
+                  'note':    note,
+                  'essence': ag_probe
                 } %}
                 {%- set ns.rows = ns.rows + [row] %}
               {%- endif %}
@@ -401,11 +402,9 @@ template:
             {%- if def_cab == '' or states(def_cab) in ['unknown','unavailable'] %}
               none
             {%- else %}
-              {%- set essence = (state_attr(def_cab, 'variables') | default({}, true))
-                                .get('zenai_essence', {}) %}
-              {%- set essence_val = essence.get('value', essence) if essence is mapping else {} %}
-              {{- (essence_val.get('identity', {}).get('name', 'none')
-                   if essence_val is mapping else 'none') }}
+              {%- import 'zenos_ai/zenos_health.jinja' as health %}
+              {%- set _probe = health.essence_probe(def_cab) | from_json %}
+              {{- _probe.get('name', 'none') if _probe is mapping else 'none' }}
             {%- endif %}
 
           conversation_entity: >-
@@ -429,19 +428,16 @@ template:
         availability: "true"
 
         options: >-
+          {%- import 'zenos_ai/zenos_health.jinja' as health %}
           {%- set all_ai_cabs = label_entities('zen_ai_user_cabinet')
                                 | select('match', 'sensor\\.') | list %}
           {%- set ns = namespace(names=[]) %}
           {%- for cab in all_ai_cabs %}
             {%- if states(cab) not in ['unknown', 'unavailable'] %}
-              {%- set ag_vars = state_attr(cab, 'variables') | default({}, true) %}
-              {%- set ag_essence = ag_vars.get('zenai_essence', {}) %}
-              {%- set ag_ev = ag_essence.get('value', ag_essence) if ag_essence is mapping else {} %}
-              {%- set ag_identity = ag_ev.get('identity', {}) if ag_ev is mapping else {} %}
-              {%- set ag_name = (ag_identity.get('name', '') | string | trim)
-                                if ag_identity is mapping else '' %}
-              {%- if ag_name != '' %}
-                {%- set ns.names = ns.names + [ag_name] %}
+              {%- set _p = health.essence_probe(cab) | from_json %}
+              {%- set _n = (_p.get('name', '') | string | trim) if _p is mapping else '' %}
+              {%- if _n != '' %}
+                {%- set ns.names = ns.names + [_n] %}
               {%- endif %}
             {%- endif %}
           {%- endfor %}
@@ -454,11 +450,9 @@ template:
           {%- else %}
             {%- set def_cab = states('sensor.zen_default_ai_user_cabinet_resolved') %}
             {%- if def_cab != '' and states(def_cab) not in ['unknown', 'unavailable'] %}
-              {%- set ag_vars = state_attr(def_cab, 'variables') | default({}, true) %}
-              {%- set ag_essence = ag_vars.get('zenai_essence', {}) %}
-              {%- set ag_ev = ag_essence.get('value', ag_essence) if ag_essence is mapping else {} %}
-              {%- set ag_identity = ag_ev.get('identity', {}) if ag_ev is mapping else {} %}
-              {{- (ag_identity.get('name', '') | string | trim) if ag_identity is mapping else '' }}
+              {%- import 'zenos_ai/zenos_health.jinja' as health %}
+              {%- set _p = health.essence_probe(def_cab) | from_json %}
+              {{- (_p.get('name', '') | string | trim) if _p is mapping else '' }}
             {%- else %}
               none
             {%- endif %}

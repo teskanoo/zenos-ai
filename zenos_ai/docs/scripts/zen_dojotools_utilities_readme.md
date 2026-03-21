@@ -1,4 +1,4 @@
-# Zen DojoTools Utilities — 4.2.0
+# Zen DojoTools Utilities — 4.3.0 'Meridian'
 
 *Calculator, dice, announcements, music search, notifications, system help, and misc tools*
 

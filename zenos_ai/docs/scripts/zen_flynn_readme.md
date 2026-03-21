@@ -1,4 +1,4 @@
-# Flynn — Stepgate Sentinel & Bootstrap Engine — 4.2.1
+# Flynn — Stepgate Sentinel & Bootstrap Engine — 4.3.0 'Meridian'
 
 *ZenOS-AI's boot guard, initializer, and onboarding driver*
 
@@ -133,7 +133,7 @@ If `zen_monastery_health == critical`, Flynn calls `script.flynn_bootstrap_conte
 2. **Auto-resolves reasoning task** — reads `input_text.zenos_reasoning_task`. If unset and exactly one conversation entity exists, auto-writes it. Multiple found with none configured → stops with notification.
 3. **Auto-resolves AI task entity** — reads `input_text.zenos_ai_task_entity`. Same auto-resolve logic. Zero found = non-fatal (summarizer degrades gracefully).
 4. **Seeds household name** — non-destructive write to `_household_name` drawer.
-5. **Seeds AI persona essence** — writes default essence with `identity.name = 'your AI'` as placeholder (non-destructive — skips if drawer already exists).
+5. **Seeds AI persona essence** — writes default legacy-schema essence with `identity.name = 'your AI'` as placeholder (non-destructive — skips if drawer already exists). Three-layer cabinets already have a real name stamped at mint; this step is a no-op for them.
 6. **Seeds schema templates** — calls `reset_template` if either template drawer is missing.
 7. **Loads prompt substrate** — calls `zen_admintools_zenos_prompt_loader` (Cortex, Directives, Purpose).
 8. **Flags completion** — calls `flynn_unified_engine` with `action_type: flag_complete`.
@@ -147,7 +147,7 @@ If `zen_monastery_health == critical`, Flynn calls `script.flynn_bootstrap_conte
 Runs after Gate 3, with a 10-second delay to let Gate 3 writes settle.
 
 **OOBE is pending when:**
-- The AI user cabinet's `zenai_essence` has `identity.name` = `''` or `'your AI'` (placeholder)
+- The AI user cabinet's persona name resolves to `''` or `'your AI'` — checked via `essence_probe()` which handles both legacy (`identity.name`) and three-layer (`jacket.name`) schemas
 - AND no `_oobe_complete` flag exists in the cabinet
 
 **Pending name values:** `''`, `'your AI'`, `'unknown'` (all treated as placeholder — system will prompt for a real name)

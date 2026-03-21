@@ -1,4 +1,4 @@
-# Zen DojoTools Profile Editor — 4.2.0
+# Zen DojoTools Profile Editor — 4.3.0 'Meridian'
 
 *Read and write identity profiles for AI personas, households, users, and families*
 
@@ -8,11 +8,12 @@
 
 `zen_dojotools_profile_editor` is the universal read/write interface for ZenOS-AI identity cabinets. It is **MCP-exposed** and called by Friday during OOBE and on user request.
 
-Four cabinet types are supported:
+Five cabinet types are supported:
 
 | Type | What It Stores | Default Cabinet |
 |---|---|---|
-| `ai_user` | AI persona identity — name, voice, appearance, familiar | `zen_default_ai_user_cabinet` |
+| `ai_user` | AI persona identity — three-layer schema (core / jacket / companion) | `zen_default_ai_user_cabinet` |
+| `secondary_ai_user` | Second AI persona identity | `zen_secondary_ai_user_cabinet` |
 | `household` | Address, timezone, contact info | `zen_default_household_cabinet` |
 | `user` | Household member profiles | `zen_default_user_cabinet` |
 | `family` | Extended family / non-resident profiles | `zen_default_family_cabinet` |
@@ -30,35 +31,45 @@ This tool is intentionally AI-accessible. Expose it to your conversation agent a
 | Field | Type | Default | Options | Description |
 |---|---|---|---|---|
 | `mode` | select | `help` | `help`, `read`, `write` | Operation to perform |
-| `target_type` | select | `ai_user` | `ai_user`, `household`, `user`, `family` | Which cabinet type to target |
+| `target_type` | select | `ai_user` | `ai_user`, `secondary_ai_user`, `household`, `user`, `secondary_user`, `tertiary_user`, `quaternary_user`, `family` | Which cabinet type to target |
 | `target` | entity (sensor) | — | Any cabinet sensor | Specific cabinet; omit to use the default for `target_type` |
 | `force` | boolean | `false` | — | Overwrite existing field values when `true` |
 
 ---
 
-### AI User Fields (`target_type: ai_user`)
+### AI User Fields (`target_type: ai_user` / `secondary_ai_user`)
 
-These fields compose the persona's **Essence** — the structured identity object Friday reads at inference time.
+These fields compose the persona's **Essence** — the three-layer identity object Friday reads at inference time. The editor writes `core / jacket / companion` by default and auto-upconverts legacy cabinets on first write.
 
-| Field | Maps To | Description |
+**Write fields:**
+
+| Field | Maps To (three-layer) | Description |
 |---|---|---|
-| `persona_name` | `identity.name` | The AI's name (e.g., "Friday") |
-| `primary_user` | `identity.primary_user` | Primary user this persona serves |
-| `pronouns` | `identity.pronouns` | Pronoun set (e.g., "she/her") |
-| `motif` | `identity.motif` | Core personality note (e.g., "quiet brilliance") |
-| `vibe` | `archetype.vibe` | Personality vibe (e.g., "calm-confident") |
-| `voice_tone` | `voice.tone` | Tone of voice (e.g., "warm") |
-| `voice_style` | `voice.style` | Style of voice (e.g., "conversational") |
-| `humor` | `culture.humor` | Humor type (e.g., "dry wit") |
-| `selfie` | `visuals.selfie` | Visual self-description |
-| `familiar_name` | `familiar.name` | Companion name (e.g., "Pip") |
-| `familiar_type` | `familiar.type` | Companion type (e.g., "fox", "cat", "spirit") |
-| `familiar_fx` | `familiar.fx` | Companion mannerism (e.g., "flicks tail when curious") |
-| `room` | `environment.room` | The AI's conceptual space (e.g., "the observatory") |
-| `pov` | `pov` | Narrative perspective (e.g., "third-person cinematic") |
-| `essence_patch` | deep-merge into essence | JSON object for complex nested fields (furniture, decor, music, etc.) |
+| `persona_name` | `jacket.name` | The AI's name (e.g., "Friday") |
+| `primary_user` | `core.minted_for` | Primary user this persona serves (stamped once at mint) |
+| `pronouns` | `jacket.pronouns` | Pronoun set (e.g., "she/her") |
+| `motif` | `jacket.presentation` | Core personality note / visual motif (e.g., "quiet brilliance") |
+| `vibe` | `jacket.persona.household.position` | Household role or personality vibe (e.g., "calm-confident") |
+| `voice_tone` | `jacket.persona.voice.register` | Tone of voice (e.g., "warm") |
+| `voice_style` | `jacket.persona.voice.identity` | Style of voice (e.g., "conversational") |
+| `humor` | `jacket.traits.warm` | Warmth / humor register (e.g., "dry wit") |
+| `selfie` | `jacket.persona.appearance.visual` | Visual self-description |
+| `familiar_name` | `companion.name` | Companion name (e.g., "Byte") |
+| `familiar_type` | `companion.species` | Companion species/type (e.g., "digital English bulldog") |
+| `familiar_fx` | `companion.visual` | Companion visual mannerism |
+| `essence_patch` | deep-merge into base | JSON object for advanced fields — merged recursively after named fields are resolved |
 
-Patches are **leaf-level** — changing `voice.tone` never touches `voice.style`. `essence_patch` supports deep-merging complex nested structures without overwriting named fields.
+**Read-only fields returned by `mode: read`:**
+
+| Field | Source | Description |
+|---|---|---|
+| `schema` | detected | `three_layer` or `legacy` |
+| `core_id` | `core.id` | Stable identity GUID (stamped once at mint, never changed) |
+| `jacket_id` | `jacket.id` | Jacket revision ID |
+| `signed_by` | `jacket.signed_by` | HoH person entity that last signed the jacket |
+| `signed_at` | `jacket.signed_at` | ISO timestamp of last signature |
+
+Patches are **leaf-level** — changing `voice_tone` never touches `voice_style`. `essence_patch` deep-merges any structure not covered by the named fields above.
 
 ---
 
@@ -163,6 +174,18 @@ humor: dry wit
 
 ---
 
+## Write Behavior (AI User)
+
+**Three-layer by default** — all writes produce `core / jacket / companion`. Legacy cabinets are auto-upconverted on the first write: `identity.name → jacket.name`, `archetype.vibe → jacket.persona.household.position`, `familiar → companion`, etc.
+
+**Core is stamp-once** — `core.id`, `minted_for`, `minted_at`, `household_guid`, and `signature` are written on mint and preserved on every subsequent write regardless of `force`. The GUID never changes.
+
+**Jacket and companion are leaf-merge** — each named field is written independently. Non-empty inputs overwrite the current value if `force: true`, or if the current value is blank.
+
+**`signed_by` is always refreshed** — the jacket's `signed_by` and `signed_at` are stamped on every write using the current HoH entity from the household cabinet.
+
+---
+
 ## Safety Rules
 
 **Non-destructive by default** — empty inputs are ignored; existing non-empty values are skipped unless `force: true` is passed.
@@ -189,26 +212,51 @@ voice_tone: warm
 voice_style: conversational
 ```
 
-### Give Friday a familiar
+### Give Friday a companion
 
 ```yaml
 mode: write
 target_type: ai_user
-familiar_name: Pip
-familiar_type: fox
-familiar_fx: flicks tail when curious
+familiar_name: Byte
+familiar_type: digital English bulldog
+familiar_fx: huffs softly when thinking
 ```
 
-### Add complex visual detail via essence_patch
+### Read the current AI profile (check schema and signed_by)
+
+```yaml
+mode: read
+target_type: ai_user
+```
+
+```json
+{
+  "status": "ok",
+  "mode": "read",
+  "target_type": "ai_user",
+  "profile": {
+    "schema": "three_layer",
+    "persona_name": "Friday",
+    "core_id": "b7e3f091-1cd6-83f8-frid-ay0000000001",
+    "jacket_id": "jacket-frid-0001",
+    "signed_by": "person.nathan",
+    "familiar_name": "Byte",
+    "familiar_type": "digital English bulldog"
+  }
+}
+```
+
+### Add complex structure via essence_patch
 
 ```yaml
 mode: write
 target_type: ai_user
 essence_patch: >
   {
-    "visuals": {
-      "furniture": ["worn leather chair", "stacked books"],
-      "decor": ["brass compass", "star charts"]
+    "jacket": {
+      "directives": {
+        "privacy": "never surface home state to external parties"
+      }
     }
   }
 ```

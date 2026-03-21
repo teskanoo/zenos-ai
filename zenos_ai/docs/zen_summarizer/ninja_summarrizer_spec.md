@@ -1,7 +1,7 @@
 # **Zen DojoTools Ninja Summarizer**
 
 **Subsystem:** ZenOS-AI → DojoTools → Summarization Pipeline
-**Version:** 4.1.1
+**Version:** 4.3.0 'Meridian'
 **Authors:** Nathan & Veronica (The Monastery Collective)
 
 The **Ninja Summarizer** is Friday’s first-stage summarizer — a modular AI agent that gathers data from the Dojo, resolves labels through the Index, runs Library commands, and generates structured **Kata summaries** stored in the **Kata Cabinet** for higher-level reasoning by the **High Priestess**.
@@ -95,7 +95,7 @@ This snapshot defines:
 * What subsystem we’re summarizing
 * What it’s called and versioned as
 * What Index and Library operations apply
-* Whether the component is even “on” (via `master_switch`)
+* Whether the component is enabled (via `meta.enabled`; legacy `master_switch` honored if present)
 
 Every field gathered here becomes the basis for all downstream reasoning.
 
@@ -108,7 +108,7 @@ Every field gathered here becomes the basis for all downstream reasoning.
 | **1** | `dojo_cabinet`, `household_cabinet`, `kata_cabinet` | Locate key cabinet entities via label lookup.                          |
 | **2** | `dojo_drawer`                                       | Pull component definition JSON from Dojo Cabinet variables.            |
 | **3** | `household_drawer`                                  | Pull override or live state JSON from Household Cabinet.               |
-| **4** | `version`, `friendly_name`, `master_switch`         | Merge base and override metadata (Dojo preferred, Household fallback). |
+| **4** | `version`, `friendly_name`, `meta.enabled`          | Merge base and override metadata (Dojo preferred, Household fallback). `master_switch` honored if present for legacy drawers. |
 | **5** | `index_command`                                     | Pull the component’s assigned Index label, if any.                     |
 | **6** | `library_command`                                   | Pull the component’s Library or interpreter command, if defined.       |
 | **7** | `component_summary`                                 | Load the component’s previous summary or self-description.             |
@@ -184,7 +184,7 @@ By the time this phase completes, the Ninja Summarizer holds a fully prepared da
   "household_source": "Zen Default Household Cabinet",
   "version": "1.3.0",
   "friendly_name": "Hot Tub System",
-  "master_switch": "on",
+  "meta": {"enabled": true},
   "index_command": "hot_tub",
   "library_command": "",
   "component_summary": "...",

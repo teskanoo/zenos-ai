@@ -1,4 +1,4 @@
-# Zen DojoTools FileCabinet — 4.2.0
+# Zen DojoTools FileCabinet — 4.3.0 'Meridian'
 **File:** `zen_dojotools_filecabinet_readme.md`  
 **Type:** Technical Documentation  
 

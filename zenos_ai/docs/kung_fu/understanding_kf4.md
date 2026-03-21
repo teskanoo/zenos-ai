@@ -39,7 +39,8 @@ Here's what a real one looks like (Water Manager):
 ```yaml
 friendly_name:    Water Manager
 label:            Water Manager
-master_switch:    input_boolean.water_manager_master_switch
+meta:
+  enabled:        true
 trigger_subscriptions:
   - daily_midnight
   - water_flow_stop
@@ -61,7 +62,7 @@ That's it. That drawer is the entire spec for how ZenOS-AI understands your wate
 |-------|--------------|
 | `friendly_name` | Human-readable name |
 | `label` | The HA label that defines which entities belong to this component |
-| `master_switch` | The toggle that enables/disables this component |
+| `meta.enabled` | Whether this component is active (`true` / `false`). Replaces the deprecated `master_switch` field. |
 | `trigger_subscriptions` | Which Scheduler events cause this component to summarize |
 | `delay_seconds` | How long to wait after trigger before dispatching (lower = higher priority) |
 | `kata_key` | Where to write the summary output |
@@ -213,5 +214,5 @@ zen_dojotools_index → key: kung_fu → Dojo Cabinet
 
 ---
 
-*ZenOS-AI KF4 RC2 — 2026-03-11*
-*Source: Nyx (live system observation), Cait (dev)*
+*ZenOS-AI KF4 1.2.0 — 2026-03-20*
+*Source: Nyx (live system observation), Cayt (dev)*

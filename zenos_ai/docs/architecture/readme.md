@@ -1,6 +1,6 @@
 # **ZenOS-AI Architecture Series — Preamble & Orientation**
 
-### *(ZenOS-AI 4.2.0 — Identity subsystem v1.x shipped; Tool-shunt security models targeted for v.next)*
+### *(ZenOS-AI 4.3.0 'Meridian' — Identity subsystem v1.x shipped; Tool-shunt security models targeted for v.next)*
 
 ---
 
@@ -23,7 +23,7 @@ The goal is not simply to describe the system — but to make its reasoning and 
 
 ## **Scope and Release Notes**
 
-This series documents **ZenOS-AI 4.2.0**.
+This series documents **ZenOS-AI 4.3.0 'Meridian'**.
 
 Two subsystems have explicit release caveats:
 

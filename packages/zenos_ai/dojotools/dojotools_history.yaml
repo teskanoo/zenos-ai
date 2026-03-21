@@ -176,6 +176,7 @@ script:
               code: H-0001
               reason: Temporal Paradox
               detail: You cannot create history. You are not the Doctor.
+              caller_token: '{{ caller_token }}'
         - stop: Create complete
           response_variable: history_result
       - conditions:
@@ -189,6 +190,7 @@ script:
               code: H-0002
               reason: Redaction Denied
               detail: This isn’t a reality show. You don’t get to delete the past.
+              caller_token: ‘{{ caller_token }}’
         - stop: Delete complete
           response_variable: history_result
       - conditions:
@@ -203,8 +205,9 @@ script:
               reason: Zen Violation
               detail: 'You cannot rewrite history. You can, however, learn from it.
                 See: https://www.goodreads.com/quotes/tag/change
-  
+
                 '
+              caller_token: '{{ caller_token }}'
         - stop: Update complete
           response_variable: history_result
       - conditions:
@@ -280,6 +283,14 @@ script:
         description: Optional label for trace/logging
         selector:
           text:
+      caller_token:
+        name: Caller Token
+        required: false
+        default: ''
+        selector:
+          text:
+        description: 'Reserved. Governance stub — echoed in response. SP1 enforcement
+          not yet active.'
     description: "Zen DojoTools History (4.0.0 RC2)\nHistory Stats for Homeassistant.\nUses
       recorder.get_statistics for current entity stats.\nCRITICAL:\n  Read HELP for
       detailed use, including information on targeting.\n  Read HELP - cheat_sheet for

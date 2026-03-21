@@ -73,6 +73,12 @@ script:
             - guidgen
             translation_key: operator
             custom_value: false
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
     sequence:
     - variables:
         n1: '{{ number_1 | default(0) | float(0) }}'
@@ -107,6 +113,8 @@ script:
           %}\n  {{ myGUID }}\n{% else %}\n  'Error: Unknown operator'\n{% endif %}\n"
         out: "{{\n  {\n    \"number_1\": n1,\n    \"number_2\": n2,\n    \"operator\":
           op,\n    \"result\": result\n  } | tojson\n}}\n"
+    - variables:
+        out: "{{ (out | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
     - stop: Calculator done
       response_variable: out
   zen_dojotools_dice_roller:
@@ -153,6 +161,12 @@ script:
             step: 1
             mode: box
         description: Only used for random number modes.
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
     sequence:
     - variables:
         md: '{{ mode | lower }}'
@@ -180,6 +194,8 @@ script:
         out: '{{ result }}
   
           '
+    - variables:
+        out: "{{ out | combine({'caller_token': caller_token | default('')}) if out is mapping else out }}"
     - stop: Dice/Random complete
       response_variable: out
     icon: mdi:dice-d20-outline
@@ -225,6 +241,8 @@ script:
         for_each: '{{ area }}'
     - variables:
         final_response: "{{\n  {\n    \"results\": results\n  } | tojson\n}}"
+    - variables:
+        final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
     - stop: Pass Variable
       response_variable: final_response
     fields:
@@ -243,6 +261,12 @@ script:
         description: Message to be announced using your default TTS in your area(s)
           selected. (Short message, max 255 char, no encyclopedias)
         required: true
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
     alias: Zen DojoTools Announce
     description: "Zen DojoTools Announce (0.0.9)\n\nShort Message Audible Announcement
       router.\nUses Media Manager Rules to identify the correct TTS endpoint, use index
@@ -312,6 +336,12 @@ script:
         name: Media Type
         description: 'Optional filter search to any of: artist, album, track, playlist,
           radi0, audiobook, podcast'
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
     alias: Zen Dojotools Music Search
     description: "Zen Dojotools Music Search (1.0.1) Search helper for Music Assistant.
       \nSearch for music and other audio in the Music Assistant Database by specific
@@ -335,6 +365,12 @@ script:
             options:
               - about
         default: about
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
     sequence:
     - variables:
         tool_version: "4.0.0 RC2"
@@ -438,6 +474,8 @@ script:
               "contacts": contacts | default({})
             }
           }}
+    - variables:
+        about_response: "{{ about_response | combine({'caller_token': caller_token | default('')}) if about_response is mapping else about_response }}"
     - stop: Return About Response
       response_variable: about_response
 
@@ -452,6 +490,7 @@ script:
         _wait_response:
           status: success
           message: '{{ duration }} second wait complete'
+          caller_token: '{{ caller_token }}'
     - stop: done
       response_variable: _wait_response
     fields:
@@ -465,6 +504,12 @@ script:
         description: Duration to wait in seconds. Default, 15 seconds.
         default: 15
         required: true
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
     alias: Zen DojoTools Wait
     description: 'Use this tool to insert a timed delay of 1–120 seconds (default: 15)
       between actions in a conversation or chained tool call. Useful for narrative pacing,
@@ -502,6 +547,12 @@ script:
         selector:
           boolean:
         default: false
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
     sequence:
     - variables:
         _labels_in: >-
@@ -565,6 +616,7 @@ script:
           status: success
           message: Volume audit complete
           result: '{{ _report }}'
+          caller_token: '{{ caller_token }}'
     - stop: done
       response_variable: final_response
 
@@ -748,6 +800,12 @@ script:
         name: Breakthrough Work / Quiet Hours?
         description: Request break through work or quiet hours notify blocks...  Use
           for emergency or critical situations.
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
     sequence:
     - variables:
         notification_devices: "{% set t = ( notification_targets | string ) | trim %}
@@ -872,5 +930,7 @@ script:
           breakthrough_allowed}) %} {% endif %}   {%- if data is defined and data !=
           none %} {% set ns.d = ns.d | combine({''data'': data}) %} {% endif %} {{ ns.d
           }}'
+    - variables:
+        result: "{{ result | combine({'caller_token': caller_token | default('')}) if result is mapping else result }}"
     - stop: Pass Variables
       response_variable: result

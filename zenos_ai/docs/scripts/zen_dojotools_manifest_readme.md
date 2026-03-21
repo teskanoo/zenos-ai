@@ -1,4 +1,4 @@
-# Zen DojoTools Manifest — 4.2.0
+# Zen DojoTools Manifest — 4.3.0 'Meridian'
 **File:** `zen_dojotools_manifest_readme.md`  
 **Type:** Technical Documentation  
 

@@ -272,25 +272,29 @@ automation:
         _protected: "['AI_Cabinet_VolumeInfo', 'kfc_template', 'zen_library_manifest', '_context']"
         _subscribers: >-
           {%- set dojo_vars = state_attr(_dojo_cab, 'variables') | default({}, true) -%}
-          {%- set _raw_trig = trigger.id | default('') -%}
-          {%- set trig_id   = 'ha_start' if _raw_trig == 'force_ninja' else _raw_trig -%}
-          {%- set force_c   = zen_event_component | default('', true) | slugify -%}
-          {%- set protected = ['AI_Cabinet_VolumeInfo', 'kfc_template', 'zen_library_manifest', '_context'] -%}
-          {%- set ns = namespace(subs=[]) -%}
-          {%- for key, drawer in dojo_vars.items() -%}
-            {%- if not key.startswith('_') and key not in protected -%}
-              {%- set val = drawer.get('value', drawer) if drawer is mapping else {} -%}
-              {%- if val is mapping -%}
-                {%- set sub_list  = val.get('trigger_subscriptions', []) -%}
-                {%- set subscribed = trig_id in sub_list -%}
-                {%- set targeted   = force_c == '' or force_c == key -%}
-                {%- if subscribed and targeted -%}
-                  {%- set ns.subs = ns.subs + [val | combine({'_drawer_key': key})] -%}
+          {%- if _dojo_cab in ['unknown', 'unavailable'] or _kata_cab in ['unknown', 'unavailable'] -%}
+            {{ [] }}
+          {%- else -%}
+            {%- set _raw_trig = trigger.id | default('') -%}
+            {%- set trig_id   = 'ha_start' if _raw_trig == 'force_ninja' else _raw_trig -%}
+            {%- set force_c   = zen_event_component | default('', true) | slugify -%}
+            {%- set protected = ['AI_Cabinet_VolumeInfo', 'kfc_template', 'zen_library_manifest', '_context'] -%}
+            {%- set ns = namespace(subs=[]) -%}
+            {%- for key, drawer in dojo_vars.items() -%}
+              {%- if not key.startswith('_') and key not in protected -%}
+                {%- set val = drawer.get('value', drawer) if drawer is mapping else {} -%}
+                {%- if val is mapping -%}
+                  {%- set sub_list  = val.get('trigger_subscriptions', []) -%}
+                  {%- set subscribed = trig_id in sub_list -%}
+                  {%- set targeted   = force_c == '' or force_c == key -%}
+                  {%- if subscribed and targeted -%}
+                    {%- set ns.subs = ns.subs + [val | combine({'_drawer_key': key})] -%}
+                  {%- endif -%}
                 {%- endif -%}
               {%- endif -%}
-            {%- endif -%}
-          {%- endfor -%}
-          {{ ns.subs | sort(attribute='delay_seconds') }}
+            {%- endfor -%}
+            {{ ns.subs | sort(attribute='delay_seconds') }}
+          {%- endif -%}
 
     - if: "{{ trigger.id != 'force_supersummary' }}"
       then:
@@ -340,8 +344,6 @@ automation:
             {{ trigger.to_state.entity_id }}
           {%- elif 'entity_id' in trigger -%}
             {{ trigger.entity_id }}
-          {%- else -%}
-            ''
           {%- endif -%}
         this_trigger: >-
           {{

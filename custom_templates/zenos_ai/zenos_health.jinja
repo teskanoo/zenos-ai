@@ -13,8 +13,12 @@ Provides mapping of slots to names
         'default_family':    'Zen Default Family Cabinet',
         'user':              'Zen User Cabinet',
         'default_user':      'Zen Default User Cabinet',
+        'secondary_user':    'Zen Secondary User Cabinet',
+        'tertiary_user':     'Zen Tertiary User Cabinet',
+        'quaternary_user':   'Zen Quaternary User Cabinet',
         'ai_user':           'Zen AI User Cabinet',
         'default_ai_user':   'Zen Default AI User Cabinet',
+        'secondary_ai_user': 'Zen Secondary AI User Cabinet',
         'history':           'Zen History Cabinet',
         'index':             'Zen Index Cabinet'
     }
@@ -45,6 +49,10 @@ Provides mapping of slots to default entities
         'default_family':    'sensor.zenos_default_family_cabinet',
         'default_user':      'sensor.zenos_default_user_cabinet',
         'default_ai_user':   'sensor.zenos_default_ai_user_cabinet',
+        'secondary_user':    'sensor.zenos_secondary_user_cabinet',
+        'tertiary_user':     'sensor.zenos_tertiary_user_cabinet',
+        'quaternary_user':   'sensor.zenos_quaternary_user_cabinet',
+        'secondary_ai_user': 'sensor.zenos_secondary_ai_user_cabinet',
         'history':           'sensor.zenos_history_cabinet',
         'index':             'sensor.zenos_scratchpad_cabinet'
     }
@@ -62,6 +70,8 @@ Provides mapping of slots to default entities
         'Zen Default User Cabinet','Zen Default AI User Cabinet',
         'Zen Household Cabinet','Zen Family Cabinet',
         'Zen User Cabinet','Zen AI User Cabinet',
+        'Zen Secondary User Cabinet','Zen Tertiary User Cabinet',
+        'Zen Quaternary User Cabinet','Zen Secondary AI User Cabinet',
         'Zen History Cabinet','Zen Index Cabinet'
     ] -%}
     {{- required | to_json(pretty_print=true) -}}
@@ -113,6 +123,88 @@ Provides mapping of slots to default entities
 {%- endmacro -%}
 
 {#- ################################################# -#}
+{#-
+#######################################################################
+# ESSENCE PROBE
+# Reads zenai_essence from a cabinet entity and returns a JSON
+# diagnostic dict. Caller pipes through | from_json.
+#
+# schema:  three_layer | legacy | empty
+# status:  ok | warn | error
+#   ok    — name + guid present, signed_by valid (three_layer),
+#           household_guid stamped, companion present
+#   warn  — name + guid present but secondary fields missing
+#   error — no essence, or name/guid absent
+#
+# Fields returned:
+#   schema, valid, name, guid, jacket_id, signed_by, signed_by_ok,
+#   has_companion, has_household_guid, missing[], status
+#######################################################################
+-#}
+{%- macro essence_probe(cab) -%}
+  {%- set _av = state_attr(cab, 'variables') | default({}, true)
+                if (cab != '' and cab not in ['unknown','unavailable']
+                    and states(cab) not in ['unknown','unavailable'])
+                else {} -%}
+  {%- set _raw = _av.get('zenai_essence', {}) if _av is mapping else {} -%}
+  {%- set _r1  = _raw.get('value', _raw) if _raw is mapping else {} -%}
+  {%- set _ev  = _r1 if _r1 is mapping else (_r1 | from_json if _r1 is string else {}) -%}
+  {%- if not (_ev is mapping and _ev) -%}
+    {{- {'schema': 'empty', 'valid': false, 'name': '', 'guid': '', 'jacket_id': '',
+         'signed_by': '', 'signed_by_ok': false,
+         'has_companion': false, 'has_household_guid': false,
+         'missing': ['essence'], 'status': 'error'} | tojson -}}
+  {%- else -%}
+    {%- set _is_new = _ev.get('core') is mapping and _ev.get('jacket') is mapping -%}
+    {%- if _is_new -%}
+      {%- set _co        = _ev.get('core', {}) -%}
+      {%- set _j         = _ev.get('jacket', {}) -%}
+      {%- set _schema    = 'three_layer' -%}
+      {%- set _name      = _j.get('name', '') | string | trim -%}
+      {%- set _guid      = _co.get('id', '') | string | trim -%}
+      {%- set _jacket_id = _j.get('id', '') | string | trim -%}
+      {%- set _signed_by = _j.get('signed_by', '') | string | trim -%}
+      {%- set _hh_guid   = _co.get('household_guid', '') | string | trim -%}
+      {%- set _cmp       = _ev.get('companion', {}) if _ev.get('companion') is mapping else {} -%}
+      {%- set _has_cmp   = _cmp.get('name', '') | trim != '' -%}
+    {%- else -%}
+      {%- set _id        = _ev.get('identity', {}) if _ev.get('identity') is mapping else {} -%}
+      {%- set _fa        = _ev.get('familiar', {}) if _ev.get('familiar') is mapping else {} -%}
+      {%- set _schema    = 'legacy' -%}
+      {%- set _name      = _id.get('name', '') | string | trim -%}
+      {%- set _guid      = _id.get('guid', '') | string | trim -%}
+      {%- set _jacket_id = '' -%}
+      {%- set _signed_by = '' -%}
+      {%- set _hh_guid   = _id.get('household_id', '') | string | trim -%}
+      {%- set _has_cmp   = _fa.get('name', '') | trim != '' -%}
+    {%- endif -%}
+    {%- set _signed_ok = _signed_by.startswith('person.') if _signed_by != '' else false -%}
+    {%- set ns = namespace(miss=[]) -%}
+    {%- if _name      == '' -%}{%- set ns.miss = ns.miss + ['name'] -%}{%- endif -%}
+    {%- if _guid      == '' -%}{%- set ns.miss = ns.miss + ['guid'] -%}{%- endif -%}
+    {%- if _is_new and not _signed_ok -%}{%- set ns.miss = ns.miss + ['signed_by'] -%}{%- endif -%}
+    {%- if _hh_guid   == '' -%}{%- set ns.miss = ns.miss + ['household_guid'] -%}{%- endif -%}
+    {%- if not _has_cmp -%}{%- set ns.miss = ns.miss + ['companion'] -%}{%- endif -%}
+    {%- set _status =
+      'error' if ('name' in ns.miss or 'guid' in ns.miss) else
+      'warn'  if ns.miss | length > 0 else
+      'ok' -%}
+    {{- {
+      'schema':            _schema,
+      'valid':             true,
+      'name':              _name,
+      'guid':              _guid,
+      'jacket_id':         _jacket_id,
+      'signed_by':         _signed_by,
+      'signed_by_ok':      _signed_ok,
+      'has_companion':     _has_cmp,
+      'has_household_guid': (_hh_guid != ''),
+      'missing':           ns.miss,
+      'status':            _status
+    } | tojson -}}
+  {%- endif -%}
+{%- endmacro -%}
+
 {%- macro unhealthy_label_ids() -%}
     {%- set ns = namespace(unhealthy=[]) -%}
     {%- for lid in existing_label_ids() | from_json([]) -%}
@@ -174,7 +266,9 @@ Provides mapping of slots to default entities
         'household','default_household',
         'family','default_family',
         'user','default_user',
+        'secondary_user','tertiary_user','quaternary_user',
         'ai_user','default_ai_user',
+        'secondary_ai_user',
         'history','index'
     ] | to_json(pretty_print=true) -}}
 {%- endmacro -%}
@@ -193,6 +287,8 @@ Provides mapping of slots to default entities
     {{- [
         'household','family',
         'user','ai_user',
+        'secondary_user','tertiary_user','quaternary_user',
+        'secondary_ai_user',
         'history','index'
     ] | to_json(pretty_print=true) -}}
 {%- endmacro -%}

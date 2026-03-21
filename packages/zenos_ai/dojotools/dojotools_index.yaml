@@ -81,6 +81,14 @@ script:
           text:
         description: 'Reserved. No-op in current version — Query returns entity IDs
           only.'
+      caller_token:
+        name: Caller Token
+        required: false
+        default: ''
+        selector:
+          text:
+        description: 'Reserved. Governance stub — echoed in response. SP1 enforcement
+          not yet active.'
     sequence:
     - alias: Show Help
       choose:
@@ -230,6 +238,7 @@ script:
           domain: '{{ filter_domain }}'
           baselist: '{{ auto_base_list }}'
           result: '{{ result }}'
+          caller_token: '{{ caller_token }}'
     - stop: Return query result
       response_variable: final
 
@@ -413,6 +422,7 @@ script:
             action_type: read
             volume_entity_id: "{{ states('sensor.zen_dojo_cabinet_resolved') }}"
             label_targets: '{{ label_targets_input | join('','') }}'
+            caller_token: '{{ caller_token }}'
           response_variable: _fc_label_response
         - variables:
             _fc_raw: "{{ _fc_label_response.result | default('{}') }}"
@@ -430,6 +440,7 @@ script:
             extended: '{{ extended_mode }}'
             infer: '{{ infer_mode }}'
             timeout: '{{ timeout_s }}'
+          caller_token: '{{ caller_token }}'
           error:
     - stop: Inspect complete
       response_variable: inspect_result
@@ -486,6 +497,14 @@ script:
         name: Timeout
         default: 60
         required: false
+      caller_token:
+        name: Caller Token
+        required: false
+        default: ''
+        selector:
+          text:
+        description: 'Reserved. Governance stub — echoed in response. SP1 enforcement
+          not yet active.'
     icon: mdi:magnify
 
   zen_dojotools_index:
@@ -501,6 +520,7 @@ script:
           data:
             mode: help
             filter_json: '{} '
+            caller_token: '{{ caller_token }}'
           response_variable: zen_query_help
         - variables:
             query_help: '{{ zen_query_help | default({}) | tojson }}'
@@ -711,11 +731,11 @@ script:
         index_command: ''
         op1: "{% set ents = simple if (simple is defined and simple) else [] %} {% if
           ents | length == 0 %}\n  {% set ents = entities_1 | default([]) %}\n  {% if
-          ents | length == 0 and label_1 %}\n    {{ label_entities(label_1) }}\n  {%
+          ents | length == 0 and label_1 %}\n    {{ label_entities(label_1 | slugify) }}\n  {%
           else %}\n    {{ ents }}\n  {% endif %}\n{% else %}\n  {{ ents }}\n{% endif
           %}"
         op2: "{% set ents = entities_2 | default([]) %} {% if ents | length == 0 and
-          label_2 %}\n  {{ label_entities(label_2) }}\n{% else %}\n  {{ ents }}\n{%
+          label_2 %}\n  {{ label_entities(label_2 | slugify) }}\n{% else %}\n  {{ ents }}\n{%
           endif %}"
         op1_empty: '{{ op1 | length == 0 }}'
         op2_empty: '{{ op2 | length == 0 }}'
@@ -740,6 +760,7 @@ script:
           mode: query
           filter_json: '{{ filter_json | default(''{}'') }}'
           target_entities: '{{ entities_base }}'
+          caller_token: '{{ caller_token }}'
         response_variable: response_zen_query
       - variables:
           response_entities: "{{ (response_zen_query.result | from_json) if response_zen_query.result is string else response_zen_query.result | default([]) }}"
@@ -761,6 +782,7 @@ script:
             label_targets: "{% set _l1 = label_1 | default('') | trim %}\n{% set _l2
               = label_2 | default('') | trim %}\n{{ ([_l1] if _l1 else []) + ([_l2]
               if _l2 else []) }}"
+            caller_token: '{{ caller_token }}'
           response_variable: response
         - variables:
             expanded_entities: '{{ response.results | default([]) }}'
@@ -799,7 +821,8 @@ script:
           label_2 | default(''),\n      \"strict\": strict | default(false),\n      \"expand_entities\":
           expand_entities | default(false)\n      \n    },\n    \"operator\": \"*\"
           if (op1_empty and op2_empty) else setop,\n    \"error\": timeout_error_msg
-          | default(None)\n  }\n  | tojson\n}}"
+          | default(None),\n    \"caller_token\": caller_token | default('')\n  }\n
+          \  | tojson\n}}"
         label_entity_logic_result: '{{ label_entity_logic_result_raw | from_json | default({})
           }}'
     - stop: Zen DojoTools Index Complete
@@ -925,6 +948,14 @@ script:
         description: "Passed to Inspect when expand_entities=true. Defaults on: timestamps,
           device, volume. Opt-in: +attributes, +statistics. Suppress: -timestamps,
           -device, -volume."
+      caller_token:
+        name: Caller Token
+        required: false
+        default: ''
+        selector:
+          text:
+        description: 'Reserved. Governance stub — passed through to Query and Inspect.
+          SP1 enforcement not yet active.'
     mode: parallel
     max: 10
     icon: mdi:graphql

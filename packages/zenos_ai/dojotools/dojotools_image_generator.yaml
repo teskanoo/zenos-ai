@@ -98,6 +98,12 @@ script:
         selector:
           entity:
             domain: ai_task
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
 
     sequence:
       - variables:
@@ -165,6 +171,7 @@ script:
               width: "{{ _response.width | default(0) }}"
               height: "{{ _response.height | default(0) }}"
               prompt: "{{ _prompt }}"
+            caller_token: '{{ caller_token }}'
 
       - stop: Image generation complete
         response_variable: final_response

@@ -159,6 +159,12 @@ script:
         description: Path for the 'get' action. Must be in allowed_paths list.
         selector:
           text:
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
     sequence:
     - variables:
         op: '{{ action_type }}'
@@ -193,6 +199,7 @@ script:
               notes:
               - Token handled entirely in rest_command. Uses 127.0.0.1:8123.
               - No access to /states, /templates, or cabinet endpoints.
+              caller_token: '{{ caller_token }}'
         - stop: help_shown
           response_variable: final
 
@@ -217,6 +224,7 @@ script:
               message: "{{ 'Config check passed — safe to restart.' if check_valid
                 else 'Config check FAILED — do not restart. Errors: '
                   ~ (check_response.get('errors', 'unknown error') | string) }}"
+              caller_token: '{{ caller_token }}'
         - stop: check_config_done
           response_variable: final
 
@@ -240,6 +248,7 @@ script:
               message: Core Home Assistant log retrieved.
               truncated: '{{ (raw | length) > 220000 }}'
               result: '{{ safe }}'
+              caller_token: '{{ caller_token }}'
         - stop: error_log_done
           response_variable: final
 
@@ -263,6 +272,7 @@ script:
               message: Supervisor logs retrieved.
               truncated: '{{ (raw | length) > 220000 }}'
               result: '{{ safe }}'
+              caller_token: '{{ caller_token }}'
         - stop: supervisor_logs_done
           response_variable: final
 
@@ -286,6 +296,7 @@ script:
               message: Event schema retrieved.
               truncated: '{{ (raw | length) > 220000 }}'
               result: '{{ safe }}'
+              caller_token: '{{ caller_token }}'
         - stop: events_done
           response_variable: final
 
@@ -309,6 +320,7 @@ script:
               message: Service registry retrieved.
               truncated: '{{ (raw | length) > 220000 }}'
               result: '{{ safe }}'
+              caller_token: '{{ caller_token }}'
         - stop: services_done
           response_variable: final
 
@@ -332,6 +344,7 @@ script:
               message: System config retrieved.
               truncated: '{{ (raw | length) > 220000 }}'
               result: '{{ safe }}'
+              caller_token: '{{ caller_token }}'
         - stop: config_done
           response_variable: final
 
@@ -355,6 +368,7 @@ script:
               message: System health retrieved.
               truncated: '{{ (raw | length) > 220000 }}'
               result: '{{ safe }}'
+              caller_token: '{{ caller_token }}'
         - stop: health_done
           response_variable: final
 
@@ -378,6 +392,7 @@ script:
               message: Supervisor info retrieved.
               truncated: '{{ (raw | length) > 220000 }}'
               result: '{{ safe }}'
+              caller_token: '{{ caller_token }}'
         - stop: supervisor_done
           response_variable: final
 
@@ -396,6 +411,7 @@ script:
                   message: Path not allowed.
                   attempted: '{{ requested_path }}'
                   allowed: '{{ allowed_paths }}'
+                  caller_token: '{{ caller_token }}'
             - stop: denied
               response_variable: final
         - data:
@@ -414,6 +430,7 @@ script:
               message: GET /api/{{ requested_path }} retrieved.
               truncated: '{{ (raw | length) > 220000 }}'
               result: '{{ safe }}'
+              caller_token: '{{ caller_token }}'
         - stop: get_done
           response_variable: final
 
@@ -421,6 +438,7 @@ script:
         final:
           status: error
           message: Unknown or invalid action.
+          caller_token: '{{ caller_token }}'
     - stop: failure
       response_variable: final
 
@@ -800,6 +818,14 @@ script:
               {%- if _monk_status in ['error','timeout','none','null','unknown'] -%}
                 {%- set _ns.issues = _ns.issues + ['supersummary monk status: ' ~ _monk_status] -%}
               {%- endif -%}
+              {%- set _agent_st = states('sensor.zen_agent_health') -%}
+              {%- if _agent_st in ['warn','error','critical'] -%}
+                {%- set _flynn_blocking = state_attr('sensor.zen_flynn_health', 'blocking') | default('none') -%}
+                {%- set _roster_raw = state_attr('sensor.zen_agent_health', 'roster') | default('[]') -%}
+                {%- set _roster = _roster_raw | from_json if _roster_raw is string else _roster_raw -%}
+                {%- set _notes = _roster | map(attribute='note') | list | join(', ') if _roster is iterable else '' -%}
+                {%- set _ns.issues = _ns.issues + ['Agent health ' ~ _agent_st ~ ' — Flynn blocking: ' ~ _flynn_blocking ~ (' | agents: ' ~ _notes if _notes else '')] -%}
+              {%- endif -%}
               {%- if _ns.issues | count == 0 -%}
                 All gates nominal.
               {%- else -%}
@@ -844,6 +870,8 @@ script:
           response: "{{\n  {\n    \"tool\": tool | default('N/A'),\n    \"confirm\":
             confirm | default(false),\n    \"result\": \"error\",\n    \"message\":
             \"No tool selected.\"\n  }\n}}"
+    - variables:
+        response: "{{ response | combine({'caller_token': caller_token | default('')}) if response is mapping else response }}"
     - stop: return
       response_variable: response
     alias: Zen DojoTools SystemTools
@@ -895,6 +923,12 @@ script:
         name: Backup before Install
         description: Flag backup before install or change, Default off - ask the end
           user.
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
 
   zen_dojotools_ha_log_viewer:
     alias: Zen DojoTools HA Log Viewer
@@ -944,6 +978,12 @@ script:
             min: 10
             max: 20000
         default: 500
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
     sequence:
     - variables:
         m: '{{ mode }}'
@@ -998,6 +1038,7 @@ script:
                     - Do not reinstall Home Assistant
                     - Do not assume corruption or startup failure
                     - Do not treat missing log file as an error
+                  caller_token: '{{ caller_token }}'
             - stop: journal_mode
               response_variable: final
           default:
@@ -1016,6 +1057,7 @@ script:
                 - Run ha_config_check via zen_dojotools_systemtools
                 - Review supervisor logs via zen_dojotools_ha_api
                 - Verify /config mount integrity
+                caller_token: '{{ caller_token }}'
           - stop: legacy_missing_error
             response_variable: final
     # ===== END GUARD — file exists, proceed with mode dispatch =====
@@ -1047,6 +1089,7 @@ script:
                   line_count: 0
                   lines_requested: '{{ n }}'
                   result: ''
+                  caller_token: '{{ caller_token }}'
             - stop: invalid_search
               response_variable: final
         - action: shell_command.zen_log_search
@@ -1096,6 +1139,7 @@ script:
           line_count: '{{ count }}'
           message: HA logs returned ({{ m }} mode)
           result: '{{ safe }}'
+          caller_token: '{{ caller_token }}'
     - stop: done
       response_variable: final
     icon: mdi:file-find-outline
@@ -1178,6 +1222,12 @@ script:
         description: 'OPTIONAL. Miniature reasoning breadcrumb.
 
           '
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
     mode: parallel
     sequence:
     - choose:
@@ -1196,6 +1246,7 @@ script:
                   force: summary
                 kata: {}
                 monk: {}
+              caller_token: '{{ caller_token }}'
         - stop: done
           response_variable: well_known_events
     - variables:
@@ -1224,5 +1275,6 @@ script:
           status: success
           message: Zen event emitted
           event: '{{ evt }}'
+          caller_token: '{{ caller_token }}'
     - stop: done
       response_variable: final

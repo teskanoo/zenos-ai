@@ -1,8 +1,13 @@
 ###############################################################################
 # ZenOS-AI — System Health Package
-# v2.2.0 — 7-resolver canonization + FG-38 v3 three-round normalization.
+# v2.3.0 — Cabset expansion: secondary/tertiary/quaternary user + secondary
+#           AI user resolvers. Vault structurally absent (no resolver by design).
 #
 # Changelog:
+#   v2.3.0 (2026-03-20) — Cabset expansion: 4 new optional cabinet resolvers
+#                          (secondary_user, tertiary_user, quaternary_user,
+#                          secondary_ai_user). Vault cabinet: label only, no
+#                          resolver, no knowledge-pipeline traversal ever.
 #   v2.2.0 (2026-03-19) — zen_system_cabinet_resolved added (7th resolver).
 #                          FG-38 v3 three-round normalization applied to
 #                          _zt_val, _ss_v, _sched, _sum_d across all health
@@ -21,7 +26,7 @@
 # ha_start). They read from the resolvers via states(). Since resolvers are
 # always-live, the availability check is clean on first fire.
 #
-# Resolvers (7 — always-live):
+# Resolvers (11 — always-live):
 #   - sensor.zen_dojo_cabinet_resolved
 #   - sensor.zen_kata_cabinet_resolved
 #   - sensor.zen_system_cabinet_resolved
@@ -29,6 +34,13 @@
 #   - sensor.zen_default_ai_user_cabinet_resolved
 #   - sensor.zen_default_family_cabinet_resolved
 #   - sensor.zen_default_user_cabinet_resolved
+#   - sensor.zen_secondary_user_cabinet_resolved       [optional]
+#   - sensor.zen_tertiary_user_cabinet_resolved        [optional]
+#   - sensor.zen_quaternary_user_cabinet_resolved      [optional]
+#   - sensor.zen_secondary_ai_user_cabinet_resolved    [optional]
+#
+# NOTE: zen_vault_cabinet has NO resolver by design. Vault is structurally
+#   absent from all knowledge-pipeline traversals. Access gated via identity.
 #
 # Health sensors (trigger-based):
 #   - sensor.zen_monastery_health
@@ -123,6 +135,53 @@ template:
              | first | default('unavailable') }}
         availability: >-
           {{ label_entities('zen_default_user_cabinet')
+             | select('match', 'sensor\.')
+             | list | count > 0 }}
+
+      # ── Optional cabset expansion ─────────────────────────────────────────
+      # Unavailable when the label has no entities — not an error condition.
+
+      - name: Zen Secondary User Cabinet Resolved
+        unique_id: zen_secondary_user_cabinet_resolved
+        state: >-
+          {{ label_entities('zen_secondary_user_cabinet')
+             | select('match', 'sensor\.')
+             | first | default('unavailable') }}
+        availability: >-
+          {{ label_entities('zen_secondary_user_cabinet')
+             | select('match', 'sensor\.')
+             | list | count > 0 }}
+
+      - name: Zen Tertiary User Cabinet Resolved
+        unique_id: zen_tertiary_user_cabinet_resolved
+        state: >-
+          {{ label_entities('zen_tertiary_user_cabinet')
+             | select('match', 'sensor\.')
+             | first | default('unavailable') }}
+        availability: >-
+          {{ label_entities('zen_tertiary_user_cabinet')
+             | select('match', 'sensor\.')
+             | list | count > 0 }}
+
+      - name: Zen Quaternary User Cabinet Resolved
+        unique_id: zen_quaternary_user_cabinet_resolved
+        state: >-
+          {{ label_entities('zen_quaternary_user_cabinet')
+             | select('match', 'sensor\.')
+             | first | default('unavailable') }}
+        availability: >-
+          {{ label_entities('zen_quaternary_user_cabinet')
+             | select('match', 'sensor\.')
+             | list | count > 0 }}
+
+      - name: Zen Secondary AI User Cabinet Resolved
+        unique_id: zen_secondary_ai_user_cabinet_resolved
+        state: >-
+          {{ label_entities('zen_secondary_ai_user_cabinet')
+             | select('match', 'sensor\.')
+             | first | default('unavailable') }}
+        availability: >-
+          {{ label_entities('zen_secondary_ai_user_cabinet')
              | select('match', 'sensor\.')
              | list | count > 0 }}
 

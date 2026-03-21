@@ -45,6 +45,14 @@ script:
           index, health detail). Default: compact (entity_id, friendly_name, id, drawer
           count, capacity %, status, writeable).'
         default: false
+      caller_token:
+        name: Caller Token
+        required: false
+        default: ''
+        selector:
+          text:
+        description: 'Reserved. Governance stub — echoed in response. SP1 enforcement
+          not yet active.'
     sequence:
     - variables:
         zen_default_house_cab: "{{ states('sensor.zen_default_household_cabinet_resolved') }}"
@@ -101,7 +109,9 @@ script:
           set result = namespace(data={}) %}\n\n{%- for ent in states.sensor | map(attribute='entity_id')
           | list %}\n  {%- set vars = state_attr(ent, 'variables') %}\n\n  {%- if vars
           is mapping and (vars.get('AI_Cabinet_VolumeInfo') is not none) %}\n    {%-
-          set info = vars.AI_Cabinet_VolumeInfo.value %}\n    {%- set st = states[ent]
+          set _vi_raw = vars.AI_Cabinet_VolumeInfo -%}\n    {%- set _vi_norm = (_vi_raw
+          | from_json) if _vi_raw is string else _vi_raw -%}\n    {%- set info = _vi_norm.get('value',
+          _vi_norm) if _vi_norm is mapping else {} %}\n    {%- set st = states[ent]
           %}\n    {%- set friendly = st.attributes.friendly_name | default(ent) %}\n
           \   {%- set lc = st.last_changed.isoformat() %}\n    {%- set lu = st.last_updated.isoformat()
           %}\n    {%- set volume_labels = labels(ent) | default([]) %}\n\n    {%- set
@@ -137,6 +147,8 @@ script:
         value: '{{ manifest }}'
         set_timestamp: true
         volume_entity: '{{ zen_default_house_cab }}'
+    - variables:
+        manifest: "{{ manifest | combine({'caller_token': caller_token | default('')}) if manifest is mapping else manifest }}"
     - alias: Return Manifest Data
       stop: Pass variable to response
       response_variable: manifest

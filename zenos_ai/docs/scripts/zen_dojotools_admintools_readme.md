@@ -1,4 +1,4 @@
-# Zen DojoTools AdminTools — 4.2.1
+# Zen DojoTools AdminTools — 4.3.0 'Meridian'
 
 *Ring-2 administrative tools: component registration, cabinet repair, template management, and prompt configuration*
 
@@ -16,11 +16,11 @@ Most tools in this module are **admin-only** — they are not exposed to the AI 
 
 | Script | Version | MCP-Exposed | Purpose |
 |---|---|---|---|
-| `zen_dojotools_kungfu_writer` | 4.2.0 | **Yes** | Register or update a Kung Fu component in the Dojo |
+| `zen_dojotools_kungfu_writer` | 4.3.0 | **Yes** | Register or update a Kung Fu component in the Dojo |
 | `zen_admintools_reset_template` | 1.1.0 | No | Press zen_template and kfc_template into cabinets |
 | `zen_admintools_reset_labels` | 4.2.1 | No | Nuclear: delete all zen_ labels and assignments, trigger Flynn rebuild |
 | `zen_admintools_cabinetadmin` | 4.2.1 | No | Inspect, restore, reset, hammer, init, or reset_all Ring-0 cabinets |
-| `zen_admintools_cabinetadmin_backup` | 1.x | No | Factory-stamp or repair a cabinet's VolumeInfo drawer |
+| `zen_admintools_cabinetadmin_stamp` | 1.x | No | Factory-stamp or repair a cabinet's VolumeInfo drawer |
 | `zen_admintools_kfc_migration_press` | 1.1.0 | No | One-time migration: seed scheduling fields into KFC drawers |
 | `zen_admintools_zenos_prompt_loader` | 4.2.1 | No | Load versioned Cortex, Directives, and Purpose (v27 = RC2, v29/latest = GA Ninja Fusion, v30 = Living Index) |
 
@@ -44,7 +44,10 @@ Each call creates or updates a drawer in the Dojo cabinet. That drawer becomes t
 | `command` | text | No | — | Library macro token (e.g., `~ALERTS~`) |
 | `trigger_subscriptions` | text | No | — | Comma-separated trigger IDs this component subscribes to |
 | `delay_seconds` | number | No | `0` | Stagger delay (0–300s, step 5) to spread inference load |
-| `master_switch` | entity | No | — | `input_boolean` gate — component skips if off |
+| `enabled` | boolean | No | `true` | Maps to `meta.enabled`. Set to `false` to disable the component. |
+| `requires_cert` | text | No | — | Maps to `meta.requires.cert`. HALMark capability certificate required for dispatch. |
+| `requires_level` | number | No | — | Maps to `meta.requires.level`. Minimum licensure level (1–4) required for dispatch. |
+| `master_switch` | entity | No | — | **Deprecated** — use `enabled` (`meta.enabled`) instead. Legacy `input_boolean` gate; honored if present but no longer written by default. |
 | `tool` | text | No | — | Associated tool name |
 | `version` | text | No | — | Semantic version string |
 | `component_instructions` | text | No | — | Operational notes passed to the monk during summarization |
@@ -87,6 +90,7 @@ force_ninja           force_supersummary    force_gc
 action: write
 kata_key: hot_tub_manager
 friendly_name: Hot Tub Manager
+enabled: true
 component_summary: Monitors hot tub temperature, chemistry, and filter status
 label: hot_tub
 command: ~HOT_TUB~
@@ -221,7 +225,7 @@ sensor.zenos_default_ai_user_history_cabinet
 
 ---
 
-## zen_admintools_cabinetadmin_backup
+## zen_admintools_cabinetadmin_stamp
 
 Factory tool for stamping or repairing a cabinet's `AI_Cabinet_VolumeInfo`, `_label_index`, and `_zen_relationships` drawers.
 

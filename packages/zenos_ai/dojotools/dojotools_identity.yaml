@@ -75,6 +75,14 @@ script:
         selector:
           text:
             multiline: false
+      caller_token:
+        name: Caller Token
+        required: false
+        default: ''
+        selector:
+          text:
+        description: 'Reserved. Governance stub — echoed in response. SP1 enforcement
+          not yet active.'
     sequence:
     - variables:
         user_label: '{{ user_label | default('''') }}'
@@ -101,9 +109,9 @@ script:
           as a plain label --- #}\n{%- else -%}\n  {{ rt }}\n{%- endif -%}"
     - variables:
         cab_json: '{% import ''zenos_ai/zen_os_1rc.jinja'' as zen %}
-  
-          {{ zen.zen_cabinets(normalized) }}
-  
+
+          {{ zen.identity_resolve_source(normalized) }}
+
           '
         cab: "{%- set raw = cab_json | trim -%}\n\n{# 0. Empty/None → valid empty result
           #}\n{%- if raw in ['', None] -%}\n  {{ {\"result\": [], \"error\": \"empty_input\"}
@@ -113,6 +121,7 @@ script:
           #}\n{%- else -%}\n  {{ raw | from_json | tojson }}\n{%- endif %}"
     - variables:
         response: "{{\n  {\n    \"result\": cab,\n    \"target_normalized\": normalized,\n
-          \   \"timestamp\": now().isoformat()\n  }\n}}\n"
+          \   \"timestamp\": now().isoformat(),\n    \"caller_token\": caller_token
+          | default('')\n  }\n}}\n"
     - stop: Return Variables
       response_variable: response

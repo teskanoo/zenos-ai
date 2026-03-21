@@ -1,6 +1,6 @@
 # 📘 **ZenOS-AI Documentation Hub**
 
-> **Version:** 4.2.0 | **Last Updated:** March 2026 | **License:** MIT
+> **Version:** 4.3.0 'Meridian' | **Last Updated:** March 2026 | **License:** MIT
 
 → [Project Overview & Install](../../README.md)
 
@@ -29,6 +29,7 @@ New to ZenOS-AI? Start here.
 * `install.md` — File copy, configuration.yaml setup, conversation agent prompt, set conversation agent before restart, restart, health verification
 * `first_run.md` — First boot walkthrough, OOBE conversation, persona selector, editing profiles, troubleshooting
 * `entity_exposure.md` — What to expose to your conversation agent: actionable vs contextable vs invisible, the three-tier model
+* `cabinet_placement.md` — Where things go and why: Dojo vs Kata, drawer vs KFC, the quick-reference placement table. Read after entity_exposure.
 * `oobe.md` — OOBE walkthrough: the six-step first-boot configuration protocol to your conversation agent: actionable vs contextable vs invisible, the three-tier model
 * `troubleshooting.md` — Gauges → Kill Switches → Repair Tools. Health sensor quick-reads, summarizer kill switches, and a seven-step graduated repair sequence (resolver refresh → reseed → label reset → nuclear cabinet reset)
 
@@ -179,6 +180,7 @@ Layered health monitoring stack — cabinet resolvers, cognition pipeline, agent
 Documentation for the recursive hypergraph-driven index system.
 
 * `zen_hyperindex_overview.md`
+* `zq1_patterns.md` — 10 real index call patterns: ghost hunt, drift detector, coverage gap analysis, power spike triage, KFC intelligence pull, access gate, full system graph, area slice, NOT query, and the history-in-inspect forward reference. Includes the full ZQ-1 filter key reference table.
 
 If Cabinets are the filesystem, HyperIndex is the search engine plus attention model.
 

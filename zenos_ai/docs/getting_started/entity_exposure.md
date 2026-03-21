@@ -139,6 +139,7 @@ The system is designed so that the labeled+indexed path handles the overwhelming
 
 ## Related
 
+* [Cabinet Placement Guide](cabinet_placement.md) — where to store things once you've decided what to expose
 * [Understanding KF4](../kung_fu/understanding_kf4.md) — how labels connect to KFC components
 * [Zen HyperIndex](../zen_hyperindex/zen_hyperindex_overview.md) — how the index traverses labels
 * [DojoTools AdminTools](../scripts/zen_dojotools_admintools_readme.md) — what not to expose

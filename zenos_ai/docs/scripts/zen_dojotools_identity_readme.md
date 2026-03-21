@@ -1,4 +1,4 @@
-# Zen DojoTools Identity — 4.2.0
+# Zen DojoTools Identity — 4.3.0 'Meridian'
 
 *Resolve user and construct identities within the ZenOS-AI household*
 
@@ -46,7 +46,7 @@ user_label → user_cabinet → user_entity_id → user_guid
    - UUID format → preserved as GUID
    - Plain string → treated as a label
    - Empty / whitespace / invalid → `None` (returns full roster)
-3. **Lookup** — delegates to `zen_cabinets(target)` in `zen_os_1rc.jinja`
+3. **Lookup** — delegates to `identity_resolve_source(target)` in `zen_os_1rc.jinja` — the same full resolution pipeline the prompt uses, so the tool is a true check tool
 4. **Response** — returns the identity record(s) with a timestamp
 
 ---
@@ -123,5 +123,5 @@ The current resolver is the first layer. The gatekeeper builds on top of it.
 
 | Dependency | Purpose |
 |---|---|
-| `zen_os_1rc.jinja` → `zen_cabinets()` | Cabinet-backed identity lookup |
+| `zen_os_1rc.jinja` → `identity_resolve_source()` | Full identity resolution pipeline — same code path as prompt assembly |
 | Zen AI User Cabinet | Identity record storage |

@@ -1,4 +1,4 @@
-# Kung Fu Components — KF4 RC2
+# Kung Fu Components — KF4 1.2.0
 
 ### Structured Subsystem Definitions for the Dojo Cabinet
 
@@ -6,7 +6,7 @@ Kung Fu Components (KFCs) define *how each major subsystem in your home works*.
 They live as drawers inside the **Dojo Cabinet** and drive the Scheduler,
 the Ninja Summarizer, and Friday's reasoning.
 
-**KF4 RC2 invariants:**
+**KF4 1.2.0 invariants:**
 
 - **Drawer IS the spec** — the Dojo drawer is the single source of truth for the component
 - **Label IS the scope** — the HA label defines which entities belong to the component
@@ -62,7 +62,9 @@ Run with `action=help` to get the live schema from the Dojo cabinet.
 |-------|----------|-------------|
 | `version` | yes | Semantic version string, e.g. `1.0.0` |
 | `friendly_name` | yes | Human-readable component title |
-| `master_switch` | yes | `input_boolean.*` that enables/disables the component |
+| `meta.enabled` | yes | Boolean — `true` to enable, `false` to disable this component |
+| `meta.requires.cert` | no | HALMark capability certificate required to dispatch (e.g. `zen_auth.tgt`) |
+| `meta.requires.level` | no | Minimum licensure level (1–4) required for dispatch |
 | `label` | yes | HA label that scopes the component's entity set |
 | `component_summary` | yes | One-sentence description of what this component manages |
 | `trigger_subscriptions` | yes | List of Scheduler trigger IDs that fire this component |
@@ -70,6 +72,7 @@ Run with `action=help` to get the live schema from the Dojo cabinet.
 | `kata_key` | yes | Dojo drawer key where the Ninja writes this component's Kata |
 | `command` | no | Library command that activates this component (e.g. `~WATER~`). Omit for HyperIndex-only components. |
 | `tool` | no | Specific DojoTools tool this component uses, if any |
+| `master_switch` | deprecated | Legacy `input_boolean` gate. Replaced by `meta.enabled`. Honored by the Scheduler if present but no longer written by the KFC writer. |
 
 ### Standard Trigger IDs
 
@@ -97,7 +100,8 @@ The Dojo loop picks up any subscriber registered to that trigger ID automaticall
 ```yaml
 version: "1.0.0"
 friendly_name: Water Manager
-master_switch: input_boolean.water_manager_master_switch
+meta:
+  enabled: true
 label: Water Manager
 command: "~WATER~"
 component_summary: Manages household water flow, leak detection, and salt level.
@@ -132,10 +136,10 @@ Library macro (e.g. `~SECURITY~`). Once the HyperIndex label graph is fully tagg
 and the Ninja Summarizer has been validated on real data, the `command` field can be
 stripped — the component operates entirely through label traversal.
 
-As of KF4 RC2, `energy_manager` is the canonical HyperIndex-only component.
+As of KF4 1.2.0, `energy_manager` is the canonical HyperIndex-only component.
 Six others (`security_manager`, `taskmaster`, `room_manager`, `media_manager`,
 `water_manager`, `trash_trakker`) are validated and ready for command strip.
 
 ---
 
-*Last updated: 2026-03-11 — KF4 RC2*
+*Last updated: 2026-03-20 — KF4 1.2.0*

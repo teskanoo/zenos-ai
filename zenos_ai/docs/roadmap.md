@@ -8,7 +8,18 @@ ZenOS-AI is a cabinet-centric AI framework for deterministic, inspectable househ
 
 ## Current Status
 
-**4.1.0 RC2 — Complete**
+**Meridian — Shipped (2026-03-21)**
+
+Hardening and governance batch. `caller_token` SP1 §4a stub wired to all 15 AI-accessible
+DojoTools scripts. Cortex 31 cabinet state visibility. KFC schema 1.2.0. Labels UPDATE
+patch semantics (pre-read, confirm gate, no data-loss path). Scheduler, summarizer, and
+history bug fixes. UAT passed on live install 2026-03-21.
+
+See: [Release Notes — Meridian](releases/meridian.md)
+
+---
+
+**Previous: 4.1.0 RC2 — Complete**
 
 KF4 RC2 has shipped. The Kung Fu Component architecture is fully Dojo-driven — drawer IS the spec, label IS the scope, HyperIndex IS the data layer. The Scheduler is data-driven; no hardcoded branches. 12 components stamped and running. UAT passed on live install 2026-03-11. The next milestone is GA.
 
@@ -107,6 +118,44 @@ Where RC2 proves deployability, GA proves durability, clean boundaries, and main
 ---
 
 ## GA Stability Gates — Delivered
+
+### Prompt Finalization — Final GA Feature (planned)
+
+Final polish pass before gold candidate lock. Three work streams:
+
+**1. Template structure pass + rename**
+
+`zen_os_1rc.jinja` renamed to `zenos.jinja` for release. Full ref sweep across
+all packages, templates, and docs. `custom_templates/zenos_ai/` layout finalized
+and locked.
+
+**2. Prompt instrumentation + collapse**
+
+Each major prompt section (cortex, home overview, active components, zen_summary,
+etc.) gets a dedicated sensor — observable at runtime, traceable by Nyx, and
+auditable by Flynn. Once all sections are instrumented and validated individually,
+the full prompt collapses behind a single `zen.prompt('ai_user')` call. Persona-aware,
+data-layer driven, no hardcoded structure in the surface API.
+
+The "exploded" dev-era template layout disappears from the surface. The structure
+is still there — it's just behind a clean interface.
+
+**3. Flynn prompt shunt**
+
+Pre-boot and degraded-state path: agent receives Flynn-only context (who Flynn is,
+what tools he has) instead of an incomplete or errored full prompt. Shunt condition
+derived from existing health sensors — resolver unsettled, essence missing, Gate 3
+incomplete. No full prompt rendered until the system is ready to render it correctly.
+
+**Stuffiness gauge:** token pressure per prompt section surfaced as a first-class
+observable. Flynn can see which sections are consuming context budget, flag pressure
+before it degrades agent quality, and recommend or trigger remediation (trim, collapse,
+raise abstraction level). Context stuffiness goes from invisible to instrumented.
+
+**Sequence:** instrument first → Nyx validates each sensor → collapse behind
+`zen.prompt()` → Flynn shunt wired last.
+
+---
 
 ### Highlander Resolver Architecture (2026-03-19)
 
@@ -265,13 +314,30 @@ Following GA, ZenOS-AI can evolve toward:
 
 ### KFC v1.1 — State Key + Master-Switch-Free Controller
 
-Replace the `master_switch` field in KFC drawer schema with a `state` key. Remove the
-kill-switch visibility requirement from the scheduler dispatch path. Introduce a dedicated
-KFC controller that owns component lifecycle (enable, disable, reset) as a first-class
-operation rather than a side-effect of master switch state.
+Replace the `master_switch` field in KFC drawer schema with a `state` key stored directly
+in drawer `meta`. Remove the kill-switch HA switch entity as the default lifecycle mechanism.
+Component enabled/disabled state lives in the drawer itself — no external entity required.
+Introduce a dedicated KFC controller that owns component lifecycle (enable, disable, reset)
+as a first-class operation rather than a side-effect of master switch state.
 
-Scope: Dojo cabinet schema, Scheduler dispatch loop, KungFu Writer, Flynn gate-3 bootstrap
-validation.
+**`meta` block additions:**
+
+```yaml
+meta:
+  description: "Plain-English description of what this component does."
+  enabled: true          # replaces master_switch — on/off stored here, not in HA switch
+  requires:
+    cert: "zen_level_2"  # machine-readable capability requirement — retrievable by code
+    level: 2             # numeric level for range checks
+```
+
+`requires.cert` is checked at Monastery dispatch time. When zen_auth is live, TGT validation
+gates against this field. A component declares its own scope of practice; the runtime
+enforces it. `cert` is intentionally retrievable by code — it is not documentation, it
+is a runtime predicate.
+
+Scope: Dojo cabinet schema (KFC drawer meta), Scheduler dispatch loop, KungFu Writer,
+Flynn gate-3 bootstrap validation, Monastery dispatch guard.
 
 ---
 

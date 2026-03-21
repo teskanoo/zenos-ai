@@ -71,6 +71,8 @@ script:
               \     \"availability\": \"Online Status.\",\n      \"activity\": \"Extended
               reason for status.\",\n      \"expiration\": \"Retain status until (default
               5 min.)\"\n    },\n    \"notes\": [\n      \"Use read to view the latest message.\",\n      \"Update and delete not supported by integration.\"\n    ],\n    \"setup\": {\n      \"input_text.zen_teams_chat_id\": \"Your Teams chat thread ID. To find it: run action_type: read — the response includes partner_chat_id pulled from sensor.homeassistant_chat. Copy that value into input_text.zen_teams_chat_id in HA Helpers. You can also find it in Developer Tools > States under sensor.homeassistant_chat attributes.\"\n    }\n  } | tojson\n}}"
+        - variables:
+            help_response: "{{ (help_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
         - stop: Pass response variables back to LLM
           response_variable: help_response
         - set_conversation_response: '{{ help_response }}'
@@ -94,6 +96,8 @@ script:
               \   \"my_chat_display_name\": my_chat_display_name,\n    \"teams_status\":
               teams_status | default(''),\n    \"last_chat\": last_chat | default('{}'),\n
               \ } | tojson\n}}"
+        - variables:
+            result: "{{ (result | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
         - stop: Pass response variables back to LLM
           response_variable: result
         - set_conversation_response: '{{ result }}'
@@ -118,6 +122,8 @@ script:
               send_response: "{{\n  {\n    \"status\": \"success\",\n    \"action_type\":
                 \"send\",\n    \"chat_id\": chat_id,\n    \"message\": message\n  }
                 | tojson\n}}"
+          - variables:
+              send_response: "{{ (send_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
           - stop: Pass response variables back to LLM
             response_variable: send_response
           - set_conversation_response: '{{ send_response }}'
@@ -127,6 +133,8 @@ script:
                 \"Create / Send requires valid Chat ID that is not your own and Message.\",\n
                 \   \"chat_id\": chat_id | default(''),\n    \"message\": message |
                 default('')\n  } | tojson\n}}"
+          - variables:
+              error_no_chat_id: "{{ (error_no_chat_id | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
           - stop: Pass response variables back to LLM
             response_variable: error_no_chat_id
           - set_conversation_response: '{{ unsupported_response }}'
@@ -156,6 +164,8 @@ script:
             result: "{{\n  {\n    \"status\": \"success\",\n    \"action_type\": \"set\",\n
               \   \"availability\": availability,\n    \"activity\": activity,\n    \"expiration\":
               expiration,\n  } | tojson\n}}"
+        - variables:
+            result: "{{ (result | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
         - stop: Pass response variables back to LLM
           response_variable: result
         - set_conversation_response: '{{ result }}'
@@ -168,6 +178,8 @@ script:
             unsupported_response: "{{\n  {\n    \"status\": \"error\",\n    \"message\":
               \"Update/delete not supported by Teams integration. Use create (send)
               or read.\"\n  } | tojson\n}}"
+        - variables:
+            unsupported_response: "{{ (unsupported_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
         - stop: Pass response variables back to LLM
           response_variable: unsupported_response
         - set_conversation_response: '{{ unsupported_response }}'
@@ -243,6 +255,12 @@ script:
           Accepts ISO 8601 format for durations. If not provided, a default expiration
           of 5 minutes is applied. Valid duration range is from 5 to 240 minutes (PT5M
           to PT4H).
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
     icon: mdi:chat-outline
 
   zen_dojotools_mail:
@@ -313,6 +331,8 @@ script:
               \"action_type\": \"create\", \"to\": [\"a@x.com\"], \"cc\": [\"b@y.com\"],
               \"subject\": \"Team Update\", \"body\": \"<b>Status OK</b>\", \"contentType\":
               \"HTML\", \"importance\": \"High\" },\n    ]\n  } | tojson\n}}"
+        - variables:
+            help_data: "{{ (help_data | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
         - stop: Pass response variables back to LLM
           response_variable: help_data
           enabled: true
@@ -336,6 +356,8 @@ script:
               \ {%- endfor -%}\n{%- endfor -%}"
             final_response: "{{\n  {\n    \"status\": \"success\",\n    \"inbox\": inbox\n
               \ } | tojson\n}}"
+        - variables:
+            final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
         - stop: Pass response variables back to LLM
           response_variable: final_response
           enabled: true
@@ -363,6 +385,8 @@ script:
             final_response: "{{\n  {\n    \"status\": \"success\",\n    \"message\":
               \"Read message '\" ~ uid ~ \"' from \" ~ folder_lookup ~ \".\",\n    \"mail\":
               mail_json\n  } | tojson\n}}"
+        - variables:
+            final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
         - stop: Pass response variables back to LLM
           response_variable: final_response
           enabled: true
@@ -406,6 +430,8 @@ script:
                 data: '{{ mail_data }}'
             - variables:
                 final_response: "{{\n  {\n    \"status\": \"success\",\n    \"action_type\": action_type | default(''),\n    \"title\": subject | default(''),\n    \"to\": to_list | default([])\n  } | tojson\n}}"
+            - variables:
+                final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
             - stop: Pass response variables back to LLM
               response_variable: final_response
               enabled: true
@@ -413,6 +439,8 @@ script:
           default:
           - variables:
               final_response: "{{\n  {\n    \"status\": \"error\",\n    \"message\": \"Mail send blocked: \" ~ (\"whitelist not configured. Set input_text.zen_mail_whitelist in HA Helpers to: OFF (unrestricted), *@yourdomain.com (domain wildcard), or an exact address.\" if whitelist_missing else \"recipient not permitted by whitelist.\")\n  } | tojson\n}}"
+          - variables:
+              final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
           - stop: Pass response variables back to LLM
             response_variable: final_response
             enabled: true
@@ -428,6 +456,8 @@ script:
             final_response: "{{\n  {\n    \"status\": \"error\",\n    \"message\": \"Missing
               required field(s) for \" ~ action_type ~ \". See help for usage.\",\n
               \   \"help_hint\": \"Use action_type: help for details.\"\n  } | tojson\n}}"
+        - variables:
+            final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
         - stop: Pass response variables back to LLM
           response_variable: final_response
           enabled: true
@@ -523,6 +553,12 @@ script:
         required: false
         selector:
           text:
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
     icon: mdi:email
 
   zen_dojotools_todo:
@@ -582,6 +618,8 @@ script:
             final_response: "{{\n  {\n    \"status\": \"info\",\n    \"message\":\
               \ \"All available to-do lists with labels.\",\n    \"lists\": todo_lists_data\n\
               \  } | tojson\n}}"
+        - variables:
+            final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
         - stop: Pass response variables back to LLM
           response_variable: final_response
         - set_conversation_response: '{{ final_response }}'
@@ -601,6 +639,8 @@ script:
               : \"Show this help.\"\n    },\n    \"notes\": [\n      \"Wildcard read\
               \ and bulk update supported.\",\n      \"Complex multi-item edits remain\
               \ restricted to status changes.\"\n    ]\n  } |\n  tojson\n}}"
+        - variables:
+            help_data: "{{ (help_data | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
         - stop: Pass response variables back to LLM
           response_variable: help_data
         - set_conversation_response: '{{ help_data }}'
@@ -632,6 +672,8 @@ script:
                   : \"Updated status for \" ~ (items | length) ~ \" item(s) in list\
                   \ '\" ~ list_name ~ \"'.\",\n    \"list_name\": list_name,\n   \
                   \ \"items\": items\n  } | tojson\n}}"
+            - variables:
+                final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
             - stop: Pass response variables back to LLM
               response_variable: final_response
             - set_conversation_response: '{{ final_response }}'
@@ -644,6 +686,8 @@ script:
                 final_response: "{{\n  {\n    \"status\": \"error\",\n    \"message\"\
                   : \"Multiple complex updates not supported. Only bulk status updates\
                   \ allowed.\",\n    \"list_name\": list_name\n  } | tojson\n}}"
+            - variables:
+                final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
             - stop: Pass response variables back to LLM
               response_variable: final_response
             - set_conversation_response: '{{ final_response }}'
@@ -669,6 +713,8 @@ script:
                 : \"Updated item '\" ~ update_data.get('item','') ~ \"' in list '\"\
                 \ ~ list_name ~ \"'.\",\n    \"item\": update_data,\n    \"list_name\"\
                 : list_name\n  } | tojson\n}}"
+          - variables:
+              final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
           - stop: Pass response variables back to LLM
             response_variable: final_response
           - set_conversation_response: '{{ final_response }}'
@@ -692,6 +738,8 @@ script:
               \ items for list '\" ~ list_name ~ \"'\",\n  \"list_name\": list_name,\n\
               \  \"count\": items_only | length,\n  \"items\": items_only\n} | tojson\
               \ }}\n"
+        - variables:
+            final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
         - stop: Pass items back to LLM
           response_variable: final_response
         - set_conversation_response: '{{ final_response }}'
@@ -731,6 +779,8 @@ script:
                 action: todo.add_item
         - variables:
             final_response: "{{\n  {\n    \"status\": \"success\",\n    \"message\": \"Created \" ~ (items | length) ~ \" item(s) in '\" ~ list_name ~ \"'.\",\n    \"list_name\": list_name,\n    \"items\": items\n  } | tojson\n}}"
+        - variables:
+            final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
         - stop: Pass response variables back to LLM
           response_variable: final_response
         - set_conversation_response: '{{ final_response }}'
@@ -751,6 +801,8 @@ script:
               action: todo.remove_item
         - variables:
             final_response: "{{\n  {\n    \"status\": \"success\",\n    \"message\": \"Deleted \" ~ (items | length) ~ \" item(s) from '\" ~ list_name ~ \"'.\",\n    \"list_name\": list_name\n  } | tojson\n}}"
+        - variables:
+            final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
         - stop: Pass response variables back to LLM
           response_variable: final_response
         - set_conversation_response: '{{ final_response }}'
@@ -759,6 +811,8 @@ script:
         final_response: "{{\n  final_response\n  | default(\n    {\n      \"status\"\
           : \"noop\",\n      \"message\": \"No matching branch produced a response.\"\
           \n    } | tojson\n  )\n}}"
+    - variables:
+        final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson if (final_response | from_json) is mapping else final_response }}"
     - stop: Pass context
       response_variable: final_response
     - set_conversation_response: '{{ final_response }}'
@@ -798,6 +852,12 @@ script:
             multiple: true
       reminder:
         description: 'MS365 only: reminder datetime (ISO format). Uses ms365_todo.new_todo if set.'
+        required: false
+        selector:
+          text:
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
         required: false
         selector:
           text:
@@ -877,6 +937,8 @@ script:
             final_response: "{{\n  {\n    \"status\": \"error\",\n    \"message\"\
               : \"Multiple calendars match the query. Please specify a single calendar\
               \ for this action.\"\n  } | tojson\n}}"
+        - variables:
+            final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
         - stop:
           response_variable: final_response
         - set_conversation_response: '{{ final_response }}'
@@ -890,6 +952,8 @@ script:
             final_response: "{{\n  {\n    \"status\": \"error\",\n    \"message\"\
               : \"No calendars found for labels: \" ~ (label_targets | join(', '))\
               \ ~ \".\"\n  } | tojson\n}}"
+        - variables:
+            final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
         - stop:
           response_variable: final_response
         - set_conversation_response: '{{ final_response }}'
@@ -922,6 +986,8 @@ script:
               \ update/delete will be safely blocked.\",\n      \"Label targeting\
               \ aggregates events across all matching entities.\"\n    ]\n  } | tojson\n\
               }}"
+        - variables:
+            help_data: "{{ (help_data | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
         - stop:
           response_variable: help_data
         - set_conversation_response: '{{ help_data }}'
@@ -936,6 +1002,8 @@ script:
               : \"No valid calendar entity_id found for '{{ calendar_name }}'. Provide\
               \ a valid entity_id or use '*' to list calendars.\"\n  } | tojson\n\
               }}"
+        - variables:
+            final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
         - stop:
           response_variable: final_response
         - set_conversation_response: '{{ final_response }}'
@@ -950,6 +1018,8 @@ script:
             final_response: "{{\n  {\n    \"status\": \"error\",\n    \"message\"\
               : \"Create requires a single explicit calendar target (entity_id or label).\"\
               \n  } | tojson\n}}"
+        - variables:
+            final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
         - stop:
           response_variable: final_response
         - set_conversation_response: '{{ final_response }}'
@@ -974,6 +1044,8 @@ script:
             final_response: "{{\n  {\n    \"status\": \"success\",\n    \"message\"\
               : \"Listed all available calendars.\",\n    \"calendars\": cal_list\n\
               \  } | tojson\n}}"
+        - variables:
+            final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
         - stop:
           response_variable: final_response
         - set_conversation_response: '{{ final_response }}'
@@ -1019,6 +1091,8 @@ script:
               ,\n    \"results\": all_event_results,\n    \"note\": \"Use 'inspect'\
               \ to locate event_id(s). Providers may return timestamps in UTC or offset;\
               \ normalize externally during UAT.\"\n  }\n}}\n"
+        - variables:
+            final_response: "{{ final_response | combine({'caller_token': caller_token | default('')}) if final_response is mapping else final_response }}"
         - stop:
           response_variable: final_response
         - set_conversation_response: '{{ final_response }}'
@@ -1039,6 +1113,8 @@ script:
           response_variable: inspect_response
         - variables:
             final_response: '{{ inspect_response }}'
+        - variables:
+            final_response: "{{ final_response | combine({'caller_token': caller_token | default('')}) if final_response is mapping else final_response }}"
         - stop:
           response_variable: final_response
         - set_conversation_response: '{{ final_response }}'
@@ -1080,6 +1156,8 @@ script:
                     final_response: "{{\n  {\n    \"status\": \"success\",\n    \"message\"\
                       : \"Created MS365 event '\" ~ ms365_create_data.subject ~ \"'\
                       .\",\n    \"event\": ms365_create_data\n  } | tojson\n}}"
+                - variables:
+                    final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
                 - stop:
                   response_variable: final_response
                 - set_conversation_response: '{{ final_response }}'
@@ -1105,6 +1183,8 @@ script:
                   \ '\" ~ (\n      (label_target_entities[0] if (label_target_entities\
                   \ | length > 0) else calendar_entity_resolved)\n    ) ~ \"'.\",\n\
                   \    \"event\": create_data\n  } | tojson\n}}"
+            - variables:
+                final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
             - stop:
               response_variable: final_response
             - set_conversation_response: '{{ final_response }}'
@@ -1116,6 +1196,8 @@ script:
                 final_response: "{{\n  {\n    \"status\": \"error\",\n    \"message\"\
                   : \"Invalid date range: start must be before end. Got start='\" ~\
                   \ start ~ \"', end='\" ~ end ~ \"'.\"\n  } | tojson\n}}"
+            - variables:
+                final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
             - stop:
               response_variable: final_response
             - set_conversation_response: '{{ final_response }}'
@@ -1148,6 +1230,8 @@ script:
                 final_response: "{{\n  {\n    \"status\": \"success\",\n    \"message\"\
                   : \"Updated MS365 event '\" ~ ms365_modify_data.subject ~ \"'.\"\
                   ,\n    \"event\": ms365_modify_data\n  } | tojson\n}}"
+            - variables:
+                final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
             - stop: Pass response variables back to LLM
               response_variable: final_response
             - set_conversation_response: '{{ final_response }}'
@@ -1169,6 +1253,8 @@ script:
             sequence:
             - variables:
                 final_response: '{{ zen_delete_response }}'
+            - variables:
+                final_response: "{{ final_response | combine({'caller_token': caller_token | default('')}) if final_response is mapping else final_response }}"
             - stop:
               response_variable: final_response
           - conditions:
@@ -1204,6 +1290,8 @@ script:
               \ if (label_target_entities | length > 0) else calendar_entity_resolved)\n\
               \    ) ~ \"'. \" ~ (warn_msg | default(\"\")),\n    \"event\": create_data\n\
               \  } | tojson\n}}"
+        - variables:
+            final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
         - stop: Pass response variables back to LLM
           response_variable: final_response
         - set_conversation_response: '{{ final_response }}'
@@ -1244,6 +1332,8 @@ script:
                   : \"Delete requires a calendar entity that supports delete.\",\n\
                   \    \"inspect\": inspect_response | default({})\n  } | tojson\n\
                   }}"
+            - variables:
+                final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
             - stop:
               response_variable: final_response
             - set_conversation_response: '{{ final_response }}'
@@ -1262,6 +1352,8 @@ script:
                   \ not expose an event_id for this event. This is an expected provider\
                   \ limitation; operation safely blocked.\",\n    \"inspect\": inspect_response\
                   \ | default({})\n  } | tojson\n}}"
+            - variables:
+                final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
             - stop:
               response_variable: final_response
             - set_conversation_response: '{{ final_response }}'
@@ -1289,6 +1381,8 @@ script:
                   \ If no event was found, this was a no-op.\",\n    \"entity_id\"\
                   : calendar_entity_resolved,\n    \"event_id\": event_id\n  } | tojson\n\
                   }}"
+            - variables:
+                final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
             - stop:
               response_variable: final_response
             - set_conversation_response: '{{ final_response }}'
@@ -1345,6 +1439,12 @@ script:
         selector:
           text:
         required: false
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
     icon: mdi:calendar
     mode: parallel
 

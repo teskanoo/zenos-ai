@@ -1,4 +1,4 @@
-# Zen DojoTools SystemTools — 4.2.0
+# Zen DojoTools SystemTools — 4.3.0 'Meridian'
 
 *HA lifecycle management, log reading, event emission, and home mode*
 
