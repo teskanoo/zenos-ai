@@ -1,4 +1,4 @@
-# ZenOS-AI Troubleshooting Guide — 4.3.0 'Meridian'
+# ZenOS-AI Troubleshooting Guide — 4.5.0 'Meridian'
 
 *Gauges → Kill Switches → Repair Tools. Start at the top, work down.*
 

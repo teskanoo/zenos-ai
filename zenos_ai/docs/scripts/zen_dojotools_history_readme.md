@@ -1,4 +1,4 @@
-# Zen DojoTools History — 4.3.0 'Meridian'
+# Zen DojoTools History — 4.5.0 'Meridian'
 
 *Recorder statistics query engine for HA long-term statistics*
 

@@ -1,6 +1,6 @@
 # 📘 **ZenOS-AI Documentation Hub**
 
-> **Version:** 4.3.0 'Meridian' | **Last Updated:** March 2026 | **License:** MIT
+> **Version:** 4.5.0 'Meridian' | **Last Updated:** March 2026 | **License:** MIT
 
 → [Project Overview & Install](../../README.md)
 
@@ -55,11 +55,13 @@ Highlighted chapters:
 * `06_Scheduler_and_The_Abbot.md` – Task routing
 * `07_Summarizer_Pipelines.md` – Awareness flow
 * `08_Kata_Cabinet.md`
-* `09_Identity_Architecture.md` - Security Model
+* `09_Identity_Architecture.md` – Identity data model spec
 * `11_RoomState_and_Perception.md` – Sensory model
-* `14_Abbot_Scheduler_And_Taskflow.md`
-* `19_Resilience_and_Failure_Model.md`
-* `20_Tool_Invocation_and_Security.md`
+* `14_Abbot_Scheduler_And_Task_Economy.md`
+* `18_Context_Frame_Operational_Cognitive_Surface.md` – Context assembly + prompt loader
+* `19_Resilience_and_Failure_Modes.md` – Highlander resolver, health sensor stack
+* `20_tool_invocation_and_security.md` – Tool ACLs, safety classes, caller_token
+* `security_model_ga.md` – **Operator reference:** what's active at GA vs SP1
 
 If you want to know how the mind works, start here.
 
@@ -148,7 +150,10 @@ Documentation for every Zen DojoTool and script module.
 Includes:
 
 * `zen_dojotools_admintools_readme.md` — AdminTools: KungFu Writer, cabinet repair, template press, prompt loader, nuclear label reset, reset_all cabinet sequence
-* `zen_dojotools_scheduler_readme.md` — Scheduler architecture, trigger IDs, component subscription, hardware trigger pattern
+* `zen_dojotools_scheduler_readme.md` — Scheduler: trigger IDs, Dojo-driven dispatch, component subscription, force events, hardware trigger pattern
+* `zen_dojotools_summarizers_readme.md` — Ninja Summarizer + SuperSummary: kill switches, active component selection, monk pipeline
+* `zen_dojotools_library_readme.md` — Library: command interpreter dispatch, hash_md5, slugify
+* `zen_home_mode_readme.md` — Home Mode: 8-state machine, schedule anchors, quiet/work hours, scheduler trigger IDs
 * `zen_dojotools_filecabinet_readme.md` — Cabinet read/write controller, clone action, Highlander mode
 * `zen_dojotools_manifest_readme.md`
 * `zen_dojotools_inspect_readme.md`
@@ -169,7 +174,7 @@ Scripts are the motor cortex. They turn reasoning into action.
 
 Layered health monitoring stack — cabinet resolvers, cognition pipeline, agent bootability.
 
-* `readme.md` — full reference: 7 always-live cabinet resolver sensors + 5 trigger-based health sensors, states, conditions, attributes, troubleshooting quick-reference. Includes `zen_health_report` (full system diagnostic) and `zen_resolver_refresh` (cold-start recovery).
+* `readme.md` — full reference: 7 always-live cabinet resolver sensors + 6 trigger-based health sensors (including `sensor.zen_prompt_health` — prompt integrity), states, conditions, attributes, troubleshooting quick-reference. Includes `zen_health_report` (full system diagnostic) and `zen_resolver_refresh` (cold-start recovery).
 
 ---
 
@@ -210,23 +215,24 @@ This is Friday’s working memory engine.
 
 ## 🔐 **11. Identity & Security Model**
 
-**Folder:** `docs/architecture/09_Identity_Architecture.md`
+**Folder:** `docs/architecture/`
 
 The Identity subsystem defines:
 
  * who a construct is allowed to be
  * what it may see
  * where its authority begins and ends
- 
-It formalizes:
 
- * GUIDs, identity hashes, provenance chains
- * Essence Capsules and persona metadata
- * People, Families, Households, Constructs
- * ACL roots, owner/partner authority
- * SecuritySafe, ContentSafe, and SquirrelSafe redaction
- * Cognitive boundaries and hypergraph gating
- * Session tokens, visas, and delegated capability (v1.5)
+Two documents cover this:
+
+* `09_Identity_Architecture.md` — full identity data model spec: GUIDs, identity hashes,
+  provenance chains, essence capsules, ACL rules, Squirrel Safe / Content Safe filters,
+  session tokens, visas, delegated capability (v1.5). The authoritative structural spec.
+
+* `security_model_ga.md` — **start here if you’re an operator.** What is active at GA,
+  what is stubbed for SP1, the `security_policy` syscab drawer, caller_token plumbing,
+  prompt integrity sensor (`zen_prompt_health`), delegation and nesting hard rules, and
+  the SP1 claims engine architecture. No jargon — written for someone deploying the system.
 
 This is Friday’s trust spine — the system that decides which parts of the world are even visible before reasoning begins.
 

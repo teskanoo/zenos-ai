@@ -1,4 +1,4 @@
-# Zen DojoTools Index — 4.3.0 'Meridian'
+# Zen DojoTools Index — 4.5.0 'Meridian'
 **File:** `zen_dojotools_zen_index_readme.md`  
 **Type:** Technical Documentation  
 
@@ -247,7 +247,7 @@ This is the *search brainstem* of ZenOS-AI.
 
 ## Summary
 
-The Zen Index 4.3.0 'Meridian' provides:
+The Zen Index 4.5.0 'Meridian' provides:
 
 - A fully featured, label/entity correlation engine
 - Integrated set logic with four operators

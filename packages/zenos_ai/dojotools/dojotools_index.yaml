@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI DojoTools: Index Cluster
-# Version: 4.2.1
+# Version: 4.5.0
 #
 # Scripts:
 #   zen_dojotools_query   — ZQ-1 entity filter/query engine
@@ -917,7 +917,7 @@ script:
           text:
       operator:
         name: Set Operator
-        description: Boolean set operator - Default AND if not provided.
+        description: Boolean set operator - Default AND if not provided. Use * for full label graph (no label_1 required).
         required: false
         default: AND
         selector:
@@ -927,6 +927,7 @@ script:
             - OR
             - NOT
             - XOR
+            - '*'
       timeout:
         name: Timeout
         required: false

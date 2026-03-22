@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI DojoTools: AdminTools
-# Version: 4.0.0 RC2
+# Version: 4.5.0
 #
 # Scripts:
 #   zen_admintools_reset_template        — Kata + Dojo template press (v1.1.0)
@@ -63,7 +63,6 @@ script:
               "structure": {
                 "version": None,
                 "friendly_name": None,
-                "master_switch": None,
                 "label": None,
                 "component_summary": None,
                 "component_instructions": None,
@@ -83,7 +82,6 @@ script:
               "example": {
                 "version": "1.2.0",
                 "friendly_name": "Alert Manager",
-                "master_switch": "input_boolean.alert_manager_master_switch",
                 "label": "Alert Manager",
                 "component_summary": "Monitors system alerts and persistent notifications.",
                 "component_instructions": "Focus on unacknowledged alerts. Escalate if count > 3.",
@@ -101,7 +99,6 @@ script:
                 }
               },
               "notes": {
-                "master_switch": "Deprecated in 1.2.0. Use meta.enabled for on/off control. If an input_boolean with the kung_fu_system_switch label exists for this component, its state overrides meta.enabled.",
                 "meta.requires": "Stub in 1.2.0 — cert and level are stored but not enforced. zen_auth enforcement arrives in SP1."
               }
             } | tojson
@@ -209,7 +206,6 @@ script:
                             }}
                           _kfc_updated: >-
                             {{ _kfc_v1 | combine({'meta': _kfc_meta}) | tojson }}
-                          _kfc_ms: "{{ _kfc_v1.get('master_switch', '') | trim }}"
                       - action: script.zen_dojotools_filecabinet
                         data:
                           action_type: update
@@ -220,22 +216,13 @@ script:
                             - "{{ _rtt_dojo }}"
                           key: "{{ _kfc_key }}"
                           value: "{{ _kfc_updated }}"
-                      - alias: Tag master switch with kung_fu_system_switch label
-                        if:
-                          - condition: template
-                            value_template: "{{ _kfc_ms != '' }}"
-                        then:
-                          - action: homeassistant.add_label_to_entity
-                            data:
-                              entity_id: "{{ _kfc_ms }}"
-                              label_id: kung_fu_system_switch
     alias: Zen AdminTools Reset Template
     description: >-
       Zen AdminTools Reset Templates (1.2.0). Presses zen_template into the Kata
       cabinet and kfc_template into the Dojo cabinet. Called by Flynn gate-3 if
       either template is missing or version is outdated. On upgrade from 1.1.0:
       adds meta.enabled + meta.requires to all existing KFC drawers and applies
-      kung_fu_system_switch label to master switch entities. Idempotent.
+      Idempotent.
 
 
   zen_admintools_reset_labels:
@@ -663,9 +650,7 @@ script:
         name: Component Enabled
         description: >-
           Whether this component is active. Stored in meta.enabled.
-          Default true. Replaces master_switch as the lifecycle control in 1.2.0.
-          If a kung_fu_system_switch-labeled input_boolean exists for this
-          component, its state overrides this setting at runtime.
+          Default true. Lifecycle control in 1.2.0+.
         required: false
         default: true
         selector:
@@ -690,18 +675,6 @@ script:
             min: 0
             max: 10
             step: 1
-      master_switch:
-        name: Master Switch Entity (deprecated)
-        description: >-
-          Deprecated in 1.2.0. Use enabled instead. If provided, the referenced
-          entity will be tagged with the kung_fu_system_switch label so the
-          SuperSummary can still use it as a runtime override. Will be removed
-          in a future version.
-        required: false
-        selector:
-          entity:
-            filter:
-              domain: input_boolean
       tool:
         name: Tool
         description: Associated tool name or breadcrumb (optional).
@@ -835,7 +808,6 @@ script:
                 {
                   "version":               version | default(''),
                   "friendly_name":         friendly_name | default(''),
-                  "master_switch":         master_switch | default(''),
                   "label":                 label | default(''),
                   "command":               command | default(''),
                   "component_summary":     component_summary | default(''),
@@ -870,15 +842,6 @@ script:
               no_autorecycle: true
               description: "KFC component definition — permanent, do not expire"
           response_variable: _write_response
-        - alias: Tag master switch with kung_fu_system_switch label
-          if:
-            - condition: template
-              value_template: "{{ (master_switch | default('')) | trim != '' }}"
-          then:
-            - action: homeassistant.add_label_to_entity
-              data:
-                entity_id: "{{ master_switch }}"
-                label_id: kung_fu_system_switch
         - variables:
             result: >-
               {{

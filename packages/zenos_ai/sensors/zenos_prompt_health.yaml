@@ -1,0 +1,146 @@
+###############################################################################
+# ZenOS-AI — Prompt Health
+# Version: 4.5.0
+#
+# sensor.zen_prompt_health
+#   Official prompt resolver surface for the default AI user.
+#   All compute lives in zen_os_1.jinja::prompt_health_check().
+#   This sensor is the output — everything else reads from it.
+#
+# State: ok | warn | error  (from prompt_health_check)
+# Attributes: full structured dict from prompt_health_check
+#   persona_name, cabinet, schema, signature_status,
+#   core_hash, jacket_hash, signed_at, signed_by,
+#   halmark_version, schema_version, familiar_name, familiar_kfc_ref,
+#   manifest_present, prev_snapshot_exists, health_signals
+###############################################################################
+
+template:
+
+  - sensor:
+      - name: Zen Prompt Health
+        unique_id: zen_prompt_health
+        device_class: enum
+        availability: "true"
+
+        state: >-
+          {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+          {%- set r = zen.prompt_health_check() | trim | from_json -%}
+          {{ r.get('state', 'error') }}
+
+        attributes:
+
+          persona_name: >-
+            {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+            {%- set r = zen.prompt_health_check() | trim | from_json -%}
+            {{ r.get('persona_name', '') }}
+
+          cabinet: >-
+            {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+            {%- set r = zen.prompt_health_check() | trim | from_json -%}
+            {{ r.get('cabinet', '') }}
+
+          schema: >-
+            {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+            {%- set r = zen.prompt_health_check() | trim | from_json -%}
+            {{ r.get('schema', 'missing') }}
+
+          signature_status: >-
+            {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+            {%- set r = zen.prompt_health_check() | trim | from_json -%}
+            {{ r.get('signature_status', 'unsigned') }}
+
+          core_hash: >-
+            {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+            {%- set r = zen.prompt_health_check() | trim | from_json -%}
+            {{ r.get('core_hash', '') }}
+
+          jacket_hash: >-
+            {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+            {%- set r = zen.prompt_health_check() | trim | from_json -%}
+            {{ r.get('jacket_hash', '') }}
+
+          signed_at: >-
+            {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+            {%- set r = zen.prompt_health_check() | trim | from_json -%}
+            {{ r.get('signed_at', '') }}
+
+          signed_by: >-
+            {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+            {%- set r = zen.prompt_health_check() | trim | from_json -%}
+            {{ r.get('signed_by', '') }}
+
+          halmark_version: >-
+            {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+            {%- set r = zen.prompt_health_check() | trim | from_json -%}
+            {{ r.get('halmark_version', '') }}
+
+          schema_version: >-
+            {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+            {%- set r = zen.prompt_health_check() | trim | from_json -%}
+            {{ r.get('schema_version', '') }}
+
+          familiar_name: >-
+            {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+            {%- set r = zen.prompt_health_check() | trim | from_json -%}
+            {{ r.get('familiar_name', '') }}
+
+          familiar_kfc_ref: >-
+            {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+            {%- set r = zen.prompt_health_check() | trim | from_json -%}
+            {{ r.get('familiar_kfc_ref', '') }}
+
+          manifest_present: >-
+            {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+            {%- set r = zen.prompt_health_check() | trim | from_json -%}
+            {{ r.get('manifest_present', false) }}
+
+          id_manifest_present: >-
+            {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+            {%- set r = zen.prompt_health_check() | trim | from_json -%}
+            {{ r.get('id_manifest_present', false) }}
+
+          prev_snapshot_exists: >-
+            {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+            {%- set r = zen.prompt_health_check() | trim | from_json -%}
+            {{ r.get('prev_snapshot_exists', false) }}
+
+          health_signals: >-
+            {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+            {%- set r = zen.prompt_health_check() | trim | from_json -%}
+            {{ r.get('health_signals', {}) }}
+
+          environment_present: >-
+            {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+            {%- set r = zen.prompt_health_check() | trim | from_json -%}
+            {{ r.get('environment_present', false) }}
+
+          prompt_chars: >-
+            {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+            {%- set r = zen.prompt_health_check() | trim | from_json -%}
+            {{ r.get('prompt_chars', {}) }}
+
+  - sensor:
+      - name: Zen Prompt Length
+        unique_id: zen_prompt_length
+        device_class: enum
+        availability: "true"
+        # Heavier sensor — measures all 8 prompt sections stem to stern.
+        # Update interval intentionally slower (managed by HA default scan).
+
+        state: >-
+          {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+          {%- set r = zen.prompt_length_audit() | trim | from_json -%}
+          {{ r.get('total', 0) }}
+
+        attributes:
+
+          total: >-
+            {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+            {%- set r = zen.prompt_length_audit() | trim | from_json -%}
+            {{ r.get('total', 0) }}
+
+          sections: >-
+            {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+            {%- set r = zen.prompt_length_audit() | trim | from_json -%}
+            {{ r.get('sections', {}) }}

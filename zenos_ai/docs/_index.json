@@ -1,15 +1,17 @@
 {
-  "version": 7,
-  "generated": "2026-03-19",
+  "version": 8,
+  "generated": "2026-03-22",
   "description": "Index of ZenOS-AI documentation modules.",
   "sections": {
     "getting_started": {
       "title": "Getting Started",
       "path": "getting_started",
       "files": [
+        { "id": "getting_started_readme", "file": "readme.md", "title": "Getting Started Overview", "type": "readme" },
         { "id": "install", "file": "install.md", "title": "Install Guide", "type": "doc" },
         { "id": "first_run", "file": "first_run.md", "title": "First Run Guide", "type": "doc" },
         { "id": "entity_exposure", "file": "entity_exposure.md", "title": "What to Expose to Your Conversation Agent", "type": "doc" },
+        { "id": "cabinet_placement", "file": "cabinet_placement.md", "title": "Cabinet Placement Guide", "type": "doc" },
         { "id": "oobe", "file": "oobe.md", "title": "OOBE — Out-of-Box Experience", "type": "doc" },
         { "id": "troubleshooting", "file": "troubleshooting.md", "title": "Troubleshooting Guide", "type": "doc" }
       ]
@@ -18,25 +20,15 @@
       "title": "Documentation Root",
       "path": "",
       "files": [
-        {
-          "id": "readme",
-          "file": "readme.md",
-          "title": "ZenOS-AI Documentation Overview",
-          "type": "readme"
-        },
-        {
-          "id": "roadmap",
-          "file": "roadmap.md",
-          "title": "ZenOS-AI Roadmap",
-          "type": "doc"
-        }
+        { "id": "readme", "file": "readme.md", "title": "ZenOS-AI Documentation Overview", "type": "readme" },
+        { "id": "roadmap", "file": "roadmap.md", "title": "ZenOS-AI Roadmap", "type": "doc" }
       ]
     },
-
     "architecture": {
       "title": "Cognitive & System Architecture",
       "path": "architecture",
       "files": [
+        { "id": "arch_readme", "file": "readme.md", "title": "Architecture Series Preamble", "type": "readme" },
         { "id": "00_toc", "file": "00_toc.md", "title": "Table of Contents", "type": "doc" },
         { "id": "01_the_monastery_core", "file": "01_the_monastery_core.md", "title": "The Monastery Core", "type": "doc" },
         { "id": "02_architectural_overview", "file": "02_Architectural_Overview.md", "title": "Architectural Overview", "type": "design" },
@@ -47,57 +39,97 @@
         { "id": "07_summarizer_pipelines", "file": "07_Summarizer_Pipelines.md", "title": "Summarizer Pipelines", "type": "design" },
         { "id": "08_kata_cabinet", "file": "08_Kata_Cabinet.md", "title": "Kata Cabinet", "type": "doc" },
         { "id": "09_identity_architecture", "file": "09_Identity_Architecture.md", "title": "Identity Architecture", "type": "design" },
-        { "id": "10_event_substrate_and_home_state", "file": "10_Event_Substrate_and_HomeState.md", "title": "Event Substrate and HomeState", "type": "design" },
+        { "id": "10_event_substrate", "file": "10_Event_Substrate_and_HomeAssistant_Implementation.md", "title": "Event Substrate and Home Assistant Implementation", "type": "design" },
         { "id": "11_roomstate_and_perception", "file": "11_RoomState_and_Perception.md", "title": "RoomState and Perception", "type": "design" },
-        { "id": "12_livestate_authoritative_env", "file": "12_LiveState_Authoritative_Env.md", "title": "LiveState Authoritative Environment", "type": "design" },
+        { "id": "12_livestate_authoritative_env", "file": "12_LiveState_Authoritative_Environment_Model.md", "title": "LiveState Authoritative Environment Model", "type": "design" },
         { "id": "13_cognitive_context_construction", "file": "13_Cognitive_Context_Construction.md", "title": "Cognitive Context Construction", "type": "design" },
-        { "id": "14_abbot_scheduler_and_taskflow", "file": "14_Abbot_Scheduler_And_Taskflow.md", "title": "Abbot Scheduler and Taskflow", "type": "design" },
-        { "id": "15_identity_accesscontrol_permissions", "file": "15_Identity_AccessControl_Permissions.md", "title": "Identity Access Control & Permissions", "type": "design" },
+        { "id": "14_abbot_scheduler_task_economy", "file": "14_Abbot_Scheduler_And_Task_Economy.md", "title": "Abbot Scheduler and Task Economy", "type": "design" },
+        { "id": "15_identity_accesscontrol_person_capsules", "file": "15_Identity_AccessControl_PersonCapsules.md", "title": "Identity Access Control — Person Capsules", "type": "design" },
         { "id": "16_summarizerengine_katapipeline", "file": "16_SummarizerEngine_KataPipeline.md", "title": "Summarizer Engine & Kata Pipeline", "type": "design" },
-        { "id": "17_katas_structure_semantics", "file": "17_Katas_Structure_Semantics.md", "title": "Katas: Structure & Semantics", "type": "doc" },
-        { "id": "18_context_frame_operational_model", "file": "18_Context_Frame_Operational_Model.md", "title": "Context Frame Operational Model", "type": "design" },
-        { "id": "19_resilience_and_failure_model", "file": "19_Resilience_and_Failure_Model.md", "title": "Resilience & Failure Model", "type": "design" },
-        { "id": "20_tool_invocation_and_security", "file": "20_Tool_Invocation_and_Security.md", "title": "Tool Invocation & Security", "type": "design" }
+        { "id": "17_katas_structure_semantics_validity", "file": "17_Katas_Structure_Semantics_Validity.md", "title": "Katas: Structure, Semantics & Validity", "type": "doc" },
+        { "id": "18_context_frame_operational_cognitive_surface", "file": "18_Context_Frame_Operational_Cognitive_Surface.md", "title": "Context Frame: Operational Cognitive Surface", "type": "design" },
+        { "id": "19_resilience_and_failure_modes", "file": "19_Resilience_and_Failure_Modes.md", "title": "Resilience & Failure Modes", "type": "design" },
+        { "id": "20_tool_invocation_and_security", "file": "20_tool_invocation_and_security.md", "title": "Tool Invocation & Security", "type": "design" },
+        { "id": "security_model_ga", "file": "security_model_ga.md", "title": "Security Model — GA Operator Reference", "type": "doc" }
       ]
     },
-
     "cabinets": {
       "title": "Cabinet System",
       "path": "cabinets",
       "files": [
+        { "id": "cabinets_readme", "file": "readme.md", "title": "Cabinet System Overview", "type": "readme" },
         { "id": "cabinet_spec", "file": "cabinet_spec.md", "title": "Cabinet Specification", "type": "spec" },
         { "id": "hypergraph_model", "file": "hypergraph_model.md", "title": "Hypergraph Model", "type": "design" },
-        { "id": "readme_cabinets", "file": "readme.md", "title": "Cabinet System Overview", "type": "readme" },
         { "id": "zen_redirector_spec", "file": "zen_redirector_spec.md", "title": "Volume Redirector Specification", "type": "spec" }
       ]
     },
-
     "custom_templates": {
       "title": "Custom Templates",
       "path": "custom_templates",
       "files": [
-        { "id": "zen_os1_jinja", "file": "zen_os1_jinja.md", "title": "Zen OS1 Jinja Template", "type": "doc" },
-        { "id": "zen_query_jinja", "file": "zen_query_jinja.md", "title": "Zen Query Jinja Template", "type": "doc" }
+        { "id": "custom_templates_readme", "file": "readme.md", "title": "Custom Templates Overview", "type": "readme" },
+        { "id": "zen_os1_jinja", "file": "zen_os1_jinja.md", "title": "zen_os_1.jinja — Prompt Engine & Macro Library", "type": "doc" },
+        { "id": "zen_query_jinja", "file": "zen_query_jinja.md", "title": "zen_query.jinja — ZenQuery Filter Engine", "type": "doc" }
       ]
     },
-
     "kung_fu": {
       "title": "Kung Fu Modules",
       "path": "kung_fu",
       "files": [
-        { "id": "kung_fu_readme", "file": "readme.md", "title": "Kung Fu Component Overview", "type": "readme" }
+        { "id": "kung_fu_readme", "file": "readme.md", "title": "Kung Fu Component Overview", "type": "readme" },
+        { "id": "understanding_kf4", "file": "understanding_kf4.md", "title": "Understanding KF4", "type": "doc" }
       ]
     },
-
     "library": {
       "title": "Zen Library",
       "path": "library",
       "files": [
-        { "id": "index_system", "file": "index_system.md", "title": "Library Index System", "type": "spec" },
-        { "id": "library_readme", "file": "readme.md", "title": "Library Overview", "type": "readme" }
+        { "id": "library_readme", "file": "readme.md", "title": "Library Overview", "type": "readme" },
+        { "id": "index_system", "file": "index_system.md", "title": "Library Index System", "type": "spec" }
       ]
     },
-
+    "releases": {
+      "title": "Release Notes",
+      "path": "releases",
+      "files": [
+        { "id": "meridian", "file": "meridian.md", "title": "Release Notes — Meridian (4.5.0)", "type": "doc" }
+      ]
+    },
+    "research": {
+      "title": "Research Papers & Notes",
+      "path": "research",
+      "files": [
+        { "id": "whitepaper_cognitive_architectures", "file": "whitepaper_cognitive_architectures.md", "title": "Cognitive Architecture Whitepaper", "type": "doc" }
+      ]
+    },
+    "scripts": {
+      "title": "Script Modules",
+      "path": "scripts",
+      "files": [
+        { "id": "scripts_readme", "file": "readme.md", "title": "Scripts Overview", "type": "readme" },
+        { "id": "zen_flynn", "file": "zen_flynn_readme.md", "title": "Flynn — Stepgate Sentinel & Bootstrap Engine", "type": "doc" },
+        { "id": "zen_dojotools_admintools", "file": "zen_dojotools_admintools_readme.md", "title": "DojoTools AdminTools", "type": "doc" },
+        { "id": "zen_dojotools_profile", "file": "zen_dojotools_profile_readme.md", "title": "DojoTools Profile Editor", "type": "doc" },
+        { "id": "zen_dojotools_labels", "file": "zen_dojotools_labels_readme.md", "title": "DojoTools Labels", "type": "doc" },
+        { "id": "zen_dojotools_identity", "file": "zen_dojotools_identity_readme.md", "title": "DojoTools Identity", "type": "doc" },
+        { "id": "zen_dojotools_scheduler", "file": "zen_dojotools_scheduler_readme.md", "title": "DojoTools Scheduler", "type": "doc" },
+        { "id": "zen_dojotools_summarizers", "file": "zen_dojotools_summarizers_readme.md", "title": "DojoTools Summarizers (Ninja + SuperSummary)", "type": "doc" },
+        { "id": "zen_dojotools_library", "file": "zen_dojotools_library_readme.md", "title": "DojoTools Library", "type": "doc" },
+        { "id": "zen_home_mode", "file": "zen_home_mode_readme.md", "title": "Zen Home Mode", "type": "doc" },
+        { "id": "zen_dojotools_history", "file": "zen_dojotools_history_readme.md", "title": "DojoTools History", "type": "doc" },
+        { "id": "zen_dojotools_utilities", "file": "zen_dojotools_utilities_readme.md", "title": "DojoTools Utilities", "type": "doc" },
+        { "id": "zen_dojotools_core", "file": "zen_dojotools_core_readme.md", "title": "DojoTools Core (FileCabinet GC)", "type": "doc" },
+        { "id": "zen_dojotools_systemtools", "file": "zen_dojotools_systemtools_readme.md", "title": "DojoTools SystemTools", "type": "doc" },
+        { "id": "zen_dojotools_office", "file": "zen_dojotools_office_readme.md", "title": "DojoTools Office", "type": "doc" },
+        { "id": "zen_dojotools_event_emitter", "file": "zen_dojotools_event_emitter_readme.md", "title": "DojoTools Event Emitter", "type": "doc" },
+        { "id": "zen_dojotools_filecabinet", "file": "zen_dojotools_filecabinet_readme.md", "title": "DojoTools FileCabinet", "type": "doc" },
+        { "id": "zen_dojotools_manifest", "file": "zen_dojotools_manifest_readme.md", "title": "DojoTools Manifest", "type": "doc" },
+        { "id": "zen_dojotools_index", "file": "zen_dojotools_index_readme.md", "title": "DojoTools Index", "type": "doc" },
+        { "id": "zen_dojotools_hyperindex", "file": "zen_dojotools_hyperindex_readme.md", "title": "DojoTools HyperIndex", "type": "doc" },
+        { "id": "zen_dojotools_inspect", "file": "zen_dojotools_inspect_readme.md", "title": "DojoTools Inspect", "type": "doc" },
+        { "id": "zen_dojotools_query", "file": "zen_dojotools_query_readme.md", "title": "DojoTools Query Engine", "type": "doc" }
+      ]
+    },
     "sensors": {
       "title": "Health Sensors",
       "path": "sensors",
@@ -105,55 +137,20 @@
         { "id": "sensors_readme", "file": "readme.md", "title": "Health Sensors Reference", "type": "doc" }
       ]
     },
-
-        "research": {
-      "title": "Research Papers & Notes",
-      "path": "research",
-      "files": [
-        { "id": "whitepaper_cognitive_architecture", "file": "whitepaper_cognitive_architecture.md", "title": "Cognitive Architecture Whitepaper", "type": "doc" }
-      ]
-    },
-
-    "scripts": {
-      "title": "Script Modules",
-      "path": "scripts",
-      "files": [
-        { "id": "scripts_readme", "file": "readme.md", "title": "Scripts Overview", "type": "readme" },
-        { "id": "zen_dojotools_scheduler", "file": "zen_dojotools_scheduler_readme.md", "title": "DojoTools Scheduler", "type": "doc" },
-        { "id": "zen_dojotools_admintools", "file": "zen_dojotools_admintools_readme.md", "title": "DojoTools AdminTools", "type": "doc" },
-        { "id": "zen_dojotools_profile", "file": "zen_dojotools_profile_readme.md", "title": "DojoTools Profile Editor", "type": "doc" },
-        { "id": "zen_flynn", "file": "zen_flynn_readme.md", "title": "Flynn Stepgate Sentinel & Bootstrap Engine", "type": "doc" },
-        { "id": "zen_dojotools_labels", "file": "zen_dojotools_labels_readme.md", "title": "DojoTools Labels", "type": "doc" },
-        { "id": "zen_dojotools_identity", "file": "zen_dojotools_identity_readme.md", "title": "DojoTools Identity", "type": "doc" },
-        { "id": "zen_dojotools_history", "file": "zen_dojotools_history_readme.md", "title": "DojoTools History", "type": "doc" },
-        { "id": "zen_dojotools_utilities", "file": "zen_dojotools_utilities_readme.md", "title": "DojoTools Utilities", "type": "doc" },
-        { "id": "zen_dojotools_core", "file": "zen_dojotools_core_readme.md", "title": "DojoTools Core (FileCabinet GC)", "type": "doc" },
-        { "id": "zen_dojotools_systemtools", "file": "zen_dojotools_systemtools_readme.md", "title": "DojoTools SystemTools & Home Mode", "type": "doc" },
-        { "id": "script_dojotools_filecabinet", "file": "zen_dojotools_filecabinet_readme.md", "title": "FileCabinet Script Overview", "type": "doc" },
-        { "id": "zen_dojotools_office", "file": "zen_dojotools_office_readme.md", "title": "DojoTools Office", "type": "doc" },
-        { "id": "zen_dojotools_event_emitter", "file": "zen_dojotools_event_emitter_readme.md", "title": "DojoTools Event Emitter", "type": "doc" },
-        { "id": "zen_dojotools_hyperindex", "file": "zen_dojotools_hyperindex_readme.md", "title": "DojoTools HyperIndex", "type": "doc" },
-        { "id": "zen_dojotools_index", "file": "zen_dojotools_index_readme.md", "title": "DojoTools Index", "type": "doc" },
-        { "id": "zen_dojotools_inspect", "file": "zen_dojotools_inspect_readme.md", "title": "DojoTools Inspect", "type": "doc" },
-        { "id": "zen_dojotools_manifest", "file": "zen_dojotools_manifest_readme.md", "title": "DojoTools Manifest", "type": "doc" },
-        { "id": "zen_dojotools_query", "file": "zen_dojotools_query_readme.md", "title": "DojoTools Query Engine", "type": "doc" }
-      ]
-    },
-
     "zen_hyperindex": {
       "title": "Zen HyperIndex",
       "path": "zen_hyperindex",
       "files": [
-        { "id": "zen_hyperindex_overview", "file": "zen_hyperindex_overview.md", "title": "HyperIndex Overview", "type": "design" }
+        { "id": "zen_hyperindex_overview", "file": "zen_hyperindex_overview.md", "title": "HyperIndex Overview", "type": "design" },
+        { "id": "zq1_patterns", "file": "zq1_patterns.md", "title": "ZQ-1 Query Patterns", "type": "doc" }
       ]
     },
-
     "zen_summarizer": {
       "title": "Zen Summarizer",
       "path": "zen_summarizer",
       "files": [
-        { "id": "ninja_summarizer_spec", "file": "ninja_summarizer_spec.md", "title": "Ninja Summarizer Specification", "type": "spec" },
-        { "id": "zen_summarizer_readme", "file": "readme.md", "title": "Zen Summarizer Overview", "type": "readme" }
+        { "id": "zen_summarizer_readme", "file": "readme.md", "title": "Zen Summarizer Overview", "type": "readme" },
+        { "id": "ninja_summarizer_spec", "file": "ninja_summarrizer_spec.md", "title": "Ninja Summarizer Specification", "type": "spec" }
       ]
     }
   }

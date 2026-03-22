@@ -1,5 +1,5 @@
 ###############################################################################
-# ZENOS-AI FLYNN: OOBE PROTOCOL (v4.0.0 RC2)
+# ZENOS-AI FLYNN: OOBE PROTOCOL (v4.1.0)
 #
 # Script: zen_flynn_oobe
 #   Out-of-Box Experience driver for new ZenOS installs.
@@ -94,6 +94,9 @@ script:
                   key: _oobe_complete
                   value: >-
                     {{ {"completed": true, "ts": now().isoformat()} | tojson }}
+              - action: persistent_notification.dismiss
+                data:
+                  notification_id: flynn_oobe_pending
               - variables:
                   final_response:
                     status: ok
@@ -114,7 +117,7 @@ script:
                     {{
                       {
                         "tool": "zen_flynn_oobe",
-                        "version": "4.0.0 RC2",
+                        "version": "4.1.0",
                         "protocol": "ZenOS Home Onboarding",
                         "hard_rules": [
                           "Never ask more than 2 questions at a time.",
@@ -178,8 +181,9 @@ script:
                             "title": "Close Out",
                             "steps": [
                               "Rebuild compact index: zen_dojotools_index mode: build_compact_index.",
-                              "Write OOBE complete flag: zen_flynn_oobe mode: complete.",
-                              "Tell the user the system is ready. One sentence. No list of what was done."
+                              "Write OOBE complete flag: zen_flynn_oobe mode: complete (this also dismisses the setup notification).",
+                              "Tell the operator the system is ready. One sentence.",
+                              "Instruct them to set the 'ZenOS: Persona' helper (or input_text.zenos_persona_name) to the agent name just configured, then start a fresh conversation. That hands off to the real talent."
                             ]
                           }
                         }

@@ -170,6 +170,17 @@ This ensures that:
 * privilege escalation cannot occur through poorly formed prompts,
 * only authenticated actors may modify critical system elements.
 
+> **GA Implementation Note — 4.5.0 ‘Meridian’: caller_token SP1 §4a Stub**
+>
+> At GA, a `caller_token` field is plumbed as an opaque pass-through parameter across all 15
+> AI-accessible DojoTools scripts. It is not interpreted or validated — callers may populate it
+> for correlation; scripts carry it forward in response payloads unchanged. Full enforcement
+> (external auth provider, `validation_mode`, `claims_cache_ttl`) activates at SP1 when
+> `security_policy.secure` is flipped from `false` to `true` in the System Cabinet.
+> The policy plane, HyperIndex claims engine, and caller_token enforcement are all plumbed at GA.
+> SP1 wires the external provider and flips the switch. One setting enables full enforcement.
+> See also: [`security_model_ga.md`](security_model_ga.md).
+
 ---
 
 # **20.6 Call Logging and Audit Trail**

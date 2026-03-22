@@ -51,6 +51,10 @@ input_boolean:
     name: "ZenOS: Secret Squirrel Mode"
     icon: mdi:incognito
 
+  zen_flynn_override:
+    name: "ZenOS: Flynn Override"
+    icon: mdi:wrench-outline
+
 
 ###############################################################################
 # COMPANION SELECTS
@@ -249,11 +253,11 @@ automation:
                   confirm: true
               - action: persistent_notification.create
                 data:
-                  title: "ZenOS-AI: Labels Created — Restart Required"
+                  title: "ZenOS-AI: Almost there — restart needed"
                   message: >
-                    Flynn here. I just created the Zen label set.
-                    Restart Home Assistant for labels to fully propagate.
-                    After that, I'll wire everything up.
+                    Hey, it's Flynn. I just laid the groundwork — labels are in place.
+                    I need you to restart Home Assistant before I can finish wiring things up.
+                    After the restart, open a conversation with me and we'll pick up right where we left off.
                   notification_id: flynn_labels_created
               - stop: "Gate 0: Labels created, restart needed"
 
@@ -367,7 +371,7 @@ automation:
                     - "{{ _g35_ai_cab }}"
                   key: "zenai_essence"
                   value: >-
-                    {% import 'zenos_ai/zen_os_1rc.jinja' as zen %}
+                    {% import 'zenos_ai/zen_os_1.jinja' as zen %}
                     {% set defaults = zen.essence_defaults() | from_json %}
                     {{ defaults | combine({'identity': defaults.get('identity',{}) | combine({'name': _g35_input_name})}) | tojson }}
               - action: persistent_notification.dismiss
@@ -381,12 +385,10 @@ automation:
             sequence:
               - action: persistent_notification.create
                 data:
-                  title: "ZenOS-AI: Welcome — Let's name your AI"
+                  title: "ZenOS-AI: Ready — let's name your agent"
                   message: >
-                    Flynn here. Your system is ready but your AI doesn't have a
-                    name yet. Start a conversation with your AI and ask it to set
-                    up your profile — or run the Flynn Agent Builder
-                    (mode: oobe) to walk through setup.
+                    Hey! I'm Flynn. Your system is up and running but I still need to know who's moving in.
+                    Open a conversation with me and let's get your agent set up — I'll walk you through the whole thing.
                   notification_id: flynn_oobe_pending
         # Case 3: cabinet has a real name or _oobe_complete → dismiss
         default:
@@ -402,10 +404,10 @@ automation:
             sequence:
               - action: persistent_notification.create
                 data:
-                  title: "ZenOS-AI: System Ready"
+                  title: "ZenOS-AI: All green — your agent is ready"
                   message: >
-                    Everything's looking good. All gates green.
-                    System is ready. Handing off to the real talent.
+                    Everything's copacetic. All gates green, system is fully operational.
+                    Open a conversation and say hi — I'll hand you off to the real talent.
                   notification_id: flynn_system_ready
 
 
@@ -485,6 +487,45 @@ script:
               data:
                 label_id: "{{ repeat.item.label | slugify }}"
                 entity_id: "{{ repeat.item.entity }}"
+
+      # Step 4: Tag static health sensor entities
+      # These are not in the slot system — must be stamped explicitly on every provision.
+      # add_label_to_entity is idempotent — safe to re-run on existing installs.
+      - variables:
+          health_sensor_labels:
+            - entity: sensor.zen_label_health
+              labels: [zen_health, system_status, zen, labels]
+            - entity: sensor.zen_cabinet_health
+              labels: [zen_health, system_status, zen, cabinet]
+            - entity: sensor.zen_monastery_health
+              labels: [zen_health, system_status, zen, monastery, zen_system]
+            - entity: sensor.zen_summarizer_health
+              labels: [zen_health, system_status, zen, zen_system, ninja_summarizer]
+            - entity: sensor.zen_supersummary_health
+              labels: [zen_health, system_status, zen, zen_system, zen_summary]
+            - entity: sensor.zen_flynn_health
+              labels: [zen_health, system_status, zen_flynn]
+            - entity: binary_sensor.flynn_system_ready
+              labels: [zen_health, system_status, zen_flynn]
+            - entity: sensor.zen_agent_health
+              labels: [zen_health, system_status, agent]
+            - entity: sensor.zen_prompt_health
+              labels: [zen_health, system_status, zen]
+            - entity: sensor.zen_prompt_length
+              labels: [zen_health, system_status, zen]
+      - repeat:
+          for_each: "{{ health_sensor_labels }}"
+          sequence:
+            - variables:
+                _hs_entity: "{{ repeat.item.entity }}"
+                _hs_labels: "{{ repeat.item.labels }}"
+            - repeat:
+                for_each: "{{ _hs_labels }}"
+                sequence:
+                  - action: homeassistant.add_label_to_entity
+                    data:
+                      entity_id: "{{ _hs_entity }}"
+                      label_id: "{{ repeat.item }}"
 
       - event: flynn_stepgate_event
         event_data:
@@ -598,14 +639,12 @@ script:
             sequence:
               - action: persistent_notification.create
                 data:
-                  title: "ZenOS-AI: Conversation Agent Required"
+                  title: "ZenOS-AI: One thing needed before I can continue"
                   message: >
-                    Flynn here. I need a working conversation agent to finish
-                    bootstrap. Go to Settings > Devices & Services > Helpers
-                    and set the 'ZenOS: Conversation Agent' helper to your
-                    conversation agent entity ID (e.g., conversation.your_agent).
-                    The other 3 ZenOS helpers (Household Name, Primary User,
-                    Persona Name) should be filled in too. Then restart HA.
+                    Hey, Flynn here. I need a conversation agent to finish setup.
+                    Go to Settings > Helpers and set 'ZenOS: Conversation Agent' to your agent entity ID.
+                    Fill in the other three ZenOS helpers too (Household Name, Primary User, Persona Name), then restart HA.
+                    After that, open a conversation with me and we'll pick up from here.
                   notification_id: flynn_agent_required
               - stop: "Gate 3: Conversation agent invalid or missing"
 
@@ -752,7 +791,7 @@ script:
                     - "{{ states('sensor.zen_default_ai_user_cabinet_resolved') }}"
                   key: "zenai_essence"
                   value: >-
-                    {% import 'zenos_ai/zen_os_1rc.jinja' as zen %}
+                    {% import 'zenos_ai/zen_os_1.jinja' as zen %}
                     {% set defaults = zen.essence_defaults() | from_json %}
                     {{ defaults | combine({'identity': defaults.get('identity',{}) | combine({'name': persona_name})}) | tojson }}
 
@@ -771,7 +810,7 @@ script:
                     - "{{ _seed_ai_cab }}"
                   key: zenai_essence
                   value: >-
-                    {% import 'zenos_ai/zen_os_1rc.jinja' as zen %}
+                    {% import 'zenos_ai/zen_os_1.jinja' as zen %}
                     {{ zen.essence_defaults() }}
 
       # Press zen_template (Kata) and kfc_template (Dojo) if either is missing

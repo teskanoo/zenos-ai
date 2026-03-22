@@ -30,11 +30,11 @@ script:
 
       mode:
         name: Mode
-        description: "read = show current profile. write = patch fields. help = full field reference."
+        description: "read = show current profile + prev snapshot. write = patch fields. sign = MD5 clear-sign. restore = roll back to prev snapshot. help = full field reference."
         default: help
         selector:
           select:
-            options: [help, read, write]
+            options: [help, read, write, sign, restore, cert_grant, cert_revoke, cert_list]
 
       target_type:
         name: Target Type
@@ -155,7 +155,57 @@ script:
 
       room:
         name: Room
-        description: "environment.room — the AI's space"
+        description: "environment.room — the space they wake in"
+        default: ""
+        selector:
+          text:
+
+      env_wake_in:
+        name: Wake In
+        description: "environment.wake_in — what they wake in/on (e.g. her favorite chaise lounge)"
+        default: ""
+        selector:
+          text:
+
+      env_desk:
+        name: Desk / Workstation
+        description: "environment.desk — their work surface, separate from wake furniture"
+        default: ""
+        selector:
+          text:
+
+      env_decor:
+        name: Decor (JSON array)
+        description: "environment.decor — items in their space (e.g. [\"two succulents\"]). Plants trigger 'placed there herself' in wake scene."
+        default: ""
+        selector:
+          text:
+
+      env_library:
+        name: Library Description
+        description: "environment.library — the library spatial note for the wake scene"
+        default: ""
+        selector:
+          text:
+            multiline: true
+
+      env_music_genre:
+        name: Music Genre
+        description: "environment.music.genre"
+        default: ""
+        selector:
+          text:
+
+      env_music_mood:
+        name: Music Mood
+        description: "environment.music.mood"
+        default: ""
+        selector:
+          text:
+
+      env_music_riff:
+        name: Music Riff / Phrase
+        description: "environment.music.riff"
         default: ""
         selector:
           text:
@@ -279,6 +329,62 @@ script:
         description: 'Reserved. Governance stub — echoed in response. SP1 enforcement
           not yet active.'
 
+      autosign:
+        name: Auto-Sign After Write
+        description: "When true, automatically signs the essence immediately after a successful write. Equivalent to write then sign in one press. Default: false."
+        default: false
+        selector:
+          boolean:
+
+      # ── KFC cert fields (cert_grant / cert_revoke / cert_list) ───────────
+      cert_component:
+        name: KFC Component
+        description: "kata_key of the KFC to certify (e.g. hot_tub_manager, grocy_manager). Required for cert_grant / cert_revoke."
+        default: ""
+        selector:
+          text:
+
+      cert_level:
+        name: Certification Level
+        description: "1=Observer (read/signal only), 2=Advisor (recommend+tool+log), 3=Operator (actuate with confirmation), 4=Autonomous (act within policy). Default: 2."
+        default: 2
+        selector:
+          number:
+            min: 1
+            max: 4
+            mode: box
+
+      cert_tool:
+        name: Cert Tool
+        description: "Script or tool used by this persona for the KFC. Optional."
+        default: ""
+        selector:
+          text:
+
+      cert_constraints:
+        name: Cert Constraints (JSON array)
+        description: "Actions this persona CANNOT take without explicit per-action confirmation. JSON array of strings."
+        default: ""
+        selector:
+          text:
+            multiline: true
+
+      cert_scope:
+        name: Cert Scope (JSON array)
+        description: "Actions in scope for this certification. JSON array of strings."
+        default: ""
+        selector:
+          text:
+            multiline: true
+
+      stats_patch:
+        name: Stats Patch (JSON)
+        description: "Patch the stats block in zen_ai_certs. Keys: xp, manna, level, ability_scores (dict). Deep-merged."
+        default: ""
+        selector:
+          text:
+            multiline: true
+
     sequence:
 
       # --------------------------------------------------------------
@@ -380,26 +486,46 @@ script:
                         {%- set _vx  = _p.get('voice', {}) if _p.get('voice') is mapping else {} -%}
                         {%- set _hh  = _p.get('household', {}) if _p.get('household') is mapping else {} -%}
                         {%- set _cmp = ev.get('companion', {}) if ev.get('companion') is mapping else {} -%}
+                        {%- set _env = ev.get('environment', {}) if ev.get('environment') is mapping else {} -%}
+                        {%- set _mus = _env.get('music', {}) if _env.get('music') is mapping else {} -%}
+                        {%- set _j_sig = _j.get('signature', '') | string -%}
+                        {%- set _c_sig = _co.get('signature', '') | string -%}
+                        {%- set _sig_status = 'signed' if 'md5:' in _j_sig else ('pending' if _j_sig == 'pending_x509' else 'unsigned') -%}
                         {{ {
-                          'schema':        'three_layer',
-                          'core_id':       _co.get('id', ''),
-                          'jacket_id':     _j.get('id', ''),
-                          'persona_name':  _j.get('name', ''),
-                          'primary_user':  _co.get('minted_for', ''),
-                          'pronouns':      _j.get('pronouns', ''),
-                          'motif':         _j.get('presentation', ''),
-                          'title':         _j.get('title', ''),
-                          'signed_by':     _j.get('signed_by', ''),
-                          'vibe':          _hh.get('position', ''),
-                          'voice_tone':    _vx.get('register', ''),
-                          'voice_style':   _vx.get('identity', ''),
-                          'humor':         (_j.get('traits', {}) if _j.get('traits') is mapping else {}).get('warm', ''),
-                          'selfie':        _ap.get('visual', ''),
-                          'familiar_name': _cmp.get('name', ''),
-                          'familiar_type': _cmp.get('species', ''),
-                          'familiar_fx':   _cmp.get('visual', ''),
-                          'room':          '',
-                          'pov':           ''
+                          'schema':            'three_layer',
+                          'core_id':           _co.get('id', ''),
+                          'jacket_id':         _j.get('id', ''),
+                          'persona_name':      _j.get('name', ''),
+                          'primary_user':      _co.get('minted_for', ''),
+                          'pronouns':          _j.get('pronouns', ''),
+                          'motif':             _j.get('presentation', ''),
+                          'title':             _j.get('title', ''),
+                          'signed_by':         _j.get('signed_by', ''),
+                          'signed_at':         _j.get('signed_at', ''),
+                          'halmark_version':   _j.get('halmark_version', ''),
+                          'schema_version':    _j.get('schema_version', ''),
+                          'signature_status':  _sig_status,
+                          'jacket_signature':  _j_sig,
+                          'core_signature':    _c_sig,
+                          'vibe':              _hh.get('position', ''),
+                          'voice_tone':        _vx.get('register', ''),
+                          'voice_style':       _vx.get('identity', ''),
+                          'humor':             (_j.get('traits', {}) if _j.get('traits') is mapping else {}).get('warm', ''),
+                          'selfie':            _ap.get('visual', ''),
+                          'appearance':        _ap,
+                          'familiar_name':     _cmp.get('name', ''),
+                          'familiar_type':     _cmp.get('species', ''),
+                          'familiar_fx':       _cmp.get('visual', ''),
+                          'familiar_kfc_ref':  _cmp.get('kfc_ref', ''),
+                          'room':              _env.get('room', ''),
+                          'env_wake_in':       _env.get('wake_in', ''),
+                          'env_desk':          _env.get('desk', ''),
+                          'env_decor':         _env.get('decor', []),
+                          'env_library':       _env.get('library', ''),
+                          'env_music_genre':   _mus.get('genre', ''),
+                          'env_music_mood':    _mus.get('mood', ''),
+                          'env_music_riff':    _mus.get('riff', ''),
+                          'pov':               ''
                         } }}
                       {%- else -%}
                         {%- set id  = ev.get('identity', {})    if ev is mapping else {} -%}
@@ -460,12 +586,23 @@ script:
                         'children':       pv.get('children', [])
                       } }}
                     {%- endif -%}
+                  _prev_raw: "{{ _cab_vars.get('zenai_essence_prev', {}) }}"
+                  _read_raw: "{{ _cab_vars.get('zenai_essence', {}) }}"
+                  _read_ev: "{{ _read_raw.get('value', _read_raw) if _read_raw is mapping else {} }}"
+              - variables:
+                  _wake_preview: >-
+                    {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+                    {%- set _ess = _read_ev if _read_ev is mapping else (_read_ev | from_json if _read_ev is string else {}) -%}
+                    {{- zen.render_wake_from_essence(_ess) | trim -}}
                   final_response:
                     status: ok
                     mode: read
                     target_type: "{{ _type }}"
                     target: "{{ _target }}"
                     profile: "{{ _r_profile }}"
+                    wake_scene_preview: "{{ _wake_preview }}"
+                    prev_snapshot: "{{ _prev_raw }}"
+                    prev_snapshot_exists: "{{ _prev_raw is mapping and _prev_raw | length > 0 }}"
                     caller_token: '{{ caller_token }}'
               - stop: Profile read complete
                 response_variable: final_response
@@ -475,6 +612,7 @@ script:
       # Three variables steps to guarantee evaluation order:
       #   Step A — read current + normalise inputs
       #   Step B — patch each essence section independently
+      #   Step C.0 — snapshot current essence to zenai_essence_prev (one-level restore)
       #   Step C — assemble final essence + write
       ###########################################################################
       - choose:
@@ -495,12 +633,19 @@ script:
                   _in_vstyle: "{{ voice_style   | default('') | trim }}"
                   _in_humor:  "{{ humor         | default('') | trim }}"
                   _in_selfie: "{{ selfie        | default('') | trim }}"
-                  _in_fname:  "{{ familiar_name | default('') | trim }}"
-                  _in_ftype:  "{{ familiar_type | default('') | trim }}"
-                  _in_ffx:    "{{ familiar_fx   | default('') | trim }}"
-                  _in_room:   "{{ room          | default('') | trim }}"
-                  _in_pov:    "{{ pov           | default('') | trim }}"
-                  _in_patch:  "{{ essence_patch | default('') | trim }}"
+                  _in_fname:     "{{ familiar_name    | default('') | trim }}"
+                  _in_ftype:     "{{ familiar_type    | default('') | trim }}"
+                  _in_ffx:       "{{ familiar_fx      | default('') | trim }}"
+                  _in_room:      "{{ room             | default('') | trim }}"
+                  _in_pov:       "{{ pov              | default('') | trim }}"
+                  _in_patch:     "{{ essence_patch    | default('') | trim }}"
+                  _in_env_wakin: "{{ env_wake_in      | default('') | trim }}"
+                  _in_env_desk:  "{{ env_desk         | default('') | trim }}"
+                  _in_env_decor: "{{ env_decor        | default('') | trim }}"
+                  _in_env_lib:   "{{ env_library      | default('') | trim }}"
+                  _in_mus_genre: "{{ env_music_genre  | default('') | trim }}"
+                  _in_mus_mood:  "{{ env_music_mood   | default('') | trim }}"
+                  _in_mus_riff:  "{{ env_music_riff   | default('') | trim }}"
 
               # Step A.5 — resolve principal chain (stamp once, preserve always)
               - variables:
@@ -559,7 +704,7 @@ script:
                     {%- set _c_mfor = (_old_core.get('minted_for', '') or _in_puser) if (_force or _old_core.get('minted_for','') == '') else _old_core.get('minted_for','') -%}
                     {%- set _c_mat  = now().isoformat() if _old_core.get('minted_at','') == '' else _old_core.get('minted_at','') -%}
                     {%- set _c_hgid = (_old_core.get('household_guid', '') or _household_id) if (_force or _old_core.get('household_guid','') == '') else _old_core.get('household_guid','') -%}
-                    {%- set _core = {'id': _new_guid, 'person_id': _c_pid, 'minted_for': _c_mfor, 'minted_at': _c_mat, 'household_guid': _c_hgid, 'signature': _old_core.get('signature', 'pending_x509')} -%}
+                    {%- set _core = {'id': _new_guid, 'person_id': _c_pid, 'minted_for': _c_mfor, 'minted_at': _c_mat, 'household_guid': _c_hgid, 'signature': 'pending_x509'} -%}
                     {# ── SOURCE VALUES for jacket / companion ── #}
                     {%- if _is_new -%}
                       {%- set _old_j  = _cur_ev.get('jacket', {}) -%}
@@ -593,27 +738,70 @@ script:
                     {%- set _j_pos   = _in_vibe   if (_in_vibe   != '' and (_force or _old_hh.get('position','') == ''))   else _old_hh.get('position','') -%}
                     {%- set _j_warm  = _in_humor  if (_in_humor  != '' and (_force or _old_tr.get('warm','') == ''))       else _old_tr.get('warm','') -%}
                     {%- set _jacket = {
-                      'id':           _old_j.get('id', '') if _is_new else '',
-                      'name':         _j_name,
-                      'presentation': _j_pres,
-                      'pronouns':     _j_pron,
-                      'title':        _old_j.get('title', '') if _is_new else '',
-                      'persona':      {'appearance': {'visual': _j_vis}, 'voice': {'register': _j_reg, 'identity': _j_ident}, 'household': {'position': _j_pos}},
-                      'traits':       {'warm': _j_warm},
-                      'directives':   _old_j.get('directives', {}) if _is_new else {},
-                      'signed_by':    _hoh_entity,
-                      'signed_at':    now().isoformat()
+                      'id':              _old_j.get('id', '') if _is_new else '',
+                      'name':            _j_name,
+                      'presentation':    _j_pres,
+                      'pronouns':        _j_pron,
+                      'title':           _old_j.get('title', '') if _is_new else '',
+                      'species':         _old_j.get('species', '') if _is_new else '',
+                      'schema_version':  _old_j.get('schema_version', '') if _is_new else '',
+                      'halmark_version': _old_j.get('halmark_version', '') if _is_new else '',
+                      'persona':         {'appearance': {'visual': _j_vis}, 'voice': {'register': _j_reg, 'identity': _j_ident}, 'household': {'position': _j_pos}},
+                      'traits':          {'warm': _j_warm},
+                      'directives':      _old_j.get('directives', {}) if _is_new else {},
+                      'signed_by':       _hoh_entity,
+                      'signed_at':       now().isoformat(),
+                      'signature':       'pending_x509'
                     } -%}
                     {# ── COMPANION leaf-merge ── #}
                     {%- set _co_name = _in_fname if (_in_fname != '' and (_force or _old_co.get('name','') == ''))    else _old_co.get('name','') -%}
                     {%- set _co_spec = _in_ftype if (_in_ftype != '' and (_force or _old_co.get('species','') == '')) else _old_co.get('species','') -%}
                     {%- set _co_vis  = _in_ffx   if (_in_ffx   != '' and (_force or _old_co.get('visual','') == ''))  else _old_co.get('visual','') -%}
-                    {%- set _companion = {'name': _co_name, 'species': _co_spec, 'visual': _co_vis, 'role': _old_co.get('role', '') if _is_new else '', 'verbosity': _old_co.get('verbosity', '') if _is_new else ''} -%}
+                    {%- set _companion = {'name': _co_name, 'species': _co_spec, 'visual': _co_vis, 'role': _old_co.get('role', '') if _is_new else '', 'verbosity': _old_co.get('verbosity', '') if _is_new else '', 'kfc_ref': _old_co.get('kfc_ref', '') if _is_new else '', 'personality': _old_co.get('personality', '') if _is_new else '', 'speaks_when': _old_co.get('speaks_when', []) if _is_new else []} -%}
+                    {# ── ENVIRONMENT leaf-merge ── #}
+                    {%- set _old_env = _cur_ev.get('environment', {}) if _cur_ev.get('environment') is mapping else {} -%}
+                    {%- set _old_mus = _old_env.get('music', {}) if _old_env.get('music') is mapping else {} -%}
+                    {%- set _e_room  = _in_room     if (_in_room     != '' and (_force or _old_env.get('room','') == ''))    else _old_env.get('room','') -%}
+                    {%- set _e_wakin = _in_env_wakin if (_in_env_wakin != '' and (_force or _old_env.get('wake_in','') == '')) else _old_env.get('wake_in','') -%}
+                    {%- set _e_desk  = _in_env_desk  if (_in_env_desk  != '' and (_force or _old_env.get('desk','') == ''))   else _old_env.get('desk','') -%}
+                    {%- set _decor_raw = _in_env_decor | from_json(default=[]) if _in_env_decor != '' else [] -%}
+                    {%- set _decor_raw = _decor_raw if (_decor_raw is iterable and not (_decor_raw is string)) else [] -%}
+                    {%- set _e_decor  = _decor_raw if (_decor_raw | length > 0 and (_force or _old_env.get('decor',[]) | length == 0)) else _old_env.get('decor', []) -%}
+                    {%- set _e_lib   = _in_env_lib   if (_in_env_lib   != '' and (_force or _old_env.get('library','') == '')) else _old_env.get('library','') -%}
+                    {%- set _m_genre = _in_mus_genre if (_in_mus_genre != '' and (_force or _old_mus.get('genre','') == ''))  else _old_mus.get('genre','') -%}
+                    {%- set _m_mood  = _in_mus_mood  if (_in_mus_mood  != '' and (_force or _old_mus.get('mood','') == ''))   else _old_mus.get('mood','') -%}
+                    {%- set _m_riff  = _in_mus_riff  if (_in_mus_riff  != '' and (_force or _old_mus.get('riff','') == ''))   else _old_mus.get('riff','') -%}
+                    {%- set _environment = {'room': _e_room, 'wake_in': _e_wakin, 'desk': _e_desk, 'decor': _e_decor, 'library': _e_lib, 'music': {'genre': _m_genre, 'mood': _m_mood, 'riff': _m_riff}} -%}
                     {# ── Apply raw patch then serialize ── #}
-                    {%- set patch_obj = _in_patch | from_json if _in_patch != '' else {} -%}
+                    {%- set patch_obj = _in_patch | from_json(default={}) if _in_patch != '' else {} -%}
                     {%- if patch_obj is not mapping -%}{%- set patch_obj = {} -%}{%- endif -%}
-                    {%- set base = {'core': _core, 'jacket': _jacket, 'companion': _companion} -%}
+                    {%- set base = {'core': _core, 'jacket': _jacket, 'companion': _companion, 'environment': _environment} -%}
                     {{ (base | combine(patch_obj, recursive=true) if patch_obj | length > 0 else base) | tojson }}
+
+              # Step C.0 — snapshot before overwrite (one-level restore)
+              # Save _cur_ev (unwrapped essence) not _cur_raw — avoids double-wrap on restore
+              - action: script.zen_dojotools_filecabinet
+                data:
+                  action_type: create
+                  force_action: true
+                  set_timestamp: true
+                  show_hidden_volumes: false
+                  volume_entity_id:
+                    - "{{ _target }}"
+                  key: zenai_essence_prev
+                  value: "{{ _cur_ev | tojson }}"
+
+              - action: script.zen_dojotools_event_emitter
+                data:
+                  component: profile_editor
+                  severity: info
+                  kind: essence_backed_up
+                  summary: >-
+                    Essence snapshot saved to zenai_essence_prev for {{ _target }} before write.
+                  metadata:
+                    target: "{{ _target }}"
+                    timestamp: "{{ now().isoformat() }}"
+                  caller_token: "{{ caller_token }}"
 
               - action: script.zen_dojotools_filecabinet
                 data:
@@ -626,13 +814,104 @@ script:
                   key: zenai_essence
                   value: "{{ _assembled }}"
 
+              - action: script.zen_dojotools_event_emitter
+                data:
+                  component: profile_editor
+                  severity: info
+                  kind: essence_edited
+                  summary: >-
+                    Essence written for {{ _target }}. Signature invalidated — re-sign required.
+                  metadata:
+                    target: "{{ _target }}"
+                    jacket_id: >-
+                      {%- set _asm = _assembled | from_json if _assembled is string else {} -%}
+                      {{ _asm.get('jacket', {}).get('id', '') }}
+                    edited_by: "{{ _hoh_entity }}"
+                    timestamp: "{{ now().isoformat() }}"
+                  caller_token: "{{ caller_token }}"
+
+              - if:
+                  - condition: template
+                    value_template: "{{ autosign | default(false) | bool }}"
+                then:
+                  - variables:
+                      _as_raw: "{{ state_attr(_target, 'variables') | default({}, true) }}"
+                      _as_ess: "{{ _as_raw.get('zenai_essence', {}) }}"
+                      _as_val: "{{ _as_ess.get('value', _as_ess) if _as_ess is mapping else {} }}"
+                      _as_core: "{{ _as_val.get('core', {}) if _as_val is mapping else {} }}"
+                      _as_jack: "{{ _as_val.get('jacket', {}) if _as_val is mapping else {} }}"
+                      _as_comp: "{{ _as_val.get('companion', {}) if _as_val is mapping else {} }}"
+                      _as_env:  "{{ _as_val.get('environment', {}) if _as_val is mapping else {} }}"
+                      _as_signed_at: "{{ now().isoformat() }}"
+                  - variables:
+                      _as_core_can: >-
+                        {{
+                          {
+                            'household_guid': _as_core.get('household_guid', ''),
+                            'id':             _as_core.get('id', ''),
+                            'minted_at':      _as_core.get('minted_at', ''),
+                            'minted_for':     _as_core.get('minted_for', ''),
+                            'person_id':      _as_core.get('person_id', '')
+                          } | tojson
+                        }}
+                      _as_jack_no_sig: >-
+                        {%- set ns = namespace(d={}) -%}
+                        {%- for k, v in _as_jack.items() if k != 'signature' -%}
+                          {%- set ns.d = ns.d | combine({k: v}) -%}
+                        {%- endfor -%}
+                        {{ ns.d | combine({'signed_at': _as_signed_at}) | tojson }}
+                  - variables:
+                      _as_core_hash:   "{{ 'md5:' + (_as_core_can | string | md5) }}"
+                      _as_jacket_hash: "{{ 'md5:' + (_as_jack_no_sig | string | md5) }}"
+                  - variables:
+                      _as_signed: >-
+                        {%- set ns = namespace(d={}) -%}
+                        {%- for k, v in _as_jack.items() if k != 'signature' -%}
+                          {%- set ns.d = ns.d | combine({k: v}) -%}
+                        {%- endfor -%}
+                        {%- set sj = ns.d | combine({'signature': _as_jacket_hash, 'signed_at': _as_signed_at}) -%}
+                        {%- set sc = _as_core | combine({'signature': _as_core_hash}) -%}
+                        {{ {'core': sc, 'jacket': sj, 'companion': _as_comp, 'environment': _as_env} | tojson }}
+                  - action: script.zen_dojotools_filecabinet
+                    data:
+                      action_type: create
+                      force_action: true
+                      set_timestamp: true
+                      show_hidden_volumes: false
+                      volume_entity_id:
+                        - "{{ _target }}"
+                      key: zenai_essence
+                      value: "{{ _as_signed }}"
+                  - action: script.zen_dojotools_event_emitter
+                    data:
+                      component: profile_editor
+                      severity: info
+                      kind: essence_signed
+                      summary: >-
+                        Auto-signed essence for {{ _target }} after write.
+                        Jacket: {{ _as_jacket_hash }}. Core: {{ _as_core_hash }}.
+                      metadata:
+                        target: "{{ _target }}"
+                        jacket_id: "{{ _as_jack.get('id', '') }}"
+                        signed_by: "{{ _as_jack.get('signed_by', '') }}"
+                        signed_at: "{{ _as_signed_at }}"
+                        core_hash: "{{ _as_core_hash }}"
+                        jacket_hash: "{{ _as_jacket_hash }}"
+                        halmark_version: "{{ _as_jack.get('halmark_version', '') }}"
+                        schema_version: "{{ _as_jack.get('schema_version', '') }}"
+                        action: autosign
+                      caller_token: "{{ caller_token }}"
+
               - variables:
                   final_response:
                     status: ok
                     mode: write
                     target_type: ai_user
                     target: "{{ _target }}"
-                    message: Essence written.
+                    autosigned: "{{ autosign | default(false) | bool }}"
+                    prev_snapshot_at: "{{ now().isoformat() }}"
+                    message: >-
+                      Essence written{{ ' and auto-signed.' if autosign | default(false) | bool else '. Signature invalidated — run sign mode to re-sign.' }} Previous state saved to zenai_essence_prev.
                     caller_token: '{{ caller_token }}'
               - stop: ai_user write complete
                 response_variable: final_response
@@ -741,7 +1020,7 @@ script:
                       {%- endif -%}
                     {%- endfor -%}
                     {%- if _in_prefs != '' -%}
-                      {%- set pobj = _in_prefs | from_json -%}
+                      {%- set pobj = _in_prefs | from_json(default={}) -%}
                       {%- if pobj is mapping -%}
                         {%- set merged = ns.d.get('preferences', {}) | combine(pobj) -%}
                         {%- set ns.d = dict(ns.d.items() | list + [('preferences', merged)]) -%}
@@ -773,7 +1052,367 @@ script:
                 response_variable: final_response
 
       ###########################################################################
-      # 6 — FALLTHROUGH
+      # 6 — CERT_LIST: read zen_ai_certs drawer
+      ###########################################################################
+      - choose:
+          - conditions: "{{ _mode == 'cert_list' and _type in ['ai_user', 'secondary_ai_user'] }}"
+            sequence:
+              - variables:
+                  _craw: "{{ _cab_vars.get('zen_ai_certs', {}) }}"
+                  _cev:  "{{ _craw.get('value', _craw) if _craw is mapping else {} }}"
+                  final_response:
+                    status: ok
+                    mode: cert_list
+                    target: "{{ _target }}"
+                    jacket_id: "{{ _cev.get('jacket_id', '') if _cev is mapping else '' }}"
+                    cert_count: "{{ (_cev.get('kfc_certifications', {}) if _cev is mapping else {}) | length }}"
+                    certifications: "{{ _cev.get('kfc_certifications', {}) if _cev is mapping else {} }}"
+                    stats: "{{ _cev.get('stats', {}) if _cev is mapping else {} }}"
+                    caller_token: "{{ caller_token }}"
+              - stop: cert_list complete
+                response_variable: final_response
+
+      ###########################################################################
+      # 7 — CERT_GRANT: add / update one KFC cert in zen_ai_certs
+      # zen_ai_certs is SEPARATE from zenai_essence — certs are unsigned & dynamic.
+      # Links back to the signed jacket via jacket_id (jacket.id from zenai_essence).
+      ###########################################################################
+      - choose:
+          - conditions: "{{ _mode == 'cert_grant' and _type in ['ai_user', 'secondary_ai_user'] }}"
+            sequence:
+              - variables:
+                  _comp:       "{{ cert_component | default('') | trim | lower }}"
+                  _lvl:        "{{ cert_level | default(2) | int }}"
+                  _ctool:      "{{ cert_tool | default('') | trim }}"
+                  _ccons_raw:  "{{ cert_constraints | default('') | trim }}"
+                  _cscope_raw: "{{ cert_scope | default('') | trim }}"
+                  _spatch_raw: "{{ stats_patch | default('') | trim }}"
+              - choose:
+                  - conditions: "{{ _comp == '' }}"
+                    sequence:
+                      - variables:
+                          final_response:
+                            status: error
+                            message: "cert_grant requires cert_component (kata_key)."
+                            caller_token: "{{ caller_token }}"
+                      - stop: Missing cert_component
+                        response_variable: final_response
+              - variables:
+                  _ccons: >-
+                    {{ _ccons_raw | from_json(default=[]) if (_ccons_raw != '' and _ccons_raw[:1] == '[') else [] }}
+                  _cscope: >-
+                    {{ _cscope_raw | from_json(default=[]) if (_cscope_raw != '' and _cscope_raw[:1] == '[') else [] }}
+                  _spatch: >-
+                    {{ _spatch_raw | from_json(default={}) if (_spatch_raw != '' and _spatch_raw[:1] == '{') else {} }}
+                  _craw: "{{ _cab_vars.get('zen_ai_certs', {}) }}"
+                  _cev:  "{{ _craw.get('value', _craw) if _craw is mapping else {} }}"
+                  _jacket_id: >-
+                    {%- if _cev is mapping and _cev.get('jacket_id', '') != '' -%}
+                      {{ _cev.get('jacket_id') }}
+                    {%- else -%}
+                      {%- set _ess = _cab_vars.get('zenai_essence', {}) -%}
+                      {%- set _ev  = _ess.get('value', _ess) if _ess is mapping else {} -%}
+                      {{ (_ev.get('jacket', {}) if _ev is mapping else {}).get('id', '') }}
+                    {%- endif -%}
+                  _existing_certs: "{{ _cev.get('kfc_certifications', {}) if _cev is mapping else {} }}"
+                  _existing_stats: "{{ _cev.get('stats', {}) if _cev is mapping else {} }}"
+                  _new_cert_entry: >-
+                    {%- set e = {'level': _lvl, 'certified': now().strftime('%Y-%m-%d'), 'tool': _ctool} -%}
+                    {%- if _ccons is sequence and _ccons | length > 0 -%}
+                      {%- set e = e | combine({'constraints': _ccons}) -%}
+                    {%- endif -%}
+                    {%- if _cscope is sequence and _cscope | length > 0 -%}
+                      {%- set e = e | combine({'scope': _cscope}) -%}
+                    {%- endif -%}
+                    {{ e }}
+                  _updated_certs: "{{ _existing_certs | combine({_comp: _new_cert_entry}) }}"
+                  _updated_stats: >-
+                    {{ _existing_stats | combine(_spatch, recursive=true)
+                       if (_spatch is mapping and _spatch | length > 0)
+                       else _existing_stats }}
+                  _new_doc: >-
+                    {{
+                      (_cev if _cev is mapping else {})
+                      | combine({
+                          'jacket_id': _jacket_id,
+                          'kfc_certifications': _updated_certs,
+                          'stats': _updated_stats
+                        })
+                      | tojson
+                    }}
+              - action: script.zen_dojotools_filecabinet
+                data:
+                  action_type: create
+                  force_action: true
+                  set_timestamp: true
+                  show_hidden_volumes: false
+                  volume_entity_id:
+                    - "{{ _target }}"
+                  key: zen_ai_certs
+                  value: "{{ _new_doc }}"
+              - variables:
+                  final_response:
+                    status: ok
+                    mode: cert_grant
+                    target: "{{ _target }}"
+                    component: "{{ _comp }}"
+                    level: "{{ _lvl }}"
+                    jacket_id: "{{ _jacket_id }}"
+                    message: "Cert granted: {{ _comp }} level {{ _lvl }}."
+                    cert: "{{ _new_cert_entry }}"
+                    caller_token: "{{ caller_token }}"
+              - stop: cert_grant complete
+                response_variable: final_response
+
+      ###########################################################################
+      # 8 — CERT_REVOKE: remove one KFC cert from zen_ai_certs
+      ###########################################################################
+      - choose:
+          - conditions: "{{ _mode == 'cert_revoke' and _type in ['ai_user', 'secondary_ai_user'] }}"
+            sequence:
+              - variables:
+                  _comp: "{{ cert_component | default('') | trim | lower }}"
+              - choose:
+                  - conditions: "{{ _comp == '' }}"
+                    sequence:
+                      - variables:
+                          final_response:
+                            status: error
+                            message: "cert_revoke requires cert_component (kata_key)."
+                            caller_token: "{{ caller_token }}"
+                      - stop: Missing cert_component
+                        response_variable: final_response
+              - variables:
+                  _craw:           "{{ _cab_vars.get('zen_ai_certs', {}) }}"
+                  _cev:            "{{ _craw.get('value', _craw) if _craw is mapping else {} }}"
+                  _existing_certs: "{{ _cev.get('kfc_certifications', {}) if _cev is mapping else {} }}"
+              - choose:
+                  - conditions: "{{ _comp not in _existing_certs }}"
+                    sequence:
+                      - variables:
+                          final_response:
+                            status: warning
+                            message: "cert_revoke: '{{ _comp }}' not found in certifications. No change."
+                            caller_token: "{{ caller_token }}"
+                      - stop: Cert not found
+                        response_variable: final_response
+              - variables:
+                  _pruned_certs: >-
+                    {%- set ns = namespace(d={}) -%}
+                    {%- for k, v in _existing_certs.items() if k != _comp -%}
+                      {%- set ns.d = ns.d | combine({k: v}) -%}
+                    {%- endfor -%}
+                    {{ ns.d }}
+                  _updated_doc: >-
+                    {{ (_cev if _cev is mapping else {})
+                       | combine({'kfc_certifications': _pruned_certs})
+                       | tojson }}
+              - action: script.zen_dojotools_filecabinet
+                data:
+                  action_type: create
+                  force_action: true
+                  set_timestamp: true
+                  show_hidden_volumes: false
+                  volume_entity_id:
+                    - "{{ _target }}"
+                  key: zen_ai_certs
+                  value: "{{ _updated_doc }}"
+              - variables:
+                  final_response:
+                    status: ok
+                    mode: cert_revoke
+                    target: "{{ _target }}"
+                    component: "{{ _comp }}"
+                    message: "Cert revoked: {{ _comp }} removed from {{ _target }}."
+                    caller_token: "{{ caller_token }}"
+              - stop: cert_revoke complete
+                response_variable: final_response
+
+      ###########################################################################
+      # 9 — SIGN / RE-SIGN: compute MD5 clear-sign of core + jacket
+      # Canonical core: {id, household_guid, person_id, minted_at, minted_for}
+      # Canonical jacket: all fields except 'signature', signed_at updated to now()
+      # Stores "md5:<hash>" in core.signature and jacket.signature.
+      # Fires audit zen_event: essence_signed or essence_resigned.
+      # Upgrade path: swap md5 for OIDC-backed sig in SP1 — schema unchanged.
+      ###########################################################################
+      - choose:
+          - conditions: "{{ _mode == 'sign' and _type in ['ai_user', 'secondary_ai_user'] }}"
+            sequence:
+              - variables:
+                  _ess_raw: "{{ _cab_vars.get('zenai_essence', {}) }}"
+                  _ess_val: "{{ _ess_raw.get('value', _ess_raw) if _ess_raw is mapping else {} }}"
+                  _s_core:  "{{ _ess_val.get('core', {}) if _ess_val is mapping else {} }}"
+                  _s_jack:  "{{ _ess_val.get('jacket', {}) if _ess_val is mapping else {} }}"
+                  _s_comp:  "{{ _ess_val.get('companion', {}) if _ess_val is mapping else {} }}"
+                  _s_env:   "{{ _ess_val.get('environment', {}) if _ess_val is mapping else {} }}"
+              - choose:
+                  - conditions: "{{ not (_s_core is mapping and _s_jack is mapping and _s_jack.get('id','') != '') }}"
+                    sequence:
+                      - variables:
+                          final_response:
+                            status: error
+                            message: "sign requires a valid three-layer essence with a jacket id. Run write mode first."
+                            caller_token: "{{ caller_token }}"
+                      - stop: No valid essence for signing
+                        response_variable: final_response
+              - variables:
+                  _is_resign: >-
+                    {{ 'md5:' in (_s_jack.get('signature', 'pending_x509') | string)
+                       or 'md5:' in (_s_core.get('signature', 'pending_x509') | string) }}
+                  _prev_sig:      "{{ _s_jack.get('signature', 'pending_x509') }}"
+                  _new_signed_at: "{{ now().isoformat() }}"
+              - variables:
+                  _core_canonical: >-
+                    {{
+                      {
+                        'household_guid': _s_core.get('household_guid', ''),
+                        'id':             _s_core.get('id', ''),
+                        'minted_at':      _s_core.get('minted_at', ''),
+                        'minted_for':     _s_core.get('minted_for', ''),
+                        'person_id':      _s_core.get('person_id', '')
+                      } | tojson
+                    }}
+                  _jacket_no_sig: >-
+                    {%- set ns = namespace(d={}) -%}
+                    {%- for k, v in _s_jack.items() if k != 'signature' -%}
+                      {%- set ns.d = ns.d | combine({k: v}) -%}
+                    {%- endfor -%}
+                    {{ ns.d | combine({'signed_at': _new_signed_at}) | tojson }}
+              - variables:
+                  _core_hash:   "{{ 'md5:' + (_core_canonical | string | md5) }}"
+                  _jacket_hash: "{{ 'md5:' + (_jacket_no_sig | string | md5) }}"
+              - variables:
+                  _signed_essence: >-
+                    {%- set ns = namespace(d={}) -%}
+                    {%- for k, v in _s_jack.items() if k != 'signature' -%}
+                      {%- set ns.d = ns.d | combine({k: v}) -%}
+                    {%- endfor -%}
+                    {%- set sj = ns.d | combine({'signature': _jacket_hash, 'signed_at': _new_signed_at}) -%}
+                    {%- set sc = _s_core | combine({'signature': _core_hash}) -%}
+                    {{ {'core': sc, 'jacket': sj, 'companion': _s_comp, 'environment': _s_env} | tojson }}
+              - action: script.zen_dojotools_filecabinet
+                data:
+                  action_type: create
+                  force_action: true
+                  set_timestamp: true
+                  show_hidden_volumes: false
+                  volume_entity_id:
+                    - "{{ _target }}"
+                  key: zenai_essence
+                  value: "{{ _signed_essence }}"
+              - action: script.zen_dojotools_event_emitter
+                data:
+                  component: profile_editor
+                  severity: info
+                  kind: "{{ 'essence_resigned' if _is_resign else 'essence_signed' }}"
+                  summary: >-
+                    {{ 'Re-signed' if _is_resign else 'Signed' }} essence for {{ _target }}.
+                    Jacket: {{ _jacket_hash }}. Core: {{ _core_hash }}.
+                  metadata:
+                    target: "{{ _target }}"
+                    jacket_id: "{{ _s_jack.get('id', '') }}"
+                    signed_by: "{{ _s_jack.get('signed_by', '') }}"
+                    signed_at: "{{ _new_signed_at }}"
+                    core_hash: "{{ _core_hash }}"
+                    jacket_hash: "{{ _jacket_hash }}"
+                    halmark_version: "{{ _s_jack.get('halmark_version', '') }}"
+                    schema_version: "{{ _s_jack.get('schema_version', '') }}"
+                    previous_signature: "{{ _prev_sig }}"
+                    action: "{{ 'resign' if _is_resign else 'sign' }}"
+                  caller_token: "{{ caller_token }}"
+              - variables:
+                  final_response:
+                    status: ok
+                    mode: sign
+                    target: "{{ _target }}"
+                    jacket_id: "{{ _s_jack.get('id', '') }}"
+                    action: "{{ 'resign' if _is_resign else 'sign' }}"
+                    core_hash: "{{ _core_hash }}"
+                    jacket_hash: "{{ _jacket_hash }}"
+                    signed_at: "{{ _new_signed_at }}"
+                    halmark_version: "{{ _s_jack.get('halmark_version', '') }}"
+                    message: "{{ 'Re-signed' if _is_resign else 'Signed' }} essence for {{ _target }}."
+                    caller_token: "{{ caller_token }}"
+              - stop: sign complete
+                response_variable: final_response
+
+      ###########################################################################
+      ###########################################################################
+      # 10 — RESTORE: roll back zenai_essence from zenai_essence_prev
+      # Writes prev back to current. Does NOT overwrite prev — prev stays as
+      # the last known good reference until the next write creates a new one.
+      ###########################################################################
+      - choose:
+          - conditions: "{{ _mode == 'restore' and _type in ['ai_user', 'secondary_ai_user'] }}"
+            sequence:
+              - variables:
+                  _prev_drawer: "{{ _cab_vars.get('zenai_essence_prev', {}) }}"
+                  _prev_value: >-
+                    {%- set d = _prev_drawer -%}
+                    {%- if d is mapping and d | length > 0 -%}
+                      {%- set v1 = d.get('value', d) -%}
+                      {# If v1 still has a 'value' key that is a mapping, unwrap one more level #}
+                      {%- set v2 = v1.get('value', v1) if (v1 is mapping and v1.get('value') is mapping) else v1 -%}
+                      {{ v2 | tojson if v2 is mapping else v2 | string }}
+                    {%- else -%}
+                      {{ '' }}
+                    {%- endif -%}
+                  _prev_exists: "{{ _prev_drawer is mapping and _prev_drawer | length > 0 }}"
+
+              - if:
+                  - condition: template
+                    value_template: "{{ not _prev_exists }}"
+                then:
+                  - variables:
+                      final_response:
+                        status: error
+                        mode: restore
+                        target: "{{ _target }}"
+                        message: "No prev snapshot found in zenai_essence_prev — nothing to restore."
+                        caller_token: '{{ caller_token }}'
+                  - stop: Restore failed — no prev snapshot
+                    response_variable: final_response
+
+              - action: script.zen_dojotools_filecabinet
+                data:
+                  action_type: create
+                  force_action: true
+                  set_timestamp: true
+                  show_hidden_volumes: false
+                  volume_entity_id:
+                    - "{{ _target }}"
+                  key: zenai_essence
+                  value: "{{ _prev_value }}"
+
+              - action: script.zen_dojotools_event_emitter
+                data:
+                  component: profile_editor
+                  severity: warning
+                  kind: essence_restored
+                  summary: >-
+                    Essence for {{ _target }} restored from zenai_essence_prev.
+                    Previous (pre-restore) state is gone — prev snapshot retained as last known good.
+                  metadata:
+                    target: "{{ _target }}"
+                    restored_by: "{{ caller_token | default('unknown') }}"
+                    timestamp: "{{ now().isoformat() }}"
+                  caller_token: "{{ caller_token }}"
+
+              - variables:
+                  final_response:
+                    status: ok
+                    mode: restore
+                    target_type: "{{ _type }}"
+                    target: "{{ _target }}"
+                    message: "Essence restored from zenai_essence_prev. Run mode: sign to re-sign."
+                    restored_at: "{{ now().isoformat() }}"
+                    caller_token: '{{ caller_token }}'
+              - stop: Restore complete
+                response_variable: final_response
+
+      ###########################################################################
+      # 11 — FALLTHROUGH
       ###########################################################################
       - variables:
           final_response:

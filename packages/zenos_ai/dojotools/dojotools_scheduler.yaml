@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI DojoTools: Scheduler
-# Version: 4.1.1
+# Version: 4.5.0
 #
 # Automations:
 #   Zen DojoTools Scheduler — time/event orchestrator for the Dojo system
@@ -173,6 +173,13 @@ automation:
         event:
           kind: supersummary_force
       alias: 'Zen Event: Force SuperSummary only (skip Ninja dispatch)'
+    - trigger: event
+      event_type: zen_event
+      id: force_identity_manifest
+      event_data:
+        event:
+          kind: identity_manifest_rebuild
+      alias: 'Zen Event: Force Identity Manifest rebuild'
     actions:
 
     # ── Pre-fetch home overview ──────────────────────────────────────────────
@@ -207,6 +214,21 @@ automation:
           data: {}
           response_variable: response_manifest
         alias: Run the Manifest
+
+      - conditions:
+        - alias: Triggers for the Identity Manifest
+          condition: trigger
+          id:
+          - ha_start
+          - daily_midnight
+          - force_identity_manifest
+        sequence:
+        - action: script.zen_dojotools_identity
+          metadata: {}
+          data:
+            mode: build_identity_manifest
+          response_variable: response_identity_manifest
+        alias: Run the Identity Manifest
 
       - conditions:
         - condition: trigger
@@ -269,7 +291,7 @@ automation:
         _dojo_cab: "{{ states('sensor.zen_dojo_cabinet_resolved') }}"
         _kata_cab: "{{ states('sensor.zen_kata_cabinet_resolved') }}"
         _force_component: "{{ zen_event_component | default('', true) | slugify }}"
-        _protected: "['AI_Cabinet_VolumeInfo', 'kfc_template', 'zen_library_manifest', '_context']"
+        _protected: "['AI_Cabinet_VolumeInfo', 'kfc_template', 'zen_library_manifest', 'zen_identity_manifest', '_context']"
         _subscribers: >-
           {%- set dojo_vars = state_attr(_dojo_cab, 'variables') | default({}, true) -%}
           {%- if _dojo_cab in ['unknown', 'unavailable'] or _kata_cab in ['unknown', 'unavailable'] -%}
@@ -278,7 +300,7 @@ automation:
             {%- set _raw_trig = trigger.id | default('') -%}
             {%- set trig_id   = 'ha_start' if _raw_trig == 'force_ninja' else _raw_trig -%}
             {%- set force_c   = zen_event_component | default('', true) | slugify -%}
-            {%- set protected = ['AI_Cabinet_VolumeInfo', 'kfc_template', 'zen_library_manifest', '_context'] -%}
+            {%- set protected = ['AI_Cabinet_VolumeInfo', 'kfc_template', 'zen_library_manifest', 'zen_identity_manifest', '_context'] -%}
             {%- set ns = namespace(subs=[]) -%}
             {%- for key, drawer in dojo_vars.items() -%}
               {%- if not key.startswith('_') and key not in protected -%}

@@ -1,4 +1,4 @@
-# Zen DojoTools Labels — 4.3.0 'Meridian'
+# Zen DojoTools Labels — 4.5.0 'Meridian'
 
 *Create, read, update, delete, and assign labels in the Home Assistant label index*
 

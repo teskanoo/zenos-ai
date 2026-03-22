@@ -1,4 +1,4 @@
-# Zen DojoTools Inspect — 4.3.0 'Meridian'
+# Zen DojoTools Inspect — 4.5.0 'Meridian'
 **File:** `zen_dojotools_inspect_readme.md`  
 **Type:** Technical Documentation  
 
@@ -389,7 +389,7 @@ it's because Inspect told her what it is — safely.
 
 ## Summary
 
-The Zen DojoTools Inspect 4.3.0 'Meridian' provides:
+The Zen DojoTools Inspect 4.5.0 'Meridian' provides:
 
 - multi-entity snapshot
 - caller-controlled output fields (`output_fields`)

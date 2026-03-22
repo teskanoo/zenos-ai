@@ -26,6 +26,16 @@ The Context Frame is assembled through a deterministic process:
 
 The prompt loader folds these into a single, hierarchically structured Context Frame. Every reasoning step Friday performs is grounded in this composite object.
 
+> **GA Implementation Note — 4.5.0 'Meridian'**
+>
+> The prompt loader is implemented in `custom_templates/zenos_ai/zen_os_1.jinja`. The single
+> entry point is `render_prompt(ai_entity)`, which runs the full five-source assembly described
+> above. If the system is not ready to render a valid prompt — resolver unsettled, essence
+> missing, or `input_boolean.zen_flynn_override` is on — `render_prompt()` short-circuits to
+> `prompt_system_flynn()`: a hardcoded fallback prompt with zero cabinet dependencies that
+> ensures Friday (running as Flynn) can always answer, even on a bare or degraded install.
+> See: [`zen_flynn_readme.md`](../scripts/zen_flynn_readme.md) — Flynn as Prompt Fallback.
+
 ---
 
 ## 18.2 Components of the Context Frame
@@ -105,6 +115,16 @@ The Identity Capsule is injected into the Context Frame as both:
 * a compact narrative header (for human-aligned clarity in the prompt).
 
 This ensures that every reasoning step is bound to a specific, authenticated human and a specific assistant persona, under explicit access policies.
+
+> **GA Implementation Note — 4.5.0 'Meridian'**
+>
+> The Identity Capsule is assembled from three sources:
+> `identity_resolve_source()` (live resolution from essence and cabinets),
+> `identity_manifest_loader()` (reads the cached `zen_identity_manifest` drawer from the
+> household cabinet — rebuilt on `ha_start` and `daily_midnight` by the Scheduler), and
+> `identity_roster()` (full household roster — all valid cabinet-backed identities).
+> The manifest is the preferred fast path; the live resolver is the fallback.
+> See also: [`zen_dojotools_identity_readme.md`](../scripts/zen_dojotools_identity_readme.md).
 
 ---
 

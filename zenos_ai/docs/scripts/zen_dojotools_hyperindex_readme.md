@@ -2,7 +2,7 @@
 
 ### *Universal HyperGraph Index for Labels, Entities, Drawers & Metadata*
 
-**Version:** 4.3.0 'Meridian'
+**Version:** 4.5.0 'Meridian'
 **Category:** DojoTools / Indexing
 **Icon:** `mdi:graphql`
 
@@ -398,14 +398,14 @@ Unknown fields are silently ignored.
 
 # 🧩 ZQ-1 Filter Schema (What HyperIndex Accepts)
 
-This is the **true schema** implemented in `zenos_ai/zen_query.jinja`, guaranteed correct in 3.9.x RC.
+This is the **true schema** implemented in `zenos_ai/zen_query.jinja`, current as of 4.5.0 'Meridian'.
 
 ### 🧪 **Every field below is optional.**
 
 All filters apply with **logical AND**.
 
 ```yaml
-# ZQ-1 Filter Schema (3.9.x RC)
+# ZQ-1 Filter Schema (4.5.0 'Meridian')
 # All fields optional. Unknown fields ignored.
 
 domain:               # string — also used for auto-build if target_entities empty

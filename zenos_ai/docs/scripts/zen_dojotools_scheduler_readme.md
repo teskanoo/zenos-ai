@@ -1,4 +1,4 @@
-# Zen DojoTools Scheduler — 4.3.0 'Meridian'
+# Zen DojoTools Scheduler — 4.5.0 'Meridian'
 
 **File:** `packages/zenos_ai/dojotools/dojotools_scheduler.yaml`
 **Automation:** `automation.zen_dojotools_scheduler`
@@ -39,6 +39,7 @@ These trigger IDs are active in the core scheduler. Components subscribe to them
 | `force_ninja` | `zen_event: {kind: ninja_force}` fired — runs Ninja dispatch only (remaps to `ha_start` scope), skips delay |
 | `force_supersummary` | `zen_event: {kind: supersummary_force}` fired — runs SuperSummary only, Ninja dispatch is skipped |
 | `force_gc` | `zen_event: {kind: gc_force}` fired |
+| `force_identity_manifest` | `zen_event: {kind: identity_manifest_rebuild}` fired — rebuilds `zen_identity_manifest` in household cabinet |
 
 ---
 
@@ -95,7 +96,28 @@ event_data:
     kind: supersummary_force
 ```
 
+**`identity_manifest_rebuild`** — Rebuilds the `zen_identity_manifest` drawer in the household cabinet. Fires automatically on `ha_start` and `daily_midnight`. Use this to force a refresh without waiting for the schedule.
+
+```yaml
+event: zen_event
+event_data:
+  event:
+    kind: identity_manifest_rebuild
+```
+
 `zen_pipeline_autofire_on_enable` uses `ninja_force` and `supersummary_force` internally when kill switches are re-enabled.
+
+---
+
+## Protected Drawers
+
+The following drawers are in the scheduler's `_protected` list — the Ninja Summarizer will not attempt to summarize them:
+
+- `zen_summary`
+- `zen_library_manifest`
+- `zen_identity_manifest`
+
+Both the variables block and the `_subscribers` Jinja template include this list. If you add new system drawers that should not be summarized, update both locations.
 
 ---
 

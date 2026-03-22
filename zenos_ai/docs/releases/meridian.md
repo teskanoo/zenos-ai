@@ -115,12 +115,6 @@ blocks. Functional parity maintained. Cortex 31 prompt primitives added alongsid
   correct slot-to-type map. Vault intentionally excluded from auto-init.
 - `flynn_onboarding.jinja` relocated from `custom_templates/` root to
   `custom_templates/zenos_ai/` namespace.
-- **Gate 3 — `gc_eligible` stamp:** Flynn B3 provisioner now stamps `gc_eligible` into
-  `AI_Cabinet_VolumeInfo.flags` for all canonical cabinets at bootstrap.
-  Kata gets `gc_eligible: true` (runtime churn cabinet); all others default to `false`
-  (operator opt-in). `force_action: false` throughout — existing values honored.
-  Fresh installs get the correct flag from day 1; existing installs are covered by the
-  GC self-heal path.
 
 ---
 
@@ -203,3 +197,42 @@ on those installs.
 
 - **KFC 1.1 / `meta.enabled` full enforcement** — queued for SP1.
 - **SP1 caller_token enforcement** — plumbing complete; activation deferred to SP1.
+- **RC1 B3 provisioner: `reset_template` call** — not yet wired into the provisioner
+  sequence. Manual press required after upgrade until wired.
+
+---
+
+## HALMark Pre-GA Review
+
+**Sweep date:** 2026-03-22
+**Reviewer:** Cayt (dev) / Nyx (live trace)
+**Verdict:** Clean — no blocking footguns found.
+
+Full scan of all YAML and Jinja files under `packages/zenos_ai/` and
+`custom_templates/zenos_ai/` against the complete ZenOS footgun registry and HALMark
+Ratified + Candidate FG set.
+
+### Patterns tested
+
+| FG | Pattern | Result |
+|---|---|---|
+| FG-1 | `from_json` on `tojson`'d `variables:` values | Clear — no double-decode instances |
+| FG-2 | `state_attr().get()` as drawer read path in scripts | Clear — all occurrences are in Jinja template context where FileCabinet cannot be called; all have downstream FG-38 normalization |
+| FG-3 | `\| sort(attribute=x, default=0)` | Clear — not present |
+| FG-4 | `trigger \| tojson` | Clear — not present |
+| FG-5 | Dict variable in `value:` field without `\| tojson` | Clear — not present |
+| FG-6/38 | `.get('value')` chains without `is mapping` guard | Clear — all instances use canonical two-round or three-round normalization with explicit `is mapping` guards |
+| FG-7 | `\| default('')` without `true` on potentially-None sources | Clear — not present |
+| FG-8 | `label_entities()` in non-trigger sensor | Clear — one instance in `sensor_helpers.yaml` is label-scoped enumeration (occupancy timers), not cabinet resolution; re-evaluates on state change |
+| FG-9/35 | `automation.reload` | Clear — present in `systemtools` only, documented, preflight-guarded |
+| FG-9/36 | `homeassistant.reload_all` | Clear — present in `systemtools` only, documented, preflight config check wired |
+| FG-10 | Non-atomic label delete→add without rollback | Clear — not present; Labels UPDATE now uses confirm gate (Meridian) |
+| FG-11 | FG-38 `.value` fallback-to-self without `is mapping` | Clear — all fallback-to-self patterns have subsequent `is mapping` check |
+| FG-12 | `TemplateState` in `variables:` treated as non-string | Clear — not present |
+| FG-13 | `range()` over 100000 | Clear — one `range(0, 100000)` in utilities is exactly at the limit |
+| FG-14 | `>-` block scalar with bare digits in string compare | Clear — not present |
+
+### Intentional patterns confirmed non-issue
+
+- `flynn.yaml` — `in_fam | from_json | tojson` in a `value:` cabinet write: correct FG-5 safety pattern, not a roundtrip bug.
+- `command_interpreter.jinja` — `{ ... } | tojson | from_json` dict construction: intentional `TemplateState` stripping, not accidental double-encode.

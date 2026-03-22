@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI DojoTools: FileCabinet
-# Version: 4.0.0 RC2
+# Version: 4.5.0
 #
 # Scripts:
 #   zen_dojotools_filecabinet — Cabinet volume K/V storage engine (v4.0.0 RC2)
@@ -54,7 +54,6 @@ script:
         now_iso: "{{ now().isoformat() }}"
         expires_after: "{{ expires_after | default('') | trim }}"
         no_autoexpire: "{{ no_autoexpire | default(false) }}"
-        caller_token: "{{ caller_token | trim }}"
         no_autorecycle: "{{ no_autorecycle | default(false) }}"
         target_guid: "{{ target_guid | default('') | trim }}"
         drawer_acl: >
@@ -786,35 +785,12 @@ script:
               {%- else -%}
                 []
               {%- endif -%}
-            read_filtered_manifest: >
-              {%- import 'zenos_ai/library_index.jinja' as library_index -%}
-              {%- set cabs_json = library_index.parse_index_command('AI Data Storage Cabinet') -%}
-              {%- set fixed_json = cabs_json 
-                                  | replace("['", '["')
-                                  | replace("']", '"]') 
-                                  | replace("', '", '", "') | trim 
-              -%}
-              {%- set cabs = fixed_json | from_json -%}
-              {%- set sensors = states['sensor'] | map(attribute='entity_id') | list -%}
-              {%- set fcabs = intersect(sensors, cabs) -%}
-              
-              {%- set ns = namespace(filtered={}) %}
-              {%- for cab_entity in fcabs %}
-                {%- set variables = state_attr(cab_entity, 'variables') %}
-                {%- if variables and variables.get('AI_Cabinet_VolumeInfo') and variables['AI_Cabinet_VolumeInfo'].get('value') %}
-                  {%- set cab_id = variables['AI_Cabinet_VolumeInfo']['value'].get('id', cab_entity) %}
-                  {%- set ns.filtered = ns.filtered 
-                                        | combine({ (cab_entity): variables['AI_Cabinet_VolumeInfo']['value'] })
-                  %}
-                {%- endif %}
-              {%- endfor %}
-              {{ ns.filtered }}
             parsed_key: "{{ key | default('', true) | trim | lower }}"
             initial_volume: "{{ read_volume if read_volume is mapping else {} }}"
             read_payload: >
               {#- Ensure read_volume is a mapping; else fallback to empty dict -#}
               {% set safe_read_volume = read_volume if read_volume is mapping else {} %}
-              
+
               {% if safe_read_volume | length == 0 %}
                 {{ {'error': 'Volume attribute missing or empty.'} }}
               {% elif parsed_key in ['', '*'] %}
@@ -831,7 +807,7 @@ script:
                             else val_value.get('target_volume_id')
                             if val_value.get('target_volume_id')
                               else '?'
-                         ) 
+                         )
                       -%}
                       {%- set drawer_name = d ~ ' [mount:' ~ mp_target ~ ']' %}
                     {%- else %}
@@ -841,7 +817,7 @@ script:
                   {%- endif %}
                 {%- endfor %}
                 {%- set drawer_list = filtered_drawers_ns.items %}
-              
+
                 {{
                   {
                     'drawers': drawer_list,
@@ -1654,7 +1630,7 @@ script:
           timeout: 00:00:05
           continue_on_timeout: true
         - variables:
-            verify_vol: "{{ state_attr(volume_entity, variables') | default({}, true) }}"
+            verify_vol: "{{ state_attr(volume_entity, 'variables') | default({}, true) }}"
             verify_entry: "{{ verify_vol.get(key, {}) if verify_vol is mapping else {} }}"
             mount_write_verified: "{{ verify_entry.get('value', {}).get('mount_point',  false) == true }}"
         - variables:

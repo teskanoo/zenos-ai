@@ -1,9 +1,9 @@
 ###############################################################################
 # ZenOS-AI DojoTools: Identity
-# Version: 4.0.0 RC2
+# Version: 4.5.0
 #
 # Scripts:
-#   zen_dojotools_identity — Household identity resolver (v4.0.0 RC2)
+#   zen_dojotools_identity — Household identity resolver + prompt inspector
 #
 # MIGRATED FROM: scripts.yaml (2026-03-06)
 #
@@ -16,6 +16,17 @@
 #   no-target call → full roster returned (Nathan + Kim), valid JSON ✓
 #   target=None normalization → null, zen_cabinets(None) → roster ✓
 #
+# v4.1.0 — mode: prompt added
+#   mode: resolve (default) — identity record, unchanged from v4.0.0
+#   mode: prompt  — resolved capsule for the target construct via ai_capsule()
+#                   Shows exactly what the model sees for that identity right now.
+#
+# v4.2.0 — mode: build_identity_manifest added
+#   mode: build_identity_manifest — calls identity_roster(), writes
+#   zen_identity_manifest drawer to the household cabinet. Same pattern as
+#   zen_library_manifest in the manifest builder. Run after onboarding or
+#   any time the roster changes.
+#
 # config check → go; restart → clean ✓
 # ==============================
 ###############################################################################
@@ -25,24 +36,35 @@ script:
     alias: Zen DojoTools Identity
     mode: parallel
     max: 10
-    description: 'Zen DojoTools Identity 4.0.0 RC2 — This tool resolves identities within
-      the ZenOS-AI household. When called with no target, it must invoke zen_cabinets(None)
-      and return the full, redacted roster of all registered users, AI constructs, and
-      cabinets. When a target is provided—such as a person entity_id, cabinet entity_id,
-      label, or UUID—the tool must normalize the input, preserve full person.* values,
-      and pass the normalized target to zen_cabinets(target) to retrieve the corresponding
-      identity record.
-  
-      This tool is used to identify interacting users or constructs, verify cabinet
-      ownership, map GUIDs, resolve labels, validate identity before acting, and load
-      metadata associated with a specific identity. Results must always be returned
-      as valid JSON structures for downstream reasoning.
-  
-      Under Construction: cabinet-based and person-based direct selectors are being
-      expanded for future releases. Requires zen_os_1rc.jinja 3.5.2 or newer.
-  
-      '
+    description: >
+      Zen DojoTools Identity 4.2.0 — Household identity resolver and prompt inspector.
+
+      mode: resolve (default) — resolves identities within the ZenOS-AI household.
+      When called with no target, returns the full redacted roster of all registered
+      users, AI constructs, and cabinets. When a target is provided (person entity_id,
+      cabinet entity_id, label, or UUID), returns the corresponding identity record.
+
+      mode: prompt — renders the compiled prompt capsule for the target construct via
+      zen.ai_capsule(). Shows exactly what the model sees for that identity right now.
+      Includes the rendered capsule, prompt health signals, and signature status.
+      Pass any valid target (label, person entity, cabinet entity, GUID).
+
+      mode: build_identity_manifest — rebuilds the zen_identity_manifest drawer in the
+      household cabinet from the live identity roster. Run after onboarding or any
+      roster change. Same pattern as the library manifest builder.
+
+      Results are always returned as valid JSON for downstream reasoning.
+      Requires zen_os_1.jinja 4.2.0 or newer.
+
     fields:
+      mode:
+        name: Mode
+        description: "resolve = identity record (default). prompt = rendered capsule for this construct. build_identity_manifest = rebuild zen_identity_manifest drawer in household cabinet."
+        default: resolve
+        selector:
+          select:
+            options: [resolve, prompt, build_identity_manifest]
+
       user_label:
         selector:
           text:
@@ -83,13 +105,16 @@ script:
           text:
         description: 'Reserved. Governance stub — echoed in response. SP1 enforcement
           not yet active.'
+
     sequence:
-    # --------------------------------------------------------------
-    # Always normalize User/AI inputs so we don't have to react JIT
-    # --------------------------------------------------------------
+
+    # ── Step 1: normalize inputs + target ──────────────────────────────────
     - variables:
         caller_token: "{{- caller_token | default('') -}}"
+
+    # ── Step 1: normalize inputs + target ──────────────────────────────────
     - variables:
+        _mode: '{{ mode | default(''resolve'') | lower | trim }}'
         user_label: '{{ user_label | default('''') }}'
         user_cabinet: '{{ user_cabinet | default('''') }}'
         user_entity_id: '{{ user_entity_id | default('''') }}'
@@ -109,11 +134,13 @@ script:
           \ {{ rt }}\n\n{# --- 2. Preserve full cabinet sensors verbatim --- #}\n{%-
           elif rt.startswith('sensor.') -%}\n  {{ rt }}\n\n{# --- 3. Accept UUID formats
           (with/without hyphens, case-insensitive) --- #}\n{%- elif rt is match(\"(?i)^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$\")
-          -%}\n  {{ rt }}\n\n{# --- 4. Reject ANYTHING containing a dot that isn’t person/sensor
+          -%}\n  {{ rt }}\n\n{# --- 4. Reject ANYTHING containing a dot that isn't person/sensor
           --- #}\n{%- elif '.' in rt -%}\n  {{ None }}\n\n{# --- 5. Otherwise treat
           as a plain label --- #}\n{%- else -%}\n  {{ rt }}\n{%- endif -%}"
+
+    # ── Step 2: resolve identity ────────────────────────────────────────────
     - variables:
-        cab_json: '{% import ''zenos_ai/zen_os_1rc.jinja'' as zen %}
+        cab_json: '{% import ''zenos_ai/zen_os_1.jinja'' as zen %}
 
           {{ zen.identity_resolve_source(normalized) }}
 
@@ -124,9 +151,114 @@ script:
           elif '\"error\"' in raw and '\"not_found\"' in raw -%}\n  {{ {\"result\":
           [], \"error\": \"not_found\"} | tojson }}\n\n{# 2. Attempt normal JSON load
           #}\n{%- else -%}\n  {{ raw | from_json | tojson }}\n{%- endif %}"
+
+    # ── Step 3a: mode = prompt → render capsule ─────────────────────────────
+    - choose:
+        - conditions: "{{ _mode == 'prompt' }}"
+          sequence:
+            - variables:
+                _capsule_raw: >-
+                  {% import 'zenos_ai/zen_os_1.jinja' as zen %}
+                  {%- set identity_block = cab | from_json -%}
+                  {{ zen.ai_capsule(identity_block) }}
+                _health_raw: >-
+                  {% import 'zenos_ai/zen_os_1.jinja' as zen %}
+                  {{ zen.prompt_health_check() }}
+            - variables:
+                _capsule: >-
+                  {%- set raw = _capsule_raw | trim -%}
+                  {%- if raw.startswith('{') or raw.startswith('[') -%}
+                    {{ raw | from_json | tojson }}
+                  {%- else -%}
+                    {{ {'rendered': raw} | tojson }}
+                  {%- endif -%}
+                _health: >-
+                  {%- set raw = _health_raw | trim -%}
+                  {%- if raw.startswith('{') -%}
+                    {{ raw | from_json | tojson }}
+                  {%- else -%}
+                    {{ {} | tojson }}
+                  {%- endif -%}
+            - variables:
+                response: "{{
+                  {
+                    'mode':               'prompt',
+                    'target_normalized':  normalized,
+                    'identity':           cab,
+                    'capsule':            _capsule,
+                    'prompt_health':      _health,
+                    'timestamp':          now().isoformat(),
+                    'caller_token':       caller_token | default('')
+                  }
+                }}"
+            - stop: Prompt render complete
+              response_variable: response
+
+    # ── Step 3c: mode = build_identity_manifest ─────────────────────────────
+    - choose:
+        - conditions: "{{ _mode == 'build_identity_manifest' }}"
+          sequence:
+            - variables:
+                _hh_cab: "{{ states('sensor.zen_default_household_cabinet_resolved') }}"
+            - if: "{{ _hh_cab in ['', 'unknown', 'unavailable'] }}"
+              then:
+                - variables:
+                    response: >-
+                      {{
+                        {
+                          'mode':      'build_identity_manifest',
+                          'status':    'error',
+                          'message':   'Household cabinet unavailable — cannot write zen_identity_manifest.',
+                          'timestamp': now().isoformat()
+                        } | tojson
+                      }}
+                - stop: Household cabinet unavailable
+                  response_variable: response
+            - variables:
+                _roster_raw: >-
+                  {% import 'zenos_ai/zen_os_1.jinja' as zen %}
+                  {{ zen.identity_roster() }}
+                _roster: >-
+                  {%- set raw = _roster_raw | trim -%}
+                  {%- if raw.startswith('{') -%}
+                    {{ raw | from_json | tojson }}
+                  {%- else -%}
+                    {{ {'status': 'error', 'count': 0, 'roster': []} | tojson }}
+                  {%- endif -%}
+            - action: script.zen_dojotools_filecabinet
+              data:
+                action_type: create
+                force_action: true
+                set_timestamp: true
+                show_hidden_volumes: false
+                volume_entity_id:
+                  - "{{ _hh_cab }}"
+                key: zen_identity_manifest
+                value: "{{ _roster }}"
+            - variables:
+                response: >-
+                  {{
+                    {
+                      'mode':      'build_identity_manifest',
+                      'status':    'ok',
+                      'household_cabinet': _hh_cab,
+                      'manifest':  _roster,
+                      'timestamp': now().isoformat(),
+                      'caller_token': caller_token | default('')
+                    } | tojson
+                  }}
+            - stop: Identity manifest written
+              response_variable: response
+
+    # ── Step 3b: mode = resolve (default) ──────────────────────────────────
     - variables:
-        response: "{{\n  {\n    \"result\": cab,\n    \"target_normalized\": normalized,\n
-          \   \"timestamp\": now().isoformat(),\n    \"caller_token\": caller_token
-          | default('')\n  }\n}}\n"
+        response: "{{
+          {
+            'result':           cab,
+            'target_normalized': normalized,
+            'timestamp':        now().isoformat(),
+            'caller_token':     caller_token | default('')
+          }
+        }}\n"
     - stop: Return Variables
       response_variable: response

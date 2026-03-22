@@ -1,9 +1,9 @@
 # **📘 ZenOS-AI Script Modules**
 
 Welcome to the **Script Modules** section of the ZenOS-AI documentation.
-This directory contains formal documentation for all **DojoTools** and operational scripts that drive Friday’s real-time automation, reasoning, telemetry, observability, storage access, and system reflexes.
+This directory contains formal documentation for all **DojoTools** and operational scripts that drive Friday's real-time automation, reasoning, telemetry, observability, storage access, and system reflexes.
 
-These modules form Friday’s **hands, nerves, forensics, and breadcrumbs** — the tools that speak directly to:
+These modules form Friday's **hands, nerves, forensics, and breadcrumbs** — the tools that speak directly to:
 
 * Home Assistant services
 * Cabinet storage
@@ -12,7 +12,7 @@ These modules form Friday’s **hands, nerves, forensics, and breadcrumbs** — 
 * The Zen Index
 * The Manifest
 * The FileCabinet
-* And the Monastery’s internal reasoning pathways
+* And the Monastery's internal reasoning pathways
 
 Each module is fully documented with:
 
@@ -33,7 +33,7 @@ Below is the official documentation index for all ZenOS-AI DojoTools modules.
 
 ---
 
-## **1. Zen DojoTools AdminTools — 4.3.0 'Meridian'**
+## **1. Zen DojoTools AdminTools — 4.5.0 'Meridian'**
 
 **File:** `zen_dojotools_admintools_readme.md`
 **Type:** Technical Documentation
@@ -53,13 +53,13 @@ KungFu Writer is the only AI-accessible tool here. All others are admin-only and
 
 ---
 
-## **2. Flynn — Stepgate Sentinel & Bootstrap Engine — 4.3.0 'Meridian'**
+## **2. Flynn — Stepgate Sentinel & Bootstrap Engine — 4.5.0 'Meridian'**
 
 **File:** `zen_flynn_readme.md`
 **Type:** Technical Documentation
 
 **Summary:**
-ZenOS-AI's boot guard, initializer, and OOBE driver.
+ZenOS-AI's boot guard, initializer, OOBE driver, and prompt fallback.
 
 * Gates 0–4: labels, cabinet init, schema seed, content bootstrap, system ready
 * Early exit when system is clean and stable
@@ -67,12 +67,13 @@ ZenOS-AI's boot guard, initializer, and OOBE driver.
 * Agent Builder (MCP-exposed): interactive config through conversation
 * Auto-resolves reasoning task and AI task entity at bootstrap
 * Four companion `template: select` entities for persona, primary user, conversation agent, AI task
+* Prompt fallback: `render_prompt()` routes to `prompt_system_flynn()` when system not ready — zero cabinet dependencies, always answers
 
 If the system isn't coming up clean, Flynn is why — and where to look first.
 
 ---
 
-## **3. Zen DojoTools Profile Editor — 4.3.0 'Meridian'**
+## **3. Zen DojoTools Profile Editor — 4.5.0 'Meridian'**
 
 **File:** `zen_dojotools_profile_readme.md`
 **Type:** Technical Documentation
@@ -88,7 +89,7 @@ Expose this to your conversation agent — Friday can then help you configure yo
 
 ---
 
-## **3. Zen DojoTools Labels — 4.1.0**
+## **4. Zen DojoTools Labels — 4.1.0**
 
 **File:** `zen_dojotools_labels_readme.md`
 **Type:** Technical Documentation
@@ -108,24 +109,93 @@ Includes label design guidance: cross-entity labels outperform single-use labels
 
 ---
 
-## **4. Zen DojoTools Identity — 4.3.0 'Meridian'**
+## **5. Zen DojoTools Identity — 4.5.0 'Meridian'**
 
 **File:** `zen_dojotools_identity_readme.md`
 **Type:** Technical Documentation
 
 **Summary:**
-Identity resolver for ZenOS-AI household members and AI constructs. Stateless, read-only, MCP-exposed.
+Identity resolver for ZenOS-AI household members and AI constructs. MCP-exposed.
 
-* No target → full redacted roster
+* No target → full household roster (all valid cabinet-backed identities)
 * Target (label, person entity, cabinet entity, or GUID) → single identity record
+* `mode: build_identity_manifest` — write cached `zen_identity_manifest` to household cabinet
 * Normalizes and validates all input forms before lookup
-* Delegates resolution to `zen_cabinets()` macro in zen_os_1rc.jinja
+* Delegates resolution to `identity_resolve_source()` in `zen_os_1.jinja` — same path the prompt uses
 
 Current scope is resolution only. Privilege enforcement, session tokens, and security masking are planned post-GA.
 
 ---
 
-## **5. Zen DojoTools History — 4.3.0 'Meridian'**
+## **6. Zen DojoTools Scheduler — 4.5.0 'Meridian'**
+
+**File:** `zen_dojotools_scheduler_readme.md`
+**Type:** Technical Documentation
+
+**Summary:**
+Trigger orchestrator for the ZenOS-AI pipeline. Dojo-driven — components declare which triggers they care about; the scheduler routes automatically.
+
+* 20+ trigger IDs: time patterns, home mode changes, occupancy, door/lock/window events, force events
+* `summary_force` / `ninja_force` / `supersummary_force` / `gc_force` / `identity_manifest_rebuild` — manual force events
+* Component subscription via `trigger_subscriptions` in Dojo drawer
+* Heartbeat drawer (`zen_scheduler`) written after every run — staleness detected by `sensor.zen_summarizer_health`
+* Hardware triggers: strip hardware entity IDs from core, use local `zen_dojotools_scheduler_custom.yaml`
+* Protected drawers: `zen_summary`, `zen_library_manifest`, `zen_identity_manifest` — never summarized
+
+---
+
+## **7. Zen DojoTools Summarizers — 4.5.0 'Meridian'**
+
+**File:** `zen_dojotools_summarizers_readme.md`
+**Type:** Technical Documentation
+
+**Summary:**
+The cognition pipeline — Ninja Summarizer and SuperSummary. Both MCP-exposed.
+
+* **Ninja Summarizer** (`zen_dojotools_ninja_summarizer`) — per-component kata writer. Reads one KFC component's Dojo drawer, runs HyperIndex + library command, sends to AI monk, writes kata drawer.
+* **SuperSummary** (`zen_dojotools_supersummary`) — whole-home synthesizer. Reads all active kata drawers (gated by `meta.enabled`), sends to AI monk, writes `zen_summary` — the canonical home state that loads Friday's prompt.
+* Three kill switches: master (`zen_summarizers_enabled`), ninja, supersummary — all default on
+* Auto-refire on re-enable via `zen_pipeline_autofire_on_enable`
+
+> **Warning:** Do not point the AI task entity at a paid inference API — the pipeline fires multiple times per hour. Use a local model.
+
+---
+
+## **8. Zen DojoTools Library — 4.5.0 'Meridian'**
+
+**File:** `zen_dojotools_library_readme.md`
+**Type:** Technical Documentation
+
+**Summary:**
+Friday's unified system utility runner. MCP-exposed. Dispatches to library command interpreters and utility functions.
+
+* `library` — routes query through `command_interpreter.jinja` (v1); returns `{query, output}`
+* `library_2` — routes through `command_interpreter_2.jinja` (v2)
+* `hash_md5` — MD5 hash of input string
+* `slugify` — applies HA slugify filter to input
+
+The `library` tool is the engine the Ninja Summarizer uses for component `command` field dispatch. KFC components register their library command in the Dojo drawer; the Ninja calls it automatically before building the monk prompt.
+
+---
+
+## **9. Zen Home Mode — 4.5.0 'Meridian'**
+
+**File:** `zen_home_mode_readme.md`
+**Type:** Technical Documentation
+
+**Summary:**
+Eight-state home presence and time-of-day state machine. Ambient context layer for Friday, the Scheduler, and Kung Fu components.
+
+* 8 modes: Home-Wake, Home-Morning, Home, Home-Evening, Night, Night-Late, Away, Paused
+* Time-based transitions via 6 configurable `input_datetime` anchors (no code changes required)
+* Presence-driven: Away auto-triggers when `zone.home` drops to 0; releases on return
+* Quiet hours (midnight-wrap safe) + Work hours — both configurable, fail-open
+* Scheduler trigger IDs: `home_mode_updates`, `start_home_wake`, `start_home_evening`, `home_occupancy_change`
+* Vacation mode: apply `zen_vacation_mode` label to your calendar entity — resolved by label, no hardcoded ID
+
+---
+
+## **10. Zen DojoTools History — 4.5.0 'Meridian'**
 
 **File:** `zen_dojotools_history_readme.md`
 **Type:** Technical Documentation
@@ -140,7 +210,7 @@ Recorder statistics query engine. Time-bucketed historical data for sensors with
 
 ---
 
-## **6. Zen DojoTools Utilities — 4.3.0 'Meridian'**
+## **11. Zen DojoTools Utilities — 4.5.0 'Meridian'**
 
 **File:** `zen_dojotools_utilities_readme.md`
 **Type:** Technical Documentation
@@ -159,7 +229,7 @@ General-purpose utility collection.
 
 ---
 
-## **7. Zen DojoTools Core (FileCabinet GC) — 4.3.0 'Meridian'**
+## **12. Zen DojoTools Core (FileCabinet GC) — 4.5.0 'Meridian'**
 
 **File:** `zen_dojotools_core_readme.md`
 **Type:** Technical Documentation
@@ -176,25 +246,24 @@ Protected drawers (`_prefix`, VolumeInfo, schema keys) are never touched. Post-e
 
 ---
 
-## **6. Zen DojoTools SystemTools & Home Mode — 4.3.0 'Meridian'**
+## **13. Zen DojoTools SystemTools — 4.5.0 'Meridian'**
 
 **File:** `zen_dojotools_systemtools_readme.md`
 **Type:** Technical Documentation
 
 **Summary:**
-HA lifecycle management, log reading, event emission, and the home mode engine.
+HA lifecycle management, log reading, and event emission.
 
 * `zen_dojotools_systemtools` — Config check, safe restart (auto-validates before restarting), update install/skip
 * `zen_dojotools_ha_log_viewer` — Five log modes + HA 2025.11+ journal detection
 * `zen_dojotools_event_emitter` — Structured zen_event emission (see also dedicated emitter readme)
 * `zen_dojotools_ha_api` — Internal API wrapper (do NOT expose)
-* Home Mode — 8-state time-scheduled mode lifecycle + presence detection, configurable anchors
 
 Requires a long-lived HA token in `secrets.yaml` (ha_bearer).
 
 ---
 
-## **4. Zen DojoTools Office — 4.3.0 'Meridian'**
+## **14. Zen DojoTools Office — 4.5.0 'Meridian'**
 
 **File:** `zen_dojotools_office_readme.md`
 **Type:** Technical Documentation
@@ -211,11 +280,11 @@ Provides unified, deterministic access to all Home Assistant calendar entities:
 * Strict ambiguity prevention
 * Fully structured JSON response envelopes
 
-This is Friday’s and Veronica’s primary tool for anything date-, event-, or schedule-related.
+This is Friday's and Veronica's primary tool for anything date-, event-, or schedule-related.
 
 ---
 
-## **4. Zen DojoTools Event Emitter — 4.3.0 'Meridian'**
+## **15. Zen DojoTools Event Emitter — 4.5.0 'Meridian'**
 
 **File:** `zen_dojotools_event_emitter_readme.md`
 **Type:** Technical Documentation
@@ -242,7 +311,7 @@ This is how Friday, Veronica, Kronk, and the High Priestess leave traceable brea
 
 ---
 
-## **5. Zen DojoTools FileCabinet — 4.3.0 'Meridian'**
+## **16. Zen DojoTools FileCabinet — 4.5.0 'Meridian'**
 
 **File:** `zen_dojotools_filecabinet_readme.md`
 **Type:** Technical Documentation
@@ -266,7 +335,7 @@ If any drawer changes anywhere in ZenOS-AI, it happened through FileCabinet.
 
 ---
 
-## **6. Zen DojoTools Manifest — 4.3.0 'Meridian'**
+## **17. Zen DojoTools Manifest — 4.5.0 'Meridian'**
 
 **File:** `zen_dojotools_manifest_readme.md`
 **Type:** Technical Documentation
@@ -286,11 +355,11 @@ Provides:
 * ACL expansion
 * Health classification
 
-If Friday trusts a Cabinet, it’s because the Manifest told her it's safe.
+If Friday trusts a Cabinet, it's because the Manifest told her it's safe.
 
 ---
 
-## **7. Zen DojoTools Index — 4.3.0 'Meridian'**
+## **18. Zen DojoTools Index — 4.5.0 'Meridian'**
 
 **File:** `zen_dojotools_index_readme.md`
 **Type:** Technical Documentation
@@ -300,7 +369,7 @@ The entity-and-label correlation engine of ZenOS-AI.
 
 Supports:
 
-* Entity & label set logic (AND/OR/NOT/XOR)
+* Entity & label set logic (AND/OR/NOT/XOR/`*`)
 * Label → entity resolution
 * Index Command DSL mode
 * Integration with Zen Inspect
@@ -308,17 +377,17 @@ Supports:
 * Drawer-level correlation
 * JSON-safe structured outputs
 
-The Zen Index is Friday’s “graph engine,” letting her understand relationships between entities, labels, and volumes.
+The Zen Index is Friday's "graph engine," letting her understand relationships between entities, labels, and volumes.
 
 ---
 
-## **8. Zen DojoTools Inspect — 4.3.0 'Meridian'**
+## **19. Zen DojoTools Inspect — 4.5.0 'Meridian'**
 
 **File:** `zen_dojotools_inspect_readme.md`
 **Type:** Technical Documentation
 
 **Summary:**
-A safe, deterministic deep-inspection tool for entities — Friday’s x-ray machine.
+A safe, deterministic deep-inspection tool for entities — Friday's x-ray machine.
 
 Provides:
 
@@ -330,7 +399,7 @@ Provides:
 * Optional extended device forensics
 * JSON-stable output for LLM use
 
-Inspect shows Friday “what something is” without ever exposing dangerous internals.
+Inspect shows Friday "what something is" without ever exposing dangerous internals.
 
 ---
 

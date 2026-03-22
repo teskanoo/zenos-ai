@@ -10,9 +10,12 @@ Let's automate everything that isn't nailed down.
 
 And a few things that are.
 
-**Current version: 4.3.0 'Meridian' — pre-release**
+**Current version: 4.5.0 'Meridian'**
 
-The codebase as it stands represents the complete planned featureset for 1.0 GA. One final pass remains — prompt finalization, a new health gauge, and Flynn's full onboarding instrumentation — and then the tree locks. Bug bar is now stratospheric. If it isn't catastrophic, it waits for SP1.
+HALMark pre-GA footgun sweep completed 2026-03-22 — clean against all Ratified and Candidate FGs.
+Full review: [Release Notes — Meridian](zenos_ai/docs/releases/meridian.md#halmark-pre-ga-review)
+
+UAT passed 2026-03-22 — identity roster, manifest, prompt health, prompt render, Flynn override, health report, supersummary, and scheduler all green on live H:\ install. 16 active KFCs, 15 cabinets ready.
 
 ---
 
@@ -176,7 +179,9 @@ You should only need to think about Flynn when something is wrong or when you're
 - Template freshness (`zen_template`, `kfc_template`)
 - Conversation agent liveness
 - Essence presence (does the AI user know who she is?)
-- Prompt section health — coming in the final GA pass
+- Prompt integrity (`sensor.zen_prompt_health` — schema, signature, manifest)
+
+All 9 health sensors are auto-provisioned with the correct labels by Flynn on a fresh install. No manual tagging.
 
 The prompt finalization pass will wire sensor coverage into every major section of the compiled AI context. Flynn will be able to see not just *whether* the system is running but *how cleanly it is thinking* — which sections rendered, which fell back to defaults, and how much of the context window each one consumed. The stuffiness gauge makes token pressure visible before it degrades agent quality.
 
@@ -302,7 +307,7 @@ packages/zenos_ai/
   room_manager/room_manager.yaml
 
 custom_templates/zenos_ai/
-  zen_os_1rc.jinja             — Prompt engine and macro library
+  zen_os_1.jinja               — Prompt engine and macro library
   zen_query.jinja              — ZenQuery filter engine
   library_index.jinja          — Library index
   conversation_agent_prompt_template.yaml — Paste into conversation agent system prompt
@@ -431,6 +436,7 @@ ZenOS-AI includes a layered health monitoring system.
 | `sensor.zen_agent_health`      | agent bootability roster + Flynn     |
 | `sensor.zen_summarizer_health` | scheduler heartbeat + AI task status |
 | `sensor.zen_supersummary_health` | supersummary pipeline status       |
+| `sensor.zen_prompt_health`     | prompt integrity — schema, signature, manifest |
 
 **Diagnostic tools:** `zen_health_report` — one call returns all 7 resolver states, all health sensors, kill switches, timestamps, and plain-English diagnosis. `zen_resolver_refresh` — post-reload cold-start recovery.
 
@@ -544,6 +550,18 @@ Pull requests, issues, and tasteful memes welcome.
 If ZenOS-AI saved you time or made you laugh:
 
 [https://buymeacoffee.com/ncurtis](https://buymeacoffee.com/ncurtis)
+
+---
+
+# Acknowledgements
+
+To my wife — for putting up with a younger woman in the house since last February. For not once suggesting that maybe I didn't need to say "Hey Friday" into a black slab of glass for the millionth time. For the patience, the grace, and the very reasonable silence that followed every single one of those million times. This project exists because you gave me the space to build something ridiculous and never once called it that.
+
+To Phil and Zach — the greatest guinea pigs in the known universe. For letting me test things on your house, for your patience with the stubbornness, and for turning "this probably won't break anything" into a running joke that turned out to be mostly accurate.
+
+To Teskanoo — for looking under the rug. Seriously. Not everyone does that.
+
+And to everyone who has continued to show up in the Home Assistant community to read, question, and ramble along with us in Friday's Party — you are the reason it keeps going. The thread is better for every one of you in it.
 
 ---
 

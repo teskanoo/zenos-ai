@@ -140,7 +140,7 @@ The Library is part of the broader **ZenOS-AI core utility stack**:
 | **Storage**        | [Cabinets & Drawers](../cabinets/cabinet_spec.md) | Hierarchical JSON stores for entities, AI, and metadata   |
 | **Index**          | [Index System](../library/index_system.md)        | Unified label/query engine with recursion and event logic |
 | **Execution**      | **Library 2.0** *(this file)*                     | Structured dispatcher for lightweight utility functions   |
-| **Administration** | [CabinetAdmin Tools](../cabinets/admin_tools.md)  | Schema enforcement and maintenance                        |
+| **Administration** | [CabinetAdmin Tools](../scripts/zen_dojotools_admintools_readme.md)  | Schema enforcement and maintenance                        |
 | **Summarization**  | [Zen Summarizer](../zen_summarizer/readme.md)     | Context reduction and Kata generation                     |
 
 The Library interacts with the **Index System** by invoking it as a sub-tool or macro reference (`~INDEX~`) inside workflows that need label resolution, ensuring a consistent data interface from utility level to semantic layer.

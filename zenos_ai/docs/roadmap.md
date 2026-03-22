@@ -125,8 +125,8 @@ Final polish pass before gold candidate lock. Three work streams:
 
 **1. Template structure pass + rename**
 
-`zen_os_1rc.jinja` renamed to `zenos.jinja` for release. Full ref sweep across
-all packages, templates, and docs. `custom_templates/zenos_ai/` layout finalized
+`zen_os_1rc.jinja` renamed to `zen_os_1.jinja` for release. Full ref sweep across
+all packages, templates, and docs completed. `custom_templates/zenos_ai/` layout finalized
 and locked.
 
 **2. Prompt instrumentation + collapse**
@@ -169,7 +169,7 @@ anywhere in OS code.
 **What shipped:**
 - 7 always-live resolver sensors (dojo, kata, system, household, ai_user, family, user)
 - Full resolver canonization sweep across all OS files (dojotools, sensors, flynn, templates)
-- `zen_health_report` v4.3.0 — all 7 resolver states, 5 health sensors, FG-38-safe diagnosis
+- `zen_health_report` v4.3.0 — all 7 resolver states, 6 health sensors, FG-38-safe diagnosis
 - `zen_resolver_refresh` — exposed MCP tool + ha_start cold-start retrigger
 - FG-38 v3 (double-encoded JSON) — three-round normalization pattern, patched in all affected paths
 - HALMark FG-38 v3 candidate filed for Vera's ratification review
@@ -297,6 +297,23 @@ A misconfigured, offline, or rate-limited model will pass the boot gate silently
 # 1.0 SP1 — Queued
 
 Post-GA service pack. Token-related items deferred from `fix/ga-batch-1`.
+
+### Security Enforcement — `security_policy` Syscab Drawer
+
+The System Cabinet carries a `security_policy` drawer at GA with the following
+fields stubbed and documented:
+
+- `secure: false` — GA active. Set to `true` at SP1 to activate full enforcement.
+- `max_delegation_depth: 2` — GA active. Hard rule enforced now.
+- `max_nesting_depth: 2` — GA active. Hard rule enforced now. Group nesting ceiling.
+- `provider`, `token_endpoint`, `validation_mode`, `claims_cache_ttl` — SP1 fields.
+  Plumbed and documented. Populating them at GA is a no-op — enforcement is not
+  active until SP1.
+
+**SP1 activates:** external auth provider integration (pluggable — ZenOS is the
+policy plane, external stack is the auth plane). One drawer setting (`secure: true`)
+enables full enforcement. The policy plane, HyperIndex claims engine, and caller_token
+enforcement are all plumbed at GA. SP1 wires the external provider and flips the switch.
 
 ---
 

@@ -1,4 +1,4 @@
-# ZenOS-AI Health Sensors — 4.3.0 'Meridian'
+# ZenOS-AI Health Sensors — 4.5.0 'Meridian'
 
 *System observability stack — labels, cabinets, cognition, agents*
 
@@ -256,6 +256,65 @@ Use `current_gate` and `next_step` when troubleshooting a stuck boot — they te
 
 ---
 
+## sensor.zen_prompt_health
+
+**What it checks:** Prompt integrity — schema, signature, manifest presence, and environment health.
+
+**Update frequency:** Trigger-based (ha_start + custom event)
+
+**Source:** `prompt_health_check()` macro in `zen_os_1.jinja`
+
+| State | Condition |
+|---|---|
+| `ok` | All health signals true |
+| `warn` | One or more signals false but non-critical (e.g. manifest or id_manifest missing) |
+| `error` | Legacy schema, missing essence, or cabinet unavailable |
+
+**Key attributes:**
+
+| Attribute | Contents |
+|---|---|
+| `schema_ok` | Three-layer essence schema detected |
+| `sig_ok` | Identity hash / signature present |
+| `manifest_present` | `zen_library_manifest` drawer exists in household cabinet |
+| `familiar_ok` | Companion block present in essence |
+| `environment_ok` | Environment block present in essence |
+| `id_manifest_present` | `zen_identity_manifest` drawer exists in household cabinet |
+| `wake_scene chars` | Character count of the rendered wake scene |
+| `signed_at` | Timestamp of the last signature |
+| `jacket_hash` | Current essence signature hash |
+
+`id_manifest_present: false` is expected on a fresh install — clears automatically on `ha_start` once the scheduler builds the manifest, or immediately after running `zen_dojotools_identity` with `mode: build_identity_manifest`.
+
+---
+
+## sensor.zen_prompt_length
+
+**What it checks:** Total prompt character count, broken down by section.
+
+**Update frequency:** Trigger-based (ha_start + custom event)
+
+**Source:** `prompt_length_audit()` macro in `zen_os_1.jinja` — renders all 9 sections. Heavy — do not call inline.
+
+| State | Value |
+|---|---|
+| Numeric | Total character count of the compiled prompt |
+
+**Key attributes:**
+
+| Attribute | Contents |
+|---|---|
+| `total` | Total character count |
+| `sections` | Dict: per-section char counts |
+
+Section keys in `sections`: `header`, `system`, `manifest`, `index`, `dojo`, `capsule`, `overview`, `wake`, `id_manifest`
+
+Note: `dojo` is typically the largest section (~40-50% of budget). If prompt length is a concern, the dojo density is the first place to look.
+
+Both `sensor.zen_prompt_health` and `sensor.zen_prompt_length` receive the `zen_health`, `system_status`, and `zen` labels and are included in the health rollup provisioned by Flynn Step 4.
+
+---
+
 ## UI Selectors and Kill Switches
 
 ### Companion Input Selects
@@ -312,3 +371,5 @@ This means the summarizer is live again within seconds of being re-enabled, not 
 | Labels not assigning | `sensor.zen_label_health` → `missing_label_ids` and `unassigned_label_ids` |
 | Cabinet missing | `sensor.zen_cabinet_health` → `missing_cabinets` |
 | Resolver sensors stuck unavailable | Check `label_entities()` calls use slug IDs — display names return `[]` on strict HA versions. Fire `zen_resolver_refresh` after fixing. |
+| `zen_prompt_health` stuck at `warn` | Check `id_manifest_present` attribute. If `false`, fire `zen_dojotools_identity` with `mode: build_identity_manifest` or fire `zen_event` with `kind: identity_manifest_rebuild`. Clears on next `ha_start` automatically. |
+| `zen_prompt_length` state `unknown` | Sensor is heavy — may timeout on slow hardware or very large prompts. Check HA logs for template complexity errors. |

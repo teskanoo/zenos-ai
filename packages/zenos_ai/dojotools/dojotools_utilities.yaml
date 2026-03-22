@@ -2,7 +2,7 @@
 # ZenOS-AI DojoTools: Utilities Bundle
 # Phase 1 migration from scripts.yaml
 #
-# Version: 4.0.0 RC2
+# Version: 4.5.0
 #
 # Scripts:
 #   zen_dojotools_calculator   — math + GUID generator (v4.0.0 RC2)
@@ -408,7 +408,7 @@ script:
           Ring-0: Cabinet system (14 trigger-based template sensors for persistent
             K/V storage), label health validators, Flynn bootloader (gate validation,
             label provisioning, schema CRUD).
-          Prompt Engine: zen_os_1rc.jinja — 11-stage Jinja compilation pipeline:
+          Prompt Engine: zen_os_1.jinja — 11-stage Jinja compilation pipeline:
             identity → essence → system → manifest → index → dojo → capsule → wake.
           DojoTools: AI tool suite — utilities, comms, data, summarizer, AI, admin.
           Plugins: Mealie (recipes/meal planning), Grocy (inventory/chores),
@@ -470,7 +470,7 @@ script:
             High Priestess: Divine Automation Overseer — deep reasoning and data validation
           modules:
             - Ring-0 core (cabinets, label health, Flynn bootloader)
-            - Prompt Engine (zen_os_1rc.jinja, 11-stage Jinja compilation)
+            - Prompt Engine (zen_os_1.jinja, 11-stage Jinja compilation)
             - DojoTools suite (utilities, comms, data, summarizer, AI, admin)
             - Plugins (Mealie, Grocy, Kitchen Sync, Firefly III, Wiki.js)
             - Room Manager (label-intersection state machine)

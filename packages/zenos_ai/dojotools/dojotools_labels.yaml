@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI DojoTools: Labels
-# Version: 4.1.0
+# Version: 4.5.0
 #
 # Scripts:
 #   zen_dojotools_labels — Label CRUD. Read/modify the HA label index.

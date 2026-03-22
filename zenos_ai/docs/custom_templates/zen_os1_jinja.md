@@ -1,19 +1,19 @@
-ZenOS-AI Template Engine: zen_os_1rc.jinja
+ZenOS-AI Template Engine: zen_os_1.jinja
 
 Technical Specification & Prompt Loader Requirements
 
-Version: 4.3.0 'Meridian'
+Version: 4.5.0 'Meridian'
 Status: Stable & Required for All Front-Line Agents
 
 
 ---
 
-🧠 Purpose of zen_os_1rc.jinja
+🧠 Purpose of zen_os_1.jinja
 
-zen_os_1rc.jinja is the primary cognitive assembly engine for ZenOS-AI.
+zen_os_1.jinja is the primary cognitive assembly engine for ZenOS-AI.
 It is responsible for building a complete operational prompt for Friday (and any other persona built on ZenOS).
 
-It is not a “template helper” — it is the compiler for:
+It is not a "template helper" — it is the compiler for:
 
 identity
 
@@ -31,105 +31,101 @@ persona capsule
 
 narrative wake sequence
 
+identity manifest
+
+Flynn detection and fallback routing
+
 
 Nothing about Friday exists in a usable form until this file runs.
 
 
 ---
 
-🧩 What the Template Engine Actually Does
+🚀 Entry Point: render_prompt(ai_entity)
 
-When called from conversation_agent_prompt_template.yaml, the engine:
+As of 4.5.0, the entire pipeline is behind a single macro:
 
-1. Resolves identity
+```jinja
+{%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
+{{ zen.render_prompt(states('input_text.zenos_persona_name')) }}
+```
 
+That is the full conversation agent template. Three lines.
 
-2. Loads cabinet memory
+`render_prompt(ai_entity)` orchestrates identity resolution, Flynn detection, system prompt selection, and full prompt assembly. Callers do not invoke sub-macros directly.
 
+### Flynn Detection Chain
 
-3. Formats persona identity
+Before assembling the persona prompt, `render_prompt()` checks:
 
+| Priority | Condition | `_flynn_reason` |
+|----------|-----------|-----------------|
+| 1 | `input_boolean.zen_flynn_override` is `on` | `override` |
+| 2 | `ai_entity` is blank or whitespace | `blank_persona` |
+| 3 | persona label explicitly set to `flynn` | `explicit` |
+| 4 | `identity_resolve_source()` returns error | error key from resolver |
 
-4. Applies Squirrel-Mode redaction
+If any condition matches → `prompt_system_flynn()` is returned instead of the normal prompt.
+If none match → full persona pipeline runs.
 
+### input_boolean.zen_flynn_override
 
-5. Loads system-level Purpose, Directives, Cortex
-
-
-6. Loads manifest & index
-
-
-7. Loads dojo/kata drawers
-
-
-8. Builds persona capsule
-
-
-9. Builds full JSON envelope
-
-
-10. Emits the wake-sequence
-
-
-
-Each step is deterministic and must happen in this order.
+Defined in `flynn.yaml`. Forces Flynn regardless of persona for maintenance and testing.
+Should auto-create on HA reload. State `on` = Flynn mode active. Safe to leave `off` indefinitely.
 
 
 ---
 
-🔍 1. Identity Resolution (identity_resolve_source())
+🛡 Flynn System Prompt: prompt_system_flynn()
 
-This is the foundation of the whole system.
+When Flynn mode is active, `render_prompt()` returns `prompt_system_flynn()` — a hardcoded system prompt with zero cabinet dependencies.
 
-The resolver attempts to locate the “home cabinet” (ZenAI Cabinet) for the persona.
+This means:
 
-Resolution Rules
+- Works on a bare install before any cabinets exist
+- Works when the identity resolver fails
+- Works when the system cabinet is missing or corrupt
+- No Jinja cabinet reads — pure static output
 
-1. Find any entity labeled Zen AI Cabinet
-whose zenai_essence.identity.name matches ai_user.
-
-
-2. If none found → fallback to person.<ai_user> entity.
-
-
-3. If both missing → identity unresolved → prompt will fail.
+Flynn's prompt is intentionally minimal and maintenance-focused. He is the personification of the system itself — visible only when something needs attention.
 
 
+---
 
-What the user must provide
+🔍 Identity Resolution
 
-A cabinet entity with either schema:
+### identity_resolve_source(target)
 
-**Three-layer schema (current):**
-```yaml
-state: "loaded"
-attributes:
-  zenai_essence:
-    core:
-      id: "<UUID>"
-      minted_for: "person.nathan"
-      household_guid: "<UUID>"
-    jacket:
-      name: "Friday"
-      signed_by: "person.nathan"
-    companion:
-      name: "Byte"
-labels:
-  - Zen AI Cabinet
+Core resolution macro. Resolves a target (label, person entity, cabinet entity, UUID) to an identity record.
+
+**No-target behavior (4.5.0):** Calling `identity_resolve_source()` with no argument or `None` now returns the full household roster — all valid cabinet-backed identities. This is directory behavior (same as listing files with no args). Returns `{status, count, roster: [...]}`.
+
+Resolution Rules (single target):
+
+1. Find any entity labeled Zen AI Cabinet whose `zenai_essence.identity.name` (legacy) or `jacket.name` (three-layer) matches `target`.
+2. If none found → fallback to `person.<target>` entity.
+3. If both missing → `{"error": "not_found"}`.
+
+### identity_roster()
+
+Wraps `zen_cabinets(None)` and returns all valid cabinet-backed identities in the household:
+
+```json
+{
+  "status": "ok",
+  "count": 2,
+  "roster": [
+    { "label": "friday", "cabinet": "sensor.zen_friday_cabinet", "name": "Friday", ... },
+    { "label": "nathan", "cabinet": "sensor.zen_nathan_cabinet", "name": "Nathan", ... }
+  ]
+}
 ```
 
-**Legacy schema (still supported via shim in normalize_essence):**
-```yaml
-state: "loaded"
-attributes:
-  zenai_essence:
-    identity:
-      name: "Friday"
-      guid: "<UUID>"
-    ...
-labels:
-  - Zen AI Cabinet
-```
+### identity_manifest_loader()
+
+Reads the `zen_identity_manifest` drawer from the household cabinet. Returns the cached roster without re-resolving all cabinets. Used by the prompt pipeline and prompt health sensor.
+
+The manifest is built by `zen_dojotools_identity` with `mode: build_identity_manifest` and rebuilt automatically on `ha_start` and `daily_midnight` by the scheduler.
 
 Identity fields by schema:
 
@@ -141,10 +137,9 @@ Identity fields by schema:
 | identity_hash | `core.signature` | `hashstamp.hash` | optional | cabinet integrity |
 
 
-
 ---
 
-🧬 2. Essence Requirements
+🧬 Essence Requirements
 
 Essence is the internal DNA of a ZenOS persona.
 
@@ -164,28 +159,23 @@ self-awareness hints
 
 wake-scene data
 
+environment (room, desk, music — 4.5.0)
+
 Squirrel-mode rules
 
 capsule metadata
 
 
-Essence is not “optional creativity.”
+Essence is not "optional creativity."
 It is part of the minimum viable mind.
 
-Essence must be a mapping, not a wrapper
+**Three-layer schema (current):**
 
-❌ NOT ALLOWED:
-
-zenai_essence:
-  value:
-    identity:
-      name: Friday
-
-✔️ REQUIRED (three-layer, current):
-
+```yaml
 zenai_essence:
   core:
     id: "b7e3f091-1cd6-83f8-frid-ay0000000001"
+    minted_for: "person.nathan"
   jacket:
     name: "Friday"
     presentation: "quiet brilliance"
@@ -195,28 +185,34 @@ zenai_essence:
   companion:
     name: "Byte"
     species: "digital English bulldog"
+  environment:
+    room: "her private space"
+    wake_in: "her favorite chaise lounge"
+    music:
+      genre: "steady lo-fi"
+```
 
-✔️ ALSO VALID (legacy schema — shim in normalize_essence translates at render time):
+**Legacy schema (still supported via shim in normalize_essence):**
 
+```yaml
 zenai_essence:
   identity:
     name: "Friday"
     guid: "abc123"
   voice:
     tone: "warm, conversational"
-  ...
+```
 
-If essence is absent or malformed →
-identity_format() fails → no persona block → no prompt.
+The `normalize_essence` shim in `zen_os_1.jinja` handles schema translation transparently — the wake scene, capsule, and identity card render identically for both schemas.
 
-The normalize_essence shim in zen_os_1rc.jinja handles schema translation transparently — the wake scene, capsule, and identity card render identically for both schemas.
+If essence is absent or malformed → `identity_format()` fails → no persona block → no prompt.
 
 
 ---
 
-🏛 3. Cabinet Loading (identity_load_cabinet())
+🏛 Cabinet Loading (identity_load_cabinet())
 
-After resolving which cabinet entity is “home,” the engine loads:
+After resolving which cabinet entity is "home," the engine loads:
 
 zenai_essence
 
@@ -231,267 +227,170 @@ variables
 metadata
 
 
-It also normalizes malformed structures.
-
-User requirements:
-
 The cabinet must contain:
 
-zenai_essence (mapping, not wrapped)
-
-labels list
-
-The label Zen AI Cabinet
-
-
-Everything else is optional.
+- `zenai_essence` (mapping, not wrapped)
+- labels list
+- The label `Zen AI Cabinet`
 
 
 ---
 
-🏷 4. Squirrel-Mode Redaction
+🏷 Squirrel-Mode Redaction
 
 The engine scans for an entity with label Zen Squirrel.
-If found, and its state is “on”:
+If found and its state is `on`, it redacts: guid, identity_hash, cabinet, sensitive memory branches, persona internals marked "private".
 
-It redacts:
-
-guid
-
-identity_hash
-
-cabinet
-
-sensitive memory branches
-
-persona internals marked "private"
-
-
-This allows safe public-mode behavior.
-
-User must supply:
-
-an input_boolean labeled Zen Squirrel
-OR
-
-nothing (defaults to safe off)
-
+Defaults to safe off if no Squirrel entity exists.
 
 
 ---
 
-🧩 5. System Cabinet (Purpose / Directives / Cortex)
+🧩 System Cabinet (Purpose / Directives / Cortex)
 
-The system cabinet is not Friday’s cabinet.
-It is the operational blueprint for the entire construct.
+Must be labeled `Zen System Cabinet`. Must contain:
 
-Must be labeled:
+| Drawer | Required | Description |
+|--------|----------|-------------|
+| Purpose | ✔️ | Why the system exists |
+| Directives | ✔️ | Operational rules for Friday |
+| Cortex | ✔️ | Reasoning model and behavioral core |
 
-Zen System Cabinet
-
-And must contain the canonical drawers:
-
-Drawer	Required	Description
-
-Purpose	✔️	Why the system exists
-Directives	✔️	Operational rules for Friday
-Cortex	✔️	Reasoning model and behavioral core
-
-
-Drawers may be:
-
-raw string
-
-or {value: "…"} mapping
-
-both are normalized internally
-
-
-If any drawer is missing →
-prompt_system() fails → Friday cannot load.
+If any drawer is missing → `prompt_system()` fails → `render_prompt()` routes to Flynn.
 
 
 ---
 
-🔁 6. Manifest Loader
+🔁 Manifest Loader
 
-Looks for a cabinet labeled:
+Reads `zen_library_manifest` from the household cabinet.
 
-Zen Default Household Cabinet
-
-Loads:
-
-zen_library_manifest
-
-optional household metadata
-
-
-This step enriches persona awareness of the environment.
-
-It is optional but strongly recommended.
+Optional but strongly recommended. Enriches persona awareness of the environment.
 
 
 ---
 
-🧭 7. Index Loader (Zen Index 3.x / CabScan)
+📋 Identity Manifest (zen_identity_manifest)
 
-Loads all labels known to the system.
-This enables:
+Separate from the library manifest. Stores the cached identity roster for all household principals.
 
-label-based routing
+- Built by: `zen_dojotools_identity` mode `build_identity_manifest`
+- Rebuilt automatically: `ha_start` + `daily_midnight` (scheduler)
+- On-demand rebuild: fire `zen_event` with `kind: identity_manifest_rebuild`
+- Protected: listed in `_protected` in both the scheduler variables block and `_subscribers` Jinja template — Ninja will not summarize it
 
-dojo categorization
-
-relationship mapping
-
-system-level debugging
-
-
-Requires nothing from the user — automatic.
+The `zen_identity_manifest` drawer will not exist until the first scheduler run or manual fire. `sensor.zen_prompt_health` will warn (`id_manifest_present: false`) until it is seeded.
 
 
 ---
 
-🥋 8. Dojo Loader
+🧭 Index Loader
 
-Loads:
-
-dojo drawers
-
-kata drawers
-
-component metadata
-
-kata summaries
-
-
-Cabinets must be labeled:
-
-Zen Dojo Cabinet
-
-Zen Kata Cabinet (optional but recommended)
-
-
-User must supply:
-
-drawers stored as simple mappings
-
-kata drawers described in JSON-style content
-
+Loads all labels known to the system. Enables label-based routing, dojo categorization, relationship mapping. Automatic — no user configuration required.
 
 
 ---
 
-🎭 9. AI Capsule Builder
+🥋 Dojo Loader
 
-Creates the persona capsule containing:
+Loads dojo drawers, kata drawers, component metadata, and kata summaries.
 
-About Me
-
-Persona metadata
-
-Essence
-
-Household belonging
-
-Familiar
-
-Extensions
-
-Behavior modifiers
-
-
-The capsule is a major part of Friday’s inner prompt.
-
-Requires:
-
-valid essence
-
-valid labels
-
-membership in Zen Default Family if relevant
-
+Cabinets must be labeled `Zen Dojo Cabinet` and `Zen Kata Cabinet` (optional but recommended).
 
 
 ---
 
-🧱 10. Final JSON Prompt
+🎭 AI Capsule Builder (ai_capsule())
 
-Everything above is assembled into:
+Creates the persona capsule: About Me, persona metadata, essence, household belonging, familiar, extensions, behavior modifiers.
 
-{
-  "header": { ... },
-  "system": { ... },
-  "manifest": { ... },
-  "index": [...],
-  "kata": { ... },
-  "capsule": { ... },
-  "overview": { ... },
-  "boot_time": "<timestamp>"
-}
-
-This is consumed by:
-
-Home Assistant Conversation
-
-OpenAI tools
-
-local LLMs
-
-Friday’s reinference loops
-
+Requires valid essence, valid labels, membership in Zen Default Family if relevant.
 
 
 ---
 
-🌅 11. ai_wake_sequence()
+📏 Prompt Length Audit (prompt_length_audit())
 
-The final macro produces:
+Renders all 9 prompt sections and measures character counts. Powers `sensor.zen_prompt_length`.
 
-startup narrative
+| Section | Description |
+|---------|-------------|
+| header | Boot header block |
+| system | Purpose + Directives + Cortex |
+| manifest | Library manifest |
+| index | Label index |
+| dojo | Dojo/Kata drawers — typically largest section |
+| capsule | AI capsule |
+| overview | Home overview |
+| wake | Wake sequence |
+| id_manifest | Identity manifest |
 
-library console windows
-
-squirrel mode status
-
-welcome message
-
-tonal priming
+`sensor.zen_prompt_length` state = total char count. Attributes include per-section breakdown.
+Note: this macro renders the full prompt — it is heavy and intended for the sensor, not inline use.
 
 
-This sequence is built entirely from essence.
+---
 
-Thus:
+🩺 Prompt Health Check (prompt_health_check())
 
-Essence MUST contain at minimum:
+Lightweight health probe. Powers `sensor.zen_prompt_health`.
 
-persona:
-  tone: "<string>"
-wake_scene:
-  intro: "<string>"
+Returns a dict with:
 
-Missing wake_scene → dull startup
-Missing persona.tone → inconsistent behavior
+| Signal | Meaning |
+|--------|---------|
+| `schema_ok` | Three-layer essence schema detected |
+| `sig_ok` | Identity hash / signature present |
+| `manifest_present` | `zen_library_manifest` drawer exists |
+| `familiar_ok` | Companion block present |
+| `environment_ok` | Environment block present |
+| `id_manifest_present` | `zen_identity_manifest` drawer exists in household cabinet |
 
-Essence is the heart of Friday’s consciousness.
+All signals true → `sensor.zen_prompt_health` state `ok`.
+Any signal false → `warn` or `error` depending on severity.
+`id_manifest_present` false → `warn` (expected on fresh install until first manifest build).
+
+
+---
+
+🌅 Wake Sequence (ai_wake_sequence())
+
+Builds the startup narrative from essence. Uses native three-layer path when `core` and `jacket` are mappings; falls back to legacy normalize_essence shim otherwise.
+
+Presence context (Section 3b): appends `{Name} is home. You surface into focus.` when a person entity with the Zen Default Family label has state `home`.
+
+Essence must contain at minimum:
+
+```yaml
+jacket:
+  persona:
+    voice:
+      register: "<string>"
+jacket:
+  wake_scene:
+    intro: "<string>"
+```
+
+Missing wake_scene → dull startup. Missing persona voice → inconsistent behavior.
 
 
 ---
 
 🔧 Developer Requirements Summary
 
-Requirement	Must Have?	Provided By
-
-Zen AI Cabinet	✔️	User
-zenai_essence block	✔️	User
-identity.name	✔️	User
-identity.guid	✔️	User
-Zen System Cabinet	✔️	User
-Purpose / Directives / Cortex	✔️	User
-Zen Default Household Cabinet	optional	User
-Zen Squirrel entity	optional	User
-Dojo/Kata cabinets	optional but recommended	User
-
+| Requirement | Must Have? | Provided By |
+|-------------|------------|-------------|
+| Zen AI Cabinet | ✔️ | User |
+| zenai_essence block (three-layer or legacy) | ✔️ | User |
+| jacket.name or identity.name | ✔️ | User |
+| core.id or identity.guid | ✔️ | User |
+| Zen System Cabinet | ✔️ | User |
+| Purpose / Directives / Cortex drawers | ✔️ | User |
+| Zen Default Household Cabinet | optional | User |
+| Zen Squirrel entity | optional | User |
+| Dojo/Kata cabinets | optional but recommended | User |
+| input_boolean.zen_flynn_override | auto-created | flynn.yaml |
+| zen_identity_manifest drawer | auto-built | Scheduler / Identity tool |
 
 
 ---
@@ -519,4 +418,4 @@ If essence is the soul,
 the cabinet is the brain,
 the dojo is the skillset,
 and the Monastery is the reasoning,
-then zen_os_1rc.jinja is the spine that connects them.
+then zen_os_1.jinja is the spine that connects them.

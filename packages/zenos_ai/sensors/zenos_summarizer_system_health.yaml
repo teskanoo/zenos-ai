@@ -1,9 +1,14 @@
 ###############################################################################
 # ZenOS-AI — System Health Package
-# v2.3.0 — Cabset expansion: secondary/tertiary/quaternary user + secondary
-#           AI user resolvers. Vault structurally absent (no resolver by design).
+# v2.4.0 — Active component detection: master_switch gate removed. Aligned
+#           with supersummary: components now gated by meta.enabled (default
+#           true) instead of kung_fu_system_switch input_boolean state.
 #
 # Changelog:
+#   v2.4.0 (2026-03-22) — master_switch gate removed from active component
+#                          counters (state sensor + active_components attribute).
+#                          Now uses meta.enabled | default(true). Mirrors GA
+#                          supersummary change (feat/ga batch).
 #   v2.3.0 (2026-03-20) — Cabset expansion: 4 new optional cabinet resolvers
 #                          (secondary_user, tertiary_user, quaternary_user,
 #                          secondary_ai_user). Vault cabinet: label only, no
@@ -238,8 +243,9 @@ template:
               {%- set _d_v2 = _d_val if _d_val is mapping else (_d_val | from_json if _d_val is string else {}) %}
               {%- set _d = _d_v2 if _d_v2 is mapping else (_d_v2 | from_json if _d_v2 is string else {}) %}
               {%- if _d.get('kata_key','') | trim != '' and _d.get('trigger_subscriptions') is not none %}
-                {%- set _ms = (_d.get('master_switch') | default('', true)) | string | trim %}
-                {%- if _ms in ['', 'None'] or is_state(_ms, 'on') %}
+                {%- set _meta = _d.get('meta', {}) -%}
+                {%- set _meta = _meta if _meta is mapping else {} -%}
+                {%- if _meta.get('enabled', true) | bool %}
                   {%- set _ns.active = _ns.active + [_d.get('kata_key', _k)] %}
                 {%- endif %}
               {%- endif %}
@@ -347,8 +353,9 @@ template:
               {%- set _d_v2 = _d_val if _d_val is mapping else (_d_val | from_json if _d_val is string else {}) %}
               {%- set _d = _d_v2 if _d_v2 is mapping else (_d_v2 | from_json if _d_v2 is string else {}) %}
               {%- if _d.get('kata_key','') | trim != '' and _d.get('trigger_subscriptions') is not none %}
-                {%- set _ms = (_d.get('master_switch') | default('', true)) | string | trim %}
-                {%- if _ms in ['', 'None'] or is_state(_ms, 'on') %}
+                {%- set _meta = _d.get('meta', {}) -%}
+                {%- set _meta = _meta if _meta is mapping else {} -%}
+                {%- if _meta.get('enabled', true) | bool %}
                   {%- set _ns.active = _ns.active + [_d.get('kata_key', _k)] %}
                 {%- endif %}
               {%- endif %}

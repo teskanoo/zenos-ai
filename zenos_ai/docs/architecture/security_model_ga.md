@@ -1,0 +1,203 @@
+# ZenOS-AI Security Model — GA Reference
+
+**Version:** 4.5.0 'Meridian' GA
+**Status:** Operational reference — describes what is active at GA and what is stubbed for SP1
+
+---
+
+## The Short Version
+
+ZenOS-AI has a complete security architecture. At GA, the structural layer is fully wired —
+identity, principal chains, delegation limits, group nesting rules, and the claims engine
+are all in place and enforced. The external authentication provider is not yet connected.
+
+One drawer setting activates full enforcement at SP1: `secure: true` in the System Cabinet
+`security_policy` drawer. Everything else is already running.
+
+---
+
+## What Is Active at GA
+
+### Identity and Principal Resolution
+
+Every principal — human or AI — has:
+
+- A stable GUID and identity hash
+- A cabinet drawer (AI User, Family, or User cabinet depending on type)
+- A provenance record: origin system, household, family
+- An essence capsule: identity, personality, capabilities, lineage
+
+The identity tool (`zen_dojotools_identity`) resolves the full principal chain at runtime:
+HA user → Household → Head of Household → AI GUID. This chain is the trust spine.
+
+### Three-Layer Identity Schema
+
+Identity records follow the canonical three-layer structure:
+
+```
+Layer 1: familiar     — runtime name, species, role (what Friday calls herself)
+Layer 2: companion    — operational capsule: traits, lineage, directives, capabilities
+Layer 3: jacket       — provenance: GUID, origin, signature, signed_by, signed_at
+```
+
+The jacket is the trust anchor. The familiar is the persona surface. The companion is what
+the model reasons from.
+
+### Prompt Integrity — `sensor.zen_prompt_health`
+
+Every AI user cabinet has a prompt health sensor that reports:
+
+| State | Meaning |
+|---|---|
+| `ok` | Three-layer schema + md5 signature + manifest present |
+| `warn` | Signature pending or manifest missing |
+| `error` | Legacy schema, missing essence, or cabinet unavailable |
+
+The `prompt_health_check()` macro (in `zen_os_1.jinja`) is the single source of truth.
+The sensor and the identity tool's `mode: prompt` both surface from it.
+
+### Delegation and Nesting Hard Rules
+
+Two structural limits are active and enforced at GA:
+
+- **`max_delegation_depth: 2`** — A principal cannot delegate through more than 2 hops.
+  Claims at depth 3+ are treated as absent (silent, not errored).
+- **`max_nesting_depth: 2`** — Group nesting ceiling. A Family group can contain members
+  and subgroups, but ZQ-1 resolution walks at most 2 levels deep.
+
+These are not configuration — they are hard constants in the resolution engine.
+
+### caller_token Plumbing
+
+All 15 AI-accessible DojoTools scripts accept and echo a `caller_token` field. The field
+is a noop at GA — it passes through and is reflected in the response. The plumbing path
+from MCP tool call through to response is complete. SP1 enforcement requires no changes
+to script internals.
+
+### Profile Snapshot and Restore
+
+The profile editor (`zen_dojotools_profile`) now snapshots `zenai_essence` →
+`zenai_essence_prev` before every write. A `mode: restore` call rolls back to the last
+known good state. `mode: read` surfaces `prev_snapshot_exists` so you can inspect before
+committing. The audit trail is written as HA events (`essence_backed_up`,
+`essence_restored`).
+
+---
+
+## The `security_policy` Drawer — What Is Stubbed
+
+The System Cabinet carries a `security_policy` drawer. Fields active at GA are enforced
+now. Fields marked SP1 are plumbed but are a no-op until SP1 activates them.
+
+```yaml
+security_policy:
+  secure: false           # GA: active. false = enforcement off. true activates SP1 mode.
+  max_delegation_depth: 2 # GA: active. Hard limit — enforced now.
+  max_nesting_depth: 2    # GA: active. Hard limit — enforced now.
+
+  # SP1 fields — plumbed, documented, not enforced until secure: true
+  provider: ""            # authentik | oidc | custom
+  token_endpoint: ""      # required when provider is set
+  validation_mode: ""     # oidc | fido2 | custom
+  claims_cache_ttl: 300   # session claims TTL in seconds
+```
+
+**Populating the SP1 fields at GA is a no-op.** They are stored but not read by any
+enforcement path. Do not populate them and expect enforcement — it is not active.
+
+---
+
+## What Activates at SP1
+
+Setting `secure: true` in `security_policy` is the single activation gate for the full
+enforcement layer. When active:
+
+- `caller_token` field is validated against the external provider
+- Claims are resolved via the HyperIndex fold on the principal entity
+- Tool access is gated by the resolved claim set
+- Family cabinet `partner_registry` and AI jacket `principals[]` are cross-validated
+- Delegation chain depth is checked at claim resolution time (already enforced structurally)
+
+**ZenOS is the policy plane. The external provider is the auth plane.** The provider is
+pluggable — the interface is the same regardless of whether you wire Authentik, a custom
+OIDC stack, or something else. ZenOS does not care what's behind the endpoint, only that
+the token validates.
+
+---
+
+## The Claims Engine — HyperIndex
+
+The HyperIndex is the claims resolution engine at SP1. An index fold on a principal entity
+produces a canonical claims dict from the label graph. ZQ-1 reads that dict at compile time
+— that IS the authorization context for the call.
+
+No separate claims service is required. The label graph already encodes the authorization
+structure. The fold is the resolution step.
+
+At GA, the index fold runs for context assembly. At SP1, the same fold runs for claims —
+same engine, different consumer.
+
+---
+
+## Family and Partnership Registry (SP1 Schema — Stubbed at GA)
+
+The Family Cabinet carries two new drawers with schema defined but not yet enforced:
+
+**`family_registry`** — M:N human membership:
+```json
+{
+  "members": [
+    { "person": "<entity_id>", "role": "member|hoh|guest", "household": "<guid>" }
+  ]
+}
+```
+
+**`partner_registry`** — M:N AI partnership:
+```json
+{
+  "partnerships": [
+    { "ai": "<guid>", "principals": ["<guid>"], "role": "aipartner|prime_ai" }
+  ]
+}
+```
+
+Bidirectional validation at SP1: the AI jacket `principals[]` field and the family
+`partner_registry` must agree. If they diverge, the claim is rejected.
+
+---
+
+## ACL Hierarchy
+
+When a principal requests access to a drawer, the resolution order is:
+
+1. Drawer-level ACL (most specific — wins)
+2. Cabinet-level ACL
+3. Family group policy
+4. Household policy
+5. Global restrictions (deny always overrides allow)
+
+This hierarchy is the structural spec at GA. Enforcement at the tool layer activates at SP1.
+
+---
+
+## For Operators: What You Need to Know at GA
+
+**You don't need to configure anything for security at GA.** The defaults are safe:
+
+- `secure: false` means the enforcement gate is open — your AI has full access to what
+  it's exposed to, scoped by labels and cabinets as designed.
+- Delegation and nesting limits are enforced structurally regardless.
+- Prompt integrity is monitored — `sensor.zen_prompt_health` tells you if something
+  is wrong with the identity capsule before the agent starts reasoning from a broken state.
+
+**When SP1 ships**, you will populate `provider` and `token_endpoint`, set `secure: true`,
+and the system activates. No architectural changes required — the plumbing is already there.
+
+---
+
+## Related
+
+- `09_Identity_Architecture.md` — full identity data model, ACL rules, Squirrel Safe / Content Safe filters
+- `roadmap.md` — SP1 timeline and scope
+- `docs/scripts/zen_dojotools_identity_readme.md` — identity tool reference
+- `sensor.zen_prompt_health` — prompt integrity sensor

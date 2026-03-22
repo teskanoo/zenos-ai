@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI Plugin: Grocy ERP Integration
-# Version: 4.0.0 RC2
+# Version: 4.5.0
 #
 # UAT:     Critical path PASS — 2026-03-02
 #          (locations_add, stock_buy_product, stock_check_item,

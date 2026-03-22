@@ -1,4 +1,4 @@
-# Zen DojoTools Office — 4.3.0 'Meridian'
+# Zen DojoTools Office — 4.5.0 'Meridian'
 
 *Calendar and scheduling tools for Home Assistant*
 

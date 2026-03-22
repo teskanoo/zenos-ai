@@ -2,7 +2,7 @@
 
 ### **Deterministic Entity Selector for Home Assistant**
 
-**Version:** 4.3.0 'Meridian'
+**Version:** 4.5.0 'Meridian'
 **Namespace:** `script.zen_dojotools_query`
 **Icon:** `mdi:filter-cog`
 
@@ -301,5 +301,5 @@ It is one of the most critical primitives in Project Friday’s internal reasoni
 
 | Version | Change |
 |---|---|
-| 4.2.1 | `output_fields` param added (reserved, no-op) — field shaping reserved for future release |
-| 4.2.0 | GA release |
+| 4.5.0 | `output_fields` param added (reserved, no-op) — field shaping reserved for future release |
+| 4.5.0 | GA release |

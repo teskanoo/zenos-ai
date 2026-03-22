@@ -1,6 +1,6 @@
 # ZenOS-AI: Install Guide
 
-> **Version:** 4.3.0 'Meridian' | **Last Updated:** March 2026
+> **Version:** 4.5.0 'Meridian' | **Last Updated:** March 2026
 
 ---
 

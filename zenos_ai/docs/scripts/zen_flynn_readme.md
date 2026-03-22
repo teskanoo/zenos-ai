@@ -1,4 +1,4 @@
-# Flynn — Stepgate Sentinel & Bootstrap Engine — 4.3.0 'Meridian'
+# Flynn — Stepgate Sentinel & Bootstrap Engine — 4.5.0 'Meridian'
 
 *ZenOS-AI's boot guard, initializer, and onboarding driver*
 
@@ -281,6 +281,41 @@ Resolver sensors haven't settled after label assignment. Flynn gates on resolver
 
 ---
 
+## Flynn as Prompt Fallback
+
+Flynn is not just a boot guard — he is the fallback persona when the system cannot build a valid prompt. `render_prompt()` in `zen_os_1.jinja` checks for Flynn conditions before assembling Friday's prompt.
+
+### Mode Detection Chain
+
+`render_prompt(ai_entity)` evaluates these conditions in order:
+
+| Priority | Condition | `_flynn_reason` |
+|----------|-----------|-----------------|
+| 1 | `input_boolean.zen_flynn_override` is `on` | `override` |
+| 2 | `ai_entity` is blank or whitespace | `blank_persona` |
+| 3 | persona label explicitly set to `flynn` | `explicit` |
+| 4 | `identity_resolve_source()` returns error | error key from resolver |
+
+If any condition matches, `prompt_system_flynn()` is returned — a hardcoded system prompt with zero cabinet dependencies.
+
+### input_boolean.zen_flynn_override
+
+Defined in `flynn.yaml`. Auto-creates on HA reload. Toggle this on to force Flynn mode for any conversation regardless of the selected persona — useful for maintenance, debugging, and testing without changing the persona selector.
+
+Default state: `off`. Safe to leave off indefinitely.
+
+### prompt_system_flynn()
+
+Hardcoded system prompt — no Jinja cabinet reads. Works on a bare install, works when cabinets are corrupt, works when the identity resolver fails. Flynn will always answer.
+
+### active_notification()
+
+`active_notification()` macro in `flynn_onboarding.jinja` scans `persistent_notification.flynn_*` for active notifications and returns the highest-priority one with context label. Flynn's prompt reads this and acknowledges the active notification in its opening — giving coherent UX during first-boot and error states.
+
+All four Flynn persistent notification messages are written in Flynn's voice and include an invitation to open the conversation agent.
+
+---
+
 ## Events Reference
 
 | Event | When | Payload |
@@ -303,6 +338,9 @@ Resolver sensors haven't settled after label assignment. Flynn gates on resolver
 | `script.zen_admintools_zenos_prompt_loader` | Gate 3 prompt substrate |
 | `script.zen_dojotools_filecabinet` | All cabinet reads and writes |
 | `binary_sensor.flynn_system_ready` | Early exit gate |
+| `input_boolean.zen_flynn_override` | Forces Flynn mode regardless of persona |
+| `zen_os_1.jinja` → `render_prompt()` | Calls `prompt_system_flynn()` when Flynn conditions met |
+| `flynn_onboarding.jinja` → `active_notification()` | Surfaces active Flynn notifications in prompt |
 | `input_text.zenos_conversation_agent` | Bootstrap validation |
 | `input_text.zenos_persona_name` | OOBE persona name |
 | `input_text.zenos_primary_user` | Bootstrap primary user seed |

@@ -1,4 +1,4 @@
-# Zen DojoTools Profile Editor — 4.3.0 'Meridian'
+# Zen DojoTools Profile Editor — 4.5.0 'Meridian'
 
 *Read and write identity profiles for AI personas, households, users, and families*
 
@@ -316,7 +316,7 @@ All modes return a consistent JSON envelope:
 | Dependency | Purpose |
 |---|---|
 | `script.zen_dojotools_filecabinet` | All cabinet reads and writes |
-| `zen_os_1rc.jinja` | `essence_defaults()` macro — baseline for ai_user essence assembly |
+| `zen_os_1.jinja` | `essence_defaults()` macro — baseline for ai_user essence assembly |
 | `zen_default_ai_user_cabinet` label | Default cabinet resolution for `ai_user` |
 | `zen_default_household_cabinet` label | Default cabinet resolution for `household` |
 | `zen_default_user_cabinet` label | Default cabinet resolution for `user` |

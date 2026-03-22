@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI DojoTools: Summarizers Package
-# Version: 4.0.0 RC2
+# Version: 4.5.0
 #
 # Migrated from scripts.yaml. Fixes applied (v1.0.0):
 #   - supersummary: active_components namespace() fix (Jinja2 scoping — was always {})
@@ -186,7 +186,7 @@ script:
       - alias: Build prompt context
         variables:
           prompt_context: >-
-            {%- import 'zenos_ai/zen_os_1rc.jinja' as zen -%}
+            {%- import 'zenos_ai/zen_os_1.jinja' as zen -%}
             {%- set _persona = states('input_text.zenos_persona_name') | trim -%}
             {%- set cab_result = zen.zen_cabinets(_persona) -%}
             {%- set idcard_raw = zen.identity_cab_to_id_card(cab_result) | from_json -%}
@@ -218,14 +218,11 @@ script:
       # ── 5. Collect active components ──────────────────────────────────────
       # FIX: was {% set active = {} %} inside for loop — Jinja2 scoping bug,
       #      always returned {}. Fixed with namespace().
-      - alias: Collect active components from Dojo meta.enabled + KF System Switch override
+      - alias: Collect active components from Dojo meta.enabled
         variables:
           active_components: >-
             {%- set dojo = state_attr(dojo_cabinet, 'variables') | default({}, true) -%}
             {%- set kata = state_attr(kata_cabinet, 'variables') | default({}, true) -%}
-            {%- set override_bools = expand(label_entities('kung_fu_system_switch'))
-                  | selectattr('domain', 'eq', 'input_boolean')
-                  | map(attribute='entity_id') | list -%}
             {%- set ns = namespace(active={}) -%}
             {%- for key, drawer in dojo.items() if key not in ['AI_Cabinet_VolumeInfo', 'kfc_template'] -%}
               {%- if drawer is mapping -%}
@@ -236,9 +233,7 @@ script:
                   {%- set comp_key = val.get('kata_key', key) -%}
                   {%- set _meta = val.get('meta', {}) -%}
                   {%- set _meta = _meta if _meta is mapping else {} -%}
-                  {%- set drawer_enabled = _meta.get('enabled', true) | bool -%}
-                  {%- set override = override_bools | select('search', comp_key) | list | first | default('') -%}
-                  {%- set resolved = (states(override) == 'on') if override != '' else drawer_enabled -%}
+                  {%- set resolved = _meta.get('enabled', true) | bool -%}
                   {%- if resolved and comp_key in kata -%}
                     {%- set kd = kata[comp_key] -%}
                     {%- set kv = kd.get('value', {}) if kd is mapping else {} -%}
@@ -532,7 +527,6 @@ script:
         variables:
           version: "{{ (dojo_drawer.version | default('')) or (dojo_drawer_value.version | default('')) }}"
           friendly_name: "{{ (dojo_drawer.friendly_name | default('')) or (dojo_drawer_value.friendly_name | default('')) }}"
-          master_switch: "{{ (dojo_drawer.master_switch | default('')) or (dojo_drawer_value.master_switch | default('')) }}"
           index_command: "{{ (dojo_drawer.label | default('')) or (dojo_drawer_value.label | default('')) }}"
           library_command: "{{ (dojo_drawer.command | default('')) or (dojo_drawer_value.command | default('')) }}"
           component_summary: "{{ (dojo_drawer.component_summary | default('')) or (dojo_drawer_value.component_summary | default('')) }}"
@@ -641,7 +635,7 @@ script:
             "is_everyone_kung_fu_fighting","timestamp":
             "2025-09-19T12:51:20+00:00"}],"watchlist":["sensor.zen_dojo_cabinet",
             "sensor.zen_kata_storage_cabinet",
-            "input_boolean.kung_fu._master_switch"],"error":null,"post":true,
+            ],"error":null,"post":true,
             "urgency":2,"confidence":0.9}
           supplemental_instructions: "{{ supplemental_prompt | default('') }}"
           prompt: >-

@@ -112,6 +112,17 @@ A sensor is only treated as a cabinet if:
 
 This prevents false positives from misconfigured template sensors.
 
+> **GA Implementation Note — 4.5.0 'Meridian': Highlander Resolver Architecture**
+>
+> Cabinet entity resolution across OS code previously relied on `label_entities()` at script
+> runtime — a race-prone, stale-on-boot pattern. As of GA, each core cabinet (dojo, kata,
+> system, household, family, user, ai_user) is resolved by a dedicated trigger-based resolver
+> sensor (`sensor.zen_*_cabinet_resolved`). These sensors update on `ha_start`, label changes,
+> and explicit `zen_resolver_refresh` events. All OS code reads cabinet entity IDs exclusively
+> from these sensors. There can be only one source of truth per cabinet — hence "Highlander."
+> This eliminates the timing skew described in §19.1(3) for the cabinet resolution path.
+> See also: [`zen_dojotools_scheduler_readme.md`](../scripts/zen_dojotools_scheduler_readme.md).
+
 ---
 
 ## **19.3 Scheduler Resilience and Load Management**
@@ -293,6 +304,19 @@ A consistent view of:
 
 This yields a deterministic workflow for understanding any misbehaviour.
 
+> **GA Implementation Note — 4.5.0 'Meridian': Health Sensor Stack**
+>
+> The observability layer ships as a layered health sensor stack:
+> `zen_label_health` → `zen_cabinet_health` → `zen_monastery_health` →
+> `zen_summarizer_health` / `zen_supersummary_health` → `zen_flynn_health` →
+> `binary_sensor.flynn_system_ready` → `zen_agent_health`.
+> A problem at any layer propagates upward. `sensor.zen_agent_health`'s `roster` attribute
+> names the blocking gate per agent — it is the first sensor to check when Friday won't start.
+> `sensor.zen_prompt_health` and `sensor.zen_prompt_length` surface prompt integrity and
+> per-section token pressure. Flynn's `current_gate` and `next_step` attributes name the
+> exact boot failure point in plain language.
+> See: [`sensors/readme.md`](../sensors/readme.md).
+
 ---
 
 ## **19.8 Architectural Principles for Handling Failure**
@@ -326,4 +350,4 @@ Friday’s House handles:
 
 …without compromising long-term cognitive integrity or user trust.
 
-This establishes Version 1 as a stable platform on which advanced features—identity, session tokens, visa onboarding, tool shunting, and the MCP channel—can be layered in future releases without jeopardizing the core cognitive architecture.an immediately draft Section 20 or move ahead into the future-work reserved sections.
+This establishes Version 1 as a stable platform on which advanced features—identity, session tokens, visa onboarding, tool shunting, and the MCP channel—can be layered in future releases without jeopardizing the core cognitive architecture.
