@@ -147,7 +147,7 @@ No Scheduler changes. No code. Five steps.
 
 **Step 1 — Write the drawer**
 
-Use `zen_dojotools_kungfu_writer` to press a new drawer into the Dojo Cabinet. Ask it for `action=help` first — it'll return the live schema with all required fields.
+Use `zen_dojotools_scribe` to press a new drawer into the Dojo Cabinet. Run with `mode=schema` first — it returns the live `kfc_template` with all required fields.
 
 **Step 2 — Create the label**
 

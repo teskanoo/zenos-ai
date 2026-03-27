@@ -1,6 +1,6 @@
 # **ZenOS-AI Architecture Series — Preamble & Orientation**
 
-### *(ZenOS-AI 4.5.0 'Meridian' — Identity subsystem v1.x shipped; Tool-shunt security models targeted for v.next)*
+### *(ZenOS-AI 4.5.5 'Ready Player Two' — Identity subsystem v1.x shipped; Tool-shunt security models targeted for v.next)*
 
 ---
 
@@ -23,7 +23,7 @@ The goal is not simply to describe the system — but to make its reasoning and 
 
 ## **Scope and Release Notes**
 
-This series documents **ZenOS-AI 4.5.0 'Meridian'**.
+This series documents **ZenOS-AI 4.5.5 'Ready Player Two'**.
 
 Two subsystems have explicit release caveats:
 
@@ -44,7 +44,7 @@ Due to implementation complexity across large Cabinet graphs, **full identity en
 
 Token-gated tool execution and shunted capability routing require deeper privilege separation and interface hardening.
 
-> **GA Status (4.5.0 'Meridian'):** A `caller_token` pass-through field is plumbed across all 15 AI-accessible DojoTools scripts at GA. The `security_policy` drawer in the System Cabinet carries the enforcement configuration. Full enforcement (external auth provider, token validation) activates at SP1 when `security_policy.secure` is set to `true`. The policy plane is in place; the switch is off.
+> **GA Status (4.5.5 'Ready Player Two'):** A `caller_token` pass-through field is plumbed across all 15 AI-accessible DojoTools scripts at GA. The `security_policy` drawer in the System Cabinet carries the enforcement configuration. Full enforcement (external auth provider, token validation) activates at SP1 when `security_policy.secure` is set to `true`. The policy plane is in place; the switch is off.
 
 Full external-provider token-shunting is targeted for **SP1**.
 

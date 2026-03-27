@@ -1,4 +1,4 @@
-# ZenOS-AI Troubleshooting Guide — 4.5.0 'Meridian'
+# ZenOS-AI Troubleshooting Guide — 4.5.5 'Ready Player Two'
 
 *Gauges → Kill Switches → Repair Tools. Start at the top, work down.*
 
@@ -50,7 +50,8 @@ If any resolver shows `unavailable`, Flynn's Gate 3a will stall. Resolvers evalu
 
 | `zen_cabinet_health` | Flynn Gate | What's Needed |
 |---|---|---|
-| `not ok` | Gate 2 | One or more cabinets uninitialized |
+| `error` / `critical` | Gate 2 (hard stop) | One or more cabinets uninitialized — operator action required |
+| `warn` | Gate 2 (non-blocking) | Legacy schema detected — upgrade available, system fully operational |
 | `ok` | Pass | — |
 
 | `zen_monastery_health` | Flynn Gate | What's Needed |

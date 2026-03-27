@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI DojoTools: SystemTools Package
-# Version: 4.5.0
+# Version: 4.5.5
 #
 # Consolidated from: dojotools_ha_api.yaml + dojotools_system.yaml
 # Contains: zen_log_* shell_commands, ha_api rest_commands,
@@ -16,7 +16,7 @@
 #     Full reload/restart decision guide in tool description.
 #     No ha_api or whitelist changes required — reloads use HA service
 #     calls directly (same path as ha_restart → homeassistant.restart).
-#   4.0.0 RC2 — initial consolidated release
+#   4.5.x — initial consolidated release
 #
 # SETUP:
 #   1. Add to secrets.yaml:
@@ -42,7 +42,7 @@
 #   file returns a structured journal_mode response (not an error) with guidance
 #   including the Petro31 HACS file-logger restoration link.
 #
-# === UAT PASS — 2026-03-03 (4.0.0 RC2 baseline) ===
+# === UAT PASS — 2026-03-03 (4.5.x baseline) ===
 # Auditor: Caitlin (Anthropic, Sonnet 4.6) + Veronica (OAI, editorial)
 # HALMark: 0.9.10-draft — PASS Level 3 (Steward Safe) — 23/25 PASS, 2/25 N/A
 # UAT Cases: 20/20 PASS
@@ -776,29 +776,29 @@ script:
               {%- elif _mon_st == 'unavailable' -%}
                 {%- set _ns.issues = _ns.issues + ['Monastery health tried to evaluate but hit an error. Check HA logs for template errors.'] -%}
               {%- elif _mon_st == 'critical' -%}
-                {%- set _ns.issues = _ns.issues + ['Monastery health is CRITICAL. Schema missing, resolver down, or summary very stale with monk errors.'] -%}
+                {%- set _r = state_attr('sensor.zen_monastery_health', 'reason') | default('Schema missing, resolver down, or summary very stale with monk errors.') -%}
+                {%- set _ns.issues = _ns.issues + ['Monastery CRITICAL: ' ~ _r] -%}
               {%- elif _mon_st == 'warn' -%}
-                {%- set _ns.issues = _ns.issues + ['Monastery health is warning. Summary stale, monk error, or no active components — see timestamps and monk_status.'] -%}
+                {%- set _r = state_attr('sensor.zen_monastery_health', 'reason') | default('Summary stale, monk error, or no active components.') -%}
+                {%- set _ns.issues = _ns.issues + ['Monastery warn: ' ~ _r] -%}
               {%- endif -%}
               {%- set _ninja_st = states('sensor.zen_summarizer_health') -%}
               {%- if _ninja_st == 'unknown' -%}
                 {%- set _ns.issues = _ns.issues + ['Ninja summarizer health has not woken up yet. Run resolver refresh.'] -%}
               {%- elif _ninja_st == 'unavailable' -%}
                 {%- set _ns.issues = _ns.issues + ['Ninja summarizer health hit an error. Check HA logs.'] -%}
-              {%- elif _ninja_st == 'critical' -%}
-                {%- set _ns.issues = _ns.issues + ['Ninja summarizer health is CRITICAL. Kata resolver likely down.'] -%}
-              {%- elif _ninja_st == 'warn' -%}
-                {%- set _ns.issues = _ns.issues + ['Ninja summarizer health is warning. Scheduler stale or ai_task entity not set.'] -%}
+              {%- elif _ninja_st not in ['ok', 'disabled'] -%}
+                {%- set _r = state_attr('sensor.zen_summarizer_health', 'reason') | default('Scheduler stale or ai_task entity not set.') -%}
+                {%- set _ns.issues = _ns.issues + ['Ninja summarizer ' ~ _ninja_st ~ ': ' ~ _r] -%}
               {%- endif -%}
               {%- set _ss_st = states('sensor.zen_supersummary_health') -%}
               {%- if _ss_st == 'unknown' -%}
                 {%- set _ns.issues = _ns.issues + ['Supersummary health has not woken up yet. Run resolver refresh.'] -%}
               {%- elif _ss_st == 'unavailable' -%}
                 {%- set _ns.issues = _ns.issues + ['Supersummary health hit an error. Check HA logs.'] -%}
-              {%- elif _ss_st == 'critical' -%}
-                {%- set _ns.issues = _ns.issues + ['Supersummary health is CRITICAL. Kata resolver likely down.'] -%}
-              {%- elif _ss_st == 'warn' -%}
-                {%- set _ns.issues = _ns.issues + ['Supersummary health is warning. Summary stale or monk returned an error.'] -%}
+              {%- elif _ss_st not in ['ok', 'disabled'] -%}
+                {%- set _r = state_attr('sensor.zen_supersummary_health', 'reason') | default('Summary stale or monk returned an error.') -%}
+                {%- set _ns.issues = _ns.issues + ['Supersummary ' ~ _ss_st ~ ': ' ~ _r] -%}
               {%- endif -%}
               {%- if not is_state('input_boolean.zen_summarizers_enabled', 'on') -%}
                 {%- set _ns.issues = _ns.issues + ['pipeline master kill switch OFF'] -%}
@@ -862,6 +862,12 @@ script:
                 supersummary: "{{ states('sensor.zen_supersummary_health') }}"
                 cabinet: "{{ states('sensor.zen_cabinet_health') }}"
                 agents: "{{ states('sensor.zen_agent_health') }}"
+              reasons:
+                monastery: "{{ state_attr('sensor.zen_monastery_health', 'reason') | default('') }}"
+                ninja_summarizer: "{{ state_attr('sensor.zen_summarizer_health', 'reason') | default('') }}"
+                supersummary: "{{ state_attr('sensor.zen_supersummary_health', 'reason') | default('') }}"
+                cabinet: "{{ state_attr('sensor.zen_cabinet_health', 'reason') | default('') }}"
+                agents: "{{ state_attr('sensor.zen_agent_health', 'reason') | default('') }}"
               kill_switches:
                 pipeline_master: "{{ is_state('input_boolean.zen_summarizers_enabled', 'on') }}"
                 ninja_enabled: "{{ is_state('input_boolean.zen_ninja_summarizer_enabled', 'on') }}"
@@ -1164,7 +1170,7 @@ script:
 
   zen_dojotools_event_emitter:
     alias: Zen DojoTools Event Emitter
-    description: "Zen DojoTools Event Emitter (v4.0.0 RC2). Advanced mode for Zen!\nEmits
+    description: "Zen DojoTools Event Emitter (v4.5.x). Advanced mode for Zen!\nEmits
       structured ZenOS-AI events or returns a dictionary of canonical event shapes.
       Used for breadcrumbs, observability, and trace reconstruction by Zen Constructs
       and the Monastery.\nModes:\n  emit → send a zen_event to the HA EventBus\n  help

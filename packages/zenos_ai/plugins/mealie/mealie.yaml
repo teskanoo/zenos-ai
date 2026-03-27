@@ -118,7 +118,7 @@ script:
         default: 10
     sequence:
     - variables:
-        tool_version: 4.0.0 RC2
+        tool_version: 4.5.x
         docs: sensor.mealie_restful_openapi_docs
         is_get: '{{ method == ''GET'' }}'
         is_write: '{{ method in [''POST'',''PUT'',''DELETE''] }}'
@@ -344,7 +344,7 @@ script:
 
   zen_dojotools_mealie_helper:
     alias: Zen DojoTools Mealie Helper
-    description: 'Zen DojoTools Mealie Helper (4.0.0 RC2) is a deterministic, construct-safe
+    description: 'Zen DojoTools Mealie Helper (4.5.x) is a deterministic, construct-safe
       intent router for Mealie. It converts explicit, human-level kitchen intents into
       governed Mealie API calls via Zen DojoTools Mealie Advanced.
   
@@ -539,8 +539,8 @@ script:
           text:
     sequence:
     - variables:
-        tool_version: 4.0.0 RC2
-        tool_branch: RC2
+        tool_version: 4.5.x
+        tool_branch: GA
     - variables:
         case_meta:
           recipes_list:

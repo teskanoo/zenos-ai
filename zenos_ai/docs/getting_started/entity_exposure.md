@@ -31,7 +31,7 @@ Keep this list as short as possible. Every entity exposed to Assist is a token i
 
 **All ZenOS-AI DojoTools scripts** — these are Friday's hands. Every `script.zen_dojotools_*` belongs in the exposed set.
 
-> The one exception: `zen_admintools_*` scripts other than `zen_dojotools_kungfu_writer` are admin-only and should NOT be exposed to the conversation agent. See [AdminTools](../scripts/zen_dojotools_admintools_readme.md).
+> `zen_admintools_*` scripts are admin-only and should NOT be exposed to the conversation agent. See [AdminTools](../scripts/zen_dojotools_admintools_readme.md). (`zen_dojotools_scribe` is the MCP-exposed KFC registration tool — it is a DojoTools script and is already covered by the "always expose all `zen_dojotools_*`" rule.)
 
 **Conversation agent helper** — `input_text.zenos_conversation_agent` (Friday needs to know her own entity ID for self-reference)
 

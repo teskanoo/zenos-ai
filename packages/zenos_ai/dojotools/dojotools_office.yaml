@@ -1,12 +1,12 @@
 ###############################################################################
 # ZenOS-AI DojoTools: Office
-# Version: 4.5.0
+# Version: 4.5.5
 #
 # Scripts:
-#   zen_dojotools_teams    — M365 Teams CRUD (v4.0.0 RC2)
-#   zen_dojotools_mail     — M365 Mail CRUD (v4.0.0 RC2)
-#   zen_dojotools_todo     — HA Todo domain CRUD (v4.0.0 RC2)
-#   zen_dojotools_calendar — HA Calendar domain CRUD (v4.0.0 RC2)
+#   zen_dojotools_teams    — M365 Teams CRUD (v4.5.x)
+#   zen_dojotools_mail     — M365 Mail CRUD (v4.5.x)
+#   zen_dojotools_todo     — HA Todo domain CRUD (v4.5.x)
+#   zen_dojotools_calendar — HA Calendar domain CRUD (v4.5.x)
 #
 # CONSOLIDATED FROM: dojotools_comms.yaml + dojotools_todo_calendar.yaml (2026-03-06)
 # notification_router moved to dojotools_utilities.yaml
@@ -58,7 +58,7 @@ script:
             }}'
         sequence:
         - variables:
-            help_response: "{{\n  {\n    \"status\": \"info\",\n    \"version\": \"4.0.0 RC2\",\n
+            help_response: "{{\n  {\n    \"status\": \"info\",\n    \"version\": \"4.5.x\",\n
               \   \"message\": \"Zen DojoTool for M365 Teams. Use to 'send' a message
               or 'read' for latest chat message. Update/delete not supported.\",\n    \"actions\":
               {\n      \"read\": \"Shows latest messages from a Teams chat, your online
@@ -475,7 +475,7 @@ script:
         - set_conversation_response: '{{ final_response }}'
         alias: missing required field error
     alias: Zen DojoTools Mail
-    description: 'Zen DojoTools Mail (4.0.0 RC2) Home Assistant script for Microsoft
+    description: 'Zen DojoTools Mail (4.5.x) Home Assistant script for Microsoft
       365 mail Now with 100% more whitelist! List, read, create. Uses folder names (Inbox,
       Sent Items, Deleted Items, Junk Email, Outbox). Actions: ''list'', ''read'', ''create'',
       ''help''. All responses are structured JSON with status, message, and data. Attachments
@@ -646,7 +646,7 @@ script:
             }}'
         sequence:
         - variables:
-            help_data: "{{\n  {\n    \"status\": \"info\",\n    \"version\": \"4.0.0 RC2\"\
+            help_data: "{{\n  {\n    \"status\": \"info\",\n    \"version\": \"4.5.x\"\
               ,\n    \"message\": \"Zen DojoTools ToDo Help\",\n    \"actions\": {\n\
               \      \"read\": \"Read items from one or more lists or list all with\
               \ wildcard.\",\n      \"create\": \"Create new item(s) in an existing\

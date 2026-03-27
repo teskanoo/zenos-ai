@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI DojoTools: Summarizers Package
-# Version: 4.5.0
+# Version: 4.5.5
 #
 # Migrated from scripts.yaml. Fixes applied (v1.0.0):
 #   - supersummary: active_components namespace() fix (Jinja2 scoping — was always {})
@@ -22,8 +22,8 @@
 #   - ninja summarizer: event emitter kata/monk paths → monk.data.*
 #
 # Scripts:
-#   zen_dojotools_supersummary     — Whole-home synthesizer (v4.0.0 RC2)
-#   zen_dojotools_ninja_summarizer — Per-component kata writer (v4.0.0 RC2)
+#   zen_dojotools_supersummary     — Whole-home synthesizer (v4.5.x)
+#   zen_dojotools_ninja_summarizer — Per-component kata writer (v4.5.x)
 #
 # PIPELINE:
 #   Ninja Summarizer → kata cabinet (per component) → SuperSummary → zen_summary → Friday
@@ -42,7 +42,7 @@
 # Auditor: Claude (Anthropic, Sonnet 4.6)
 # HALMark: 0.9.10-draft — PASS Level 3 (Steward Safe) — Full pipeline verified
 #
-# zen_dojotools_supersummary (v4.0.0 RC2 → v1.1.0):
+# zen_dojotools_supersummary (v4.5.x → v1.1.0):
 #   namespace() fix — active_component_ids now populates (was always []) ✓
 #   zen_summary key — prompt_context last_summary now loads (was always {}) ✓
 #   active components gate — KF System Switch ON + kata drawer required ✓
@@ -56,7 +56,7 @@
 #   post_to_kata_cabinet | bool gate — type-safe, passes correctly ✓
 #   config check → go; restart → clean ✓
 #
-# zen_dojotools_ninja_summarizer (v4.0.0 RC2 → v1.1.0):
+# zen_dojotools_ninja_summarizer (v4.5.x → v1.1.0):
 #   library_command_result fix — monk receives library output (~MEDIA~ exercised) ✓
 #   kata_cabinet var — kata_template reads dynamic entity (not hardcoded) ✓
 #   label_input CSV — "Media Manager, Ninja Summary" — no leading comma ✓
@@ -98,9 +98,9 @@ script:
   zen_dojotools_supersummary:
     alias: Zen DojoTools SuperSummary
     description: >-
-      SuperSummary (4.0.0 RC2). Whole-home synthesizer. Reads active component kata
+      SuperSummary (4.5.x). Whole-home synthesizer. Reads active component kata
       drawers gated by Kung Fu System Switch state. Builds zen_summary — the
-      canonical home state that loads Friday's prompt context. (v4.0.0 RC2)
+      canonical home state that loads Friday's prompt context. (v4.5.x)
       Respects zen_summarizers_enabled (master) and zen_supersummarizer_enabled
       kill switches — early-outs immediately if either is off.
     icon: mdi:home-circle
@@ -159,6 +159,19 @@ script:
         then:
           - stop: "ai_task entity unset — aborting supersummary"
             error: true
+
+      # ── 0b. Start timer + emit summarizer_start ──────────────────────────
+      - alias: Capture start time and emit summarizer_start
+        variables:
+          started_at: "{{ now().isoformat() }}"
+      - event: zen_event
+        event_data:
+          kind: summarizer_start
+          component: super_summary
+          severity: info
+          summary: SuperSummary run started
+          metadata:
+            started_at: "{{ started_at }}"
 
       # ── 1. Resolve cabinets ───────────────────────────────────────────────
       - alias: Resolve cabinets
@@ -330,6 +343,11 @@ script:
         variables:
           zen_summary: "{{ monk_response.data | default({}) }}"
 
+      # ── 8a. Compute run duration ──────────────────────────────────────────
+      - alias: Compute run duration
+        variables:
+          duration_seconds: "{{ ((now() - (started_at | as_datetime)).total_seconds()) | round(1) }}"
+
       # ── 8b. Write supersummary status drawer ─────────────────────────────
       - alias: Write supersummary status drawer
         action: script.zen_dojotools_filecabinet
@@ -346,7 +364,9 @@ script:
               {
                 "status": "ok" if (zen_summary and zen_summary != {}) else "error",
                 "components": active_component_ids | default([]) | length,
-                "component_ids": active_component_ids | default([])
+                "component_ids": active_component_ids | default([]),
+                "duration_seconds": duration_seconds | default(0),
+                "run_started_at": started_at | default('')
               } | tojson
             }}
           label_input: zen_summary
@@ -383,7 +403,9 @@ script:
                 "monk":                 monk_response | default({}),
                 "post":                 post_to_kata_cabinet | default(false),
                 "filecabinet_write":    filecabinet_response | default({}),
-                "caller_token":         caller_token | default('')
+                "caller_token":         caller_token | default(''),
+                "duration_seconds":     duration_seconds | default(0),
+                "run_started_at":       started_at | default('')
               }
             }}
 
@@ -408,6 +430,8 @@ script:
             post_to_kata: "{{ final_response.post }}"
             filecabinet_status: "{{ final_response.filecabinet_write.status | default('unknown') }}"
             filecabinet_message: "{{ final_response.filecabinet_write.message | default('') }}"
+            duration_seconds: "{{ final_response.duration_seconds | default(0) }}"
+            run_started_at: "{{ final_response.run_started_at | default('') }}"
           kata: >-
             {{
               final_response.monk.data.kata_excerpt
@@ -433,10 +457,10 @@ script:
   zen_dojotools_ninja_summarizer:
     alias: Zen DojoTools Ninja Summarizer
     description: >-
-      Ninja Summarizer (4.0.0 RC2). Hyper(graph)-aware per-component kata writer.
+      Ninja Summarizer (4.5.x). Hyper(graph)-aware per-component kata writer.
       Collects context defined by a Kung Fu component in the Dojo cabinet and
       submits it to a trusted LLM monk. Writes result to kata cabinet drawer.
-      Queues up to 2 concurrent runs. ~15s warm, ~60s cold. (v4.0.0 RC2)
+      Queues up to 2 concurrent runs. ~15s warm, ~60s cold. (v4.5.x)
     icon: mdi:karate
     mode: queued
     max: 2
@@ -498,6 +522,20 @@ script:
         then:
           - stop: "ai_task entity unset — aborting ninja summarizer"
             error: true
+
+      # ── 0b. Start timer + emit summarizer_start ──────────────────────────
+      - alias: Capture start time and emit summarizer_start
+        variables:
+          started_at: "{{ now().isoformat() }}"
+      - event: zen_event
+        event_data:
+          kind: summarizer_start
+          component: ninja_summary
+          severity: info
+          summary: "Ninja Summarizer run started for {{ kung_fu_component_id | slugify }}"
+          metadata:
+            started_at: "{{ started_at }}"
+            component: "{{ kung_fu_component_id | slugify }}"
 
       # ── 1. Resolve cabinets + slug ────────────────────────────────────────
       - alias: Resolve cabinets and component slug
@@ -681,11 +719,25 @@ script:
               volume_entity_id:
                 - "{{ kata_cabinet }}"
               key: "{{ component_slug }}"
-              value: "{{ kata_summary | tojson }}"
+              value: "{{ kata_summary }}"
               # FIX: was {{ index_command, 'Ninja Summary' }} — tuple syntax, fixed to clean CSV
               # Guard: if index_command empty, omit leading comma
               label_input: "{{ (index_command + ', ') if index_command else '' }}Ninja Summary"
             response_variable: filecabinet_response
+
+      # ── 8b. Compute run duration ──────────────────────────────────────────
+      - alias: Compute run duration
+        variables:
+          duration_seconds: "{{ ((now() - (started_at | as_datetime)).total_seconds()) | round(1) }}"
+
+      # ── 8c. Write per-component timing record to kata cabinet ─────────────
+      # zen_ninja_last_run_<slug> → read by zen_summarizer_health component_timings
+      - event: set_variable_legacy
+        event_data:
+          key: "zen_ninja_last_run_{{ component_slug }}"
+          value: "{{ {'duration_seconds': duration_seconds, 'run_started_at': started_at | default(''), 'component': component_slug} | tojson }}"
+          volume_entity: "{{ kata_cabinet }}"
+          set_timestamp: true
 
       # ── 9. Build response + emit ──────────────────────────────────────────
       - alias: Build final response
@@ -699,7 +751,9 @@ script:
                 "post":              post_to_kata_cabinet | default(false),
                 "dojo_drawer":       dojo_drawer | default(''),
                 "filecabinet_write": filecabinet_response | default({}),
-                "caller_token":      caller_token | default('')
+                "caller_token":      caller_token | default(''),
+                "duration_seconds":  duration_seconds | default(0),
+                "run_started_at":    started_at | default('')
               }
             }}
 
@@ -715,6 +769,9 @@ script:
             post_to_kata: "{{ final_response.post }}"
             dojo_drawer: "{{ final_response.dojo_drawer }}"
             filecabinet_write: "{{ final_response.filecabinet_write }}"
+            duration_seconds: "{{ final_response.duration_seconds | default(0) }}"
+            run_started_at: "{{ final_response.run_started_at | default('') }}"
+            component_slug: "{{ component_slug | default('') }}"
           kata: "{{ final_response.monk.data.kata_excerpt | default({}) }}"
           monk: "{{ final_response.monk.data.event_excerpt | default({}) }}"
 

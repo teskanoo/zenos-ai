@@ -1,7 +1,7 @@
 {#-
   ZenOS-AI Prompt Engine — Conversation Agent Prompt
-  Version: 4.5.0
-  Requires: zenos_ai/zen_os_1.jinja 4.5.0 or newer
+  Version: 4.5.5
+  Requires: zenos_ai/zen_os_1.jinja 4.5.5 or newer
   -----
   This file is NOT a jinja custom template.
   This file is the template to paste into the conversation agent prompt template in Homeassistant

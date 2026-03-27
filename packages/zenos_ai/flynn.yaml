@@ -1,5 +1,5 @@
 ###############################################################################
-# FLYNN — UNIFIED ENGINE (v4.0.0 RC2)
+# FLYNN — UNIFIED ENGINE (v4.5.5)
 # Canon-safe, no nested Jinja in service calls, fully HA-legal.
 #
 # Includes:
@@ -47,6 +47,10 @@ input_text:
     max: 255
 
 input_boolean:
+  zenos_cab_init_rearm:
+    name: "ZenOS: Cabinet Init Rearm"
+    icon: mdi:shield-lock-outline
+
   zen_squirrel:
     name: "ZenOS: Secret Squirrel Mode"
     icon: mdi:incognito
@@ -54,6 +58,10 @@ input_boolean:
   zen_flynn_override:
     name: "ZenOS: Flynn Override"
     icon: mdi:wrench-outline
+
+  zen_silent_ok_handoff:
+    name: "ZenOS: Silent OK — Handoff Mode"
+    icon: mdi:transfer-right
 
 
 ###############################################################################
@@ -147,12 +155,43 @@ template:
 # Idempotent. Re-engages on health regression.
 ###############################################################################
 automation:
+  - alias: "Flynn: Boot Warmup — Auto Force Summary"
+    id: flynn_boot_warmup_force_summary
+    mode: single
+    triggers:
+      - trigger: homeassistant
+        event: start
+    conditions: []
+    actions:
+      - delay: "00:00:30"
+      - event: zen_event
+        event_data:
+          event:
+            kind: summary_force
+
+  - alias: "Flynn: Boot Warmup — Emit warmup_expired after window"
+    id: zen_warmup_timer
+    mode: single
+    triggers:
+      - trigger: homeassistant
+        event: start
+    conditions: []
+    actions:
+      - delay: "00:05:00"
+      - event: zen_event
+        event_data:
+          event:
+            kind: warmup_expired
+            source: zen_warmup_timer
+            timestamp: "{{ now().isoformat() }}"
+
   - alias: "Flynn: Stepgate Sentinel"
     id: flynn_stepgate_sentinel
     mode: single
     triggers:
       - trigger: homeassistant
         event: start
+        id: ha_start
       # Recovery net: re-evaluates every 5 min so sentinel self-heals after
       # ha_reload_all kills in-flight runs without a health state change.
       # Fast early-exit (was_green check) makes this cheap when system is ok.
@@ -184,15 +223,27 @@ automation:
         - error
         - warn
         - ok
-      # Reassess health state when Zen Summarizers change
-      - trigger: state
-        entity_id: input_boolean.zen_ninja_summarizer_enabled
-      - trigger: state
-        entity_id: input_boolean.zen_supersummarizer_enabled
-      # @todo this should really be a template boolean which is set manually or by triggers - if set to on/off, it updates the dependant booleans
-      - trigger: state
-        entity_id: input_boolean.zen_summarizers_enabled
-
+      # Wake on cabinet mount/dismount so gates re-evaluate immediately
+      - trigger: event
+        event_type: zen_event
+        event_data:
+          event:
+            kind: cabinet_mounted
+        id: cab_mounted
+      - trigger: event
+        event_type: zen_event
+        event_data:
+          event:
+            kind: cabinet_dismounted
+        id: cab_dismounted
+      # Warmup window expired — re-evaluate all gates with warmup=false.
+      # Surfaces any pending cabinet warn notification after boot has settled.
+      - trigger: event
+        event_type: zen_event
+        event_data:
+          event:
+            kind: warmup_expired
+        id: warmup_expired
     conditions: []
     actions:
       # Capture green state + OOBE state BEFORE delay
@@ -225,6 +276,16 @@ automation:
         then:
           - stop: "No-op: all gates green, schemas seeded"
       - delay: "00:00:10"
+      - if: "{{ trigger.id == 'ha_start' }}"
+        then:
+          - action: persistent_notification.create
+            data:
+              title: "ZenOS-AI: Warming up"
+              message: >
+                Flynn here. HA just restarted — I'm bringing the monastery online.
+                Summarizer pipeline is running. This notification dismisses
+                automatically when I'm fully ready. Nothing is broken.
+              notification_id: flynn_warmup
       - variables:
           label_health: "{{ states('sensor.zen_label_health') }}"
           cabinet_health: "{{ states('sensor.zen_cabinet_health') }}"
@@ -279,14 +340,134 @@ automation:
 
       #####################################################################
       # GATE 2: Cabinets not ok
+      #
+      # BOOT-SAFETY: Flynn NEVER auto-initializes cabinets. Doing so at boot
+      # is indistinguishable from wiping live data (incident: 2026-03-23).
+      # If cabinets are missing or damaged, notify the operator and stop.
+      # Initialization requires explicit operator action — never autonomous.
+      #
+      # Three cases:
+      #   error/critical  — always stop, urgent notification
+      #   warn + outside warmup window + not ha_start — friendly notify + stop
+      #   warn + inside warmup window OR ha_start — log only, continue
       #####################################################################
+      - variables:
+          _cab_warn: "{{ cabinet_health == 'warn' }}"
+          _cab_hard: "{{ cabinet_health in ['error', 'critical'] }}"
+          _in_warmup: >-
+            {%- import 'zenos_ai/zenos_health.jinja' as HEALTH -%}
+            {{ HEALTH.is_warmup() | trim | bool }}
+          _is_ha_start: "{{ trigger.id == 'ha_start' }}"
       - choose:
-          - conditions: "{{ cabinet_health != 'ok' }}"
+          # Case A: hard failure — always stop
+          - conditions: "{{ _cab_hard }}"
             sequence:
-              - alias: "Flynn: Initialize required cabinets"
-                action: script.flynn_initialize_cabinets
-                data: {}
-              - stop: "Gate 2: Cabinets initializing"
+              - alias: "Flynn: Notify operator — cabinet check needed"
+                action: persistent_notification.create
+                data:
+                  title: "ZenOS-AI: Cabinet Check Needed"
+                  message: >
+                    Flynn detected a cabinet health issue ({{ cabinet_health }}).
+                    Missing required slots: {{ state_attr('sensor.zen_cabinet_health', 'missing_cabinets') }}.
+                    Before touching anything — make sure you have a current HA backup.
+                    Then open a conversation with me and say "initialize my cabinets" to proceed.
+                    Note: sensor.zenos_system_cabinet (prompt substrate) is managed by
+                    zen_admintools_zenos_prompt_loader and zen_admintools_cabinetadmin_factory —
+                    not writeable via FileCabinet or by me. Use those admin tools for syscab repair.
+                  notification_id: flynn_cabinets_need_attention
+              - action: system_log.write
+                data:
+                  level: warning
+                  message: >-
+                    Flynn Gate 2: cabinet_health={{ cabinet_health }},
+                    missing={{ state_attr('sensor.zen_cabinet_health', 'missing_cabinets') }}.
+                    Auto-initialization is disabled. Operator action required.
+              - stop: "Gate 2: Cabinet check needed — operator action required"
+          # Case B: warn outside warmup, not ha_start — friendly notify (once) + continue
+          - conditions: "{{ _cab_warn and not _in_warmup and not _is_ha_start }}"
+            sequence:
+              - alias: "Flynn: Fire alert_once — cabinet upgrade available"
+                event: zen_event
+                event_data:
+                  event:
+                    kind: alert_fire
+                    alert_key: cab_schema_upgrade_available
+                    severity: warn
+                    message: >-
+                      One or more cabinets are on a pre-RC2 schema. Everything is working —
+                      this is just a housekeeping note. Make sure you have a current HA backup,
+                      then open a conversation with me and say "upgrade my cabinets" when you're ready.
+                      No rush.
+              - action: system_log.write
+                data:
+                  level: info
+                  message: >-
+                    Flynn Gate 2: cabinet_health=warn (legacy schema),
+                    reason={{ state_attr('sensor.zen_cabinet_health', 'reason') }}.
+                    Non-blocking — schema upgrade available. Continuing.
+          # Case C: warn during warmup OR ha_start — log only, continue
+          - conditions: "{{ _cab_warn }}"
+            sequence:
+              - action: system_log.write
+                data:
+                  level: info
+                  message: >-
+                    Flynn Gate 2: cabinet_health=warn during warmup/ha_start — continuing.
+                    reason={{ state_attr('sensor.zen_cabinet_health', 'reason') }}.
+
+      # Clear cab upgrade alert when schema is healthy
+      - if:
+        - condition: template
+          value_template: "{{ not _cab_warn and not _cab_hard }}"
+        then:
+        - event: zen_event
+          event_data:
+            event:
+              kind: alert_clear
+              alert_key: cab_schema_upgrade_available
+
+      #####################################################################
+      # GATE 2.5: Mount-aware mode — core defaults must be online_mounted
+      # Legacy mode (cab_schema_version absent or 0): skip, no disruption.
+      # Mount-aware mode (cab_schema_version >= 1): required defaults must
+      # all be online_mounted before bootstrap is useful. Dismounted defaults
+      # indicate a broken migration or operator error.
+      #####################################################################
+      - variables:
+          _cab_schema_v: >-
+            {%- set _sv = state_attr('sensor.zenos_system_cabinet', 'variables') | default({}, true) -%}
+            {%- set _sv = _sv if _sv is mapping else {} -%}
+            {%- set _se = _sv.get('cab_schema_version', {}) -%}
+            {%- set _se = _se if _se is mapping else {} -%}
+            {{ _se.get('value', 0) | int(0) }}
+          _mount_aware: "{{ _cab_schema_v >= 1 }}"
+      - if: "{{ _mount_aware }}"
+        then:
+          - variables:
+              _req_default_resolvers:
+                - sensor.zen_default_ai_user_cabinet_resolved
+                - sensor.zen_default_user_cabinet_resolved
+                - sensor.zen_default_household_cabinet_resolved
+          - variables:
+              _unmounted_defaults: >-
+                {%- set ns = namespace(bad=[]) -%}
+                {%- for r in _req_default_resolvers -%}
+                  {%- set eid = states(r) -%}
+                  {%- if eid in ['', 'unavailable', 'unknown', 'none'] or states(eid) != 'online_mounted' -%}
+                    {%- set ns.bad = ns.bad + [r] -%}
+                  {%- endif -%}
+                {%- endfor -%}
+                {{ ns.bad }}
+          - if: "{{ _unmounted_defaults | count > 0 }}"
+            then:
+              - action: system_log.write
+                data:
+                  level: warning
+                  message: >-
+                    Flynn Gate 2.5: mount-aware mode active but required default cabinet(s) not
+                    online_mounted: {{ _unmounted_defaults | join(', ') }}.
+                    Run migration script or mount the affected cabinet(s) to proceed.
+              - stop: "Gate 2.5: Required default cabinets not online_mounted"
 
       #####################################################################
       # GATE 3: Monastery not ok
@@ -388,7 +569,8 @@ automation:
                   title: "ZenOS-AI: Ready — let's name your agent"
                   message: >
                     Hey! I'm Flynn. Your system is up and running but I still need to know who's moving in.
-                    Open a conversation with me and let's get your agent set up — I'll walk you through the whole thing.
+                    Open a conversation with me and let's get your agent set up — I'll walk you through
+                    naming your AI, wiring up your household, and setting delegation.
                   notification_id: flynn_oobe_pending
         # Case 3: cabinet has a real name or _oobe_complete → dismiss
         default:
@@ -399,6 +581,9 @@ automation:
       #####################################################################
       # GATE 4: All green — notify on transition only
       #####################################################################
+      - action: persistent_notification.dismiss
+        data:
+          notification_id: flynn_warmup
       - choose:
           - conditions: "{{ not was_green }}"
             sequence:
@@ -406,7 +591,8 @@ automation:
                 data:
                   title: "ZenOS-AI: All green — your agent is ready"
                   message: >
-                    Everything's copacetic. All gates green, system is fully operational.
+                    Everything's copacetic. All gates green, identity model wired, system is fully operational.
+                    Your household is set, your principal slots are filled, and delegation is live.
                     Open a conversation and say hi — I'll hand you off to the real talent.
                   notification_id: flynn_system_ready
 
@@ -563,10 +749,11 @@ script:
             default_family: "Family Cabinet"
             default_user: "User Cabinet"
             default_ai_user: "AI User Cabinet"
-            secondary_user: "User Cabinet"
-            tertiary_user: "User Cabinet"
-            quaternary_user: "User Cabinet"
-            secondary_ai_user: "AI User Cabinet"
+            expansion_1: "Expansion Cabinet"
+            expansion_2: "Expansion Cabinet"
+            expansion_3: "Expansion Cabinet"
+            expansion_4: "Expansion Cabinet"
+            expansion_5: "Expansion Cabinet"
             history: "History Cabinet"
             index: "Index Cabinet"
 
@@ -577,16 +764,47 @@ script:
                 slot: "{{ repeat.item | trim }}"
                 entity_id: "{{ slot_to_entity.get(slot, '') }}"
                 cabinet_type: "{{ slot_to_type.get(slot, 'AI Data Storage Cabinet') }}"
-            - choose:
-                - conditions: "{{ entity_id != '' }}"
-                  sequence:
-                    - action: script.zen_admintools_cabinetadmin
+            - if: >-
+                {{ entity_id != ''
+                   and states(entity_id) not in ['online_mounted', 'online_unmounted'] }}
+              # ABSOLUTE BLOCK — NO CODE OVERRIDE EXISTS OR WILL EVER EXIST.
+              # online_mounted / online_unmounted = live cabinet with VolumeInfo.
+              # A cabinet in either of those states is NEVER initialized by code.
+              # If it has data, it does not get wiped. Period.
+              #
+              # Legitimate paths to initialize a cabinet that has data:
+              #   1. Deprovision via state machine: online_mounted → online_unmounted → init
+              #      Then the operator calls cabinetadmin initialize explicitly.
+              #   2. Operator calls zen_admintools_cabinetadmin directly with full intent.
+              # Both require deliberate operator action. Flynn does neither autonomously.
+              # See: boot-wipe incident 2026-03-23.
+              then:
+                - variables:
+                    _cab_vars: "{{ state_attr(entity_id, 'variables') | default(none) }}"
+                    _vi_raw: "{{ _cab_vars.get('AI_Cabinet_VolumeInfo', none) if _cab_vars is mapping else none }}"
+                    _has_volumeinfo: "{{ _vi_raw is not none }}"
+                # GUID GATE — REINIT IS DEAD.
+                # If AI_Cabinet_VolumeInfo exists in variables, this cabinet has data.
+                # State showing 'init' is a boot race artifact — data is intact.
+                # Nathan's invariant: GUID present = absolute stop. No override. No force.
+                # See: req_reinit_dead_external_gate_2026-03-23.md
+                - if: "{{ _has_volumeinfo }}"
+                  then:
+                    - action: system_log.write
                       data:
-                        mode: initialize
-                        confirm_action: true
-                        cabinet_entity: "{{ entity_id }}"
-                        cabinet_type: "{{ cabinet_type }}"
-                        skip_auto_init: true
+                        level: warning
+                        message: >-
+                          Flynn GUID gate: {{ entity_id }} shows state={{ states(entity_id) }}
+                          but AI_Cabinet_VolumeInfo is present — cabinet has data.
+                          Init blocked. Boot race artifact. Will self-heal on next write.
+                    - stop: "REINIT BLOCKED — {{ entity_id }} has VolumeInfo. Data present. Not a missing cabinet."
+                - action: script.zen_admintools_cabinetadmin
+                  data:
+                    mode: initialize
+                    confirm_action: true
+                    cabinet_entity: "{{ entity_id }}"
+                    cabinet_type: "{{ cabinet_type }}"
+                    skip_auto_init: true
 
       - event: flynn_stepgate_event
         event_data:
@@ -831,6 +1049,39 @@ script:
       # Trigger prompt loader to stamp purpose/directives/cortex
       - action: script.zen_admintools_zenos_prompt_loader
         data: {}
+
+      # Wire household membership — fills HoH and prime slots, links partners, builds manifest.
+      # Idempotent: household_add_member blocks if slot already occupied (existing installs safe).
+      - variables:
+          _b3_hh_cab: "{{ states('sensor.zen_default_household_cabinet_resolved') }}"
+          _b3_user_cab: "{{ states('sensor.zen_default_user_cabinet_resolved') }}"
+          _b3_ai_cab: "{{ states('sensor.zen_default_ai_user_cabinet_resolved') }}"
+      - if: "{{ _b3_user_cab not in ['', 'unknown', 'unavailable'] }}"
+        then:
+          - action: script.zen_dojotools_identity
+            data:
+              mode: household_add_member
+              member_entity: "{{ _b3_user_cab }}"
+              member_type: user
+      - if: "{{ _b3_ai_cab not in ['', 'unknown', 'unavailable'] }}"
+        then:
+          - action: script.zen_dojotools_identity
+            data:
+              mode: household_add_member
+              member_entity: "{{ _b3_ai_cab }}"
+              member_type: ai_user
+      - if: >-
+          {{ _b3_user_cab not in ['', 'unknown', 'unavailable']
+             and _b3_ai_cab not in ['', 'unknown', 'unavailable'] }}
+        then:
+          - action: script.zen_dojotools_identity
+            data:
+              mode: link_partners
+              member_entity: "{{ _b3_user_cab }}"
+              ai_entity: "{{ _b3_ai_cab }}"
+      - action: script.zen_dojotools_identity
+        data:
+          mode: build_identity_manifest
 
       # Stamp gc_eligible flag into AI_Cabinet_VolumeInfo for all canonical cabinets.
       # force_action: false — only writes if drawer absent (fresh install path).

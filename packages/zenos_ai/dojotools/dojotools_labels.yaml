@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI DojoTools: Labels
-# Version: 4.5.0
+# Version: 4.5.5
 #
 # Scripts:
 #   zen_dojotools_labels — Label CRUD. Read/modify the HA label index.
@@ -33,13 +33,13 @@ script:
           in user_labels %}\n    \"{{ lbl }}\": {\n      \"description\": \"{{ label_description(
           lbl ) | default('') }}\"\n    }{{ \",\" if not loop.last else \"\" }}\n  {%-
           endfor %}\n  }\n{% else %}\n  {}\n{% endif %}"
-        minihelp: 'Minihelp: actions = create, read, delete, tag, untag, update, reset'
+        minihelp: 'Minihelp: actions = create, read, delete, tag, untag, update, reset, install'
         results_list: []
         failures_list: []
     - choose:
       - conditions:
         - condition: template
-          value_template: '{{ action not in [''tag'',''untag'',''create'',''delete'',''update'',''read'',''reset'']
+          value_template: '{{ action not in [''tag'',''untag'',''create'',''delete'',''update'',''read'',''reset'',''install'']
             }}'
           alias: Error - invalid Action
         sequence:
@@ -242,7 +242,7 @@ script:
               response_variable: response
         - action: homeassistant.add_label_to_entity
           data:
-            label_id: '{{ user_labels }}'
+            label_id: '{{ user_labels | map("slugify") | list }}'
             entity_id: '{{ target_ent_list }}'
         - variables:
             response:
@@ -287,7 +287,7 @@ script:
               response_variable: response
         - action: homeassistant.remove_label_from_entity
           data:
-            label_id: '{{ user_labels }}'
+            label_id: '{{ user_labels | map("slugify") | list }}'
             entity_id: '{{ target_ent_list }}'
         - variables:
             response:
@@ -346,6 +346,77 @@ script:
               caller_token: '{{ caller_token }}'
         - stop: pass var scope
           response_variable: response
+      - conditions:
+        - alias: INSTALL
+          condition: template
+          value_template: '{{ action == ''install'' }}'
+        sequence:
+        - if:
+          - condition: template
+            value_template: '{{ not confirm }}'
+          then:
+          - variables:
+              response:
+                status: start
+                action: install
+                message: >-
+                  INSTALL deletes ALL zen_ labels and recreates the canonical 16
+                  with icons, colors, and descriptions. zen_resolver_refresh fires
+                  on completion — Flynn will re-tag all core cabinets.
+                  Requires confirm: true.
+                catalog_count: 16
+                caller_token: '{{ caller_token }}'
+          - stop: confirm required
+            response_variable: response
+        - variables:
+            _existing_zen: '{{ labels() | select(''match'', ''^zen_'') | list }}'
+            _catalog:
+              - {name: 'Zen Cabinet',                  icon: 'mdi:file-cabinet',    color: 'deep-purple', description: 'Parent label for all ZenOS cabinet sensors.'}
+              - {name: 'Zen System Cabinet',            icon: 'mdi:server-security', color: 'red',         description: 'ZenOS system core and OS cabinet.'}
+              - {name: 'Zen Dojo Cabinet',              icon: 'mdi:sword-cross',     color: 'orange',      description: 'ZenOS tool, automation, and DojoTools cabinet.'}
+              - {name: 'Zen Kata Cabinet',              icon: 'mdi:script-text',     color: 'amber',       description: 'ZenOS KFC component catalog cabinet.'}
+              - {name: 'Zen Default Household',         icon: 'mdi:home-group',      color: 'green',       description: 'Default household identity group.'}
+              - {name: 'Zen Default Household Cabinet', icon: 'mdi:home',            color: 'green',       description: 'Default household cabinet.'}
+              - {name: 'Zen Household Cabinet',         icon: 'mdi:home-city',       color: 'light-green', description: 'Household cabinet (any provisioned slot).'}
+              - {name: 'Zen Default Family',            icon: 'mdi:account-group',   color: 'teal',        description: 'Default family identity group.'}
+              - {name: 'Zen Default Family Cabinet',    icon: 'mdi:account-multiple', color: 'teal',       description: 'Default family cabinet.'}
+              - {name: 'Zen Family Cabinet',            icon: 'mdi:account-child',   color: 'cyan',        description: 'Family cabinet (any provisioned slot).'}
+              - {name: 'Zen Default User Cabinet',      icon: 'mdi:account',         color: 'blue',        description: 'Default user cabinet.'}
+              - {name: 'Zen User Cabinet',              icon: 'mdi:account-circle',  color: 'light-blue',  description: 'User cabinet (any provisioned slot).'}
+              - {name: 'Zen Default AI User Cabinet',   icon: 'mdi:robot',           color: 'indigo',      description: 'Default AI user cabinet.'}
+              - {name: 'Zen AI User Cabinet',           icon: 'mdi:robot-happy',     color: 'purple',      description: 'AI user cabinet (any provisioned slot).'}
+              - {name: 'Zen History Cabinet',           icon: 'mdi:history',         color: 'brown',       description: 'ZenOS history and long-term storage cabinet.'}
+              - {name: 'Zen Index Cabinet',             icon: 'mdi:magnify',         color: 'blue-grey',   description: 'ZenOS index and scratchpad cabinet.'}
+        - repeat:
+            for_each: '{{ _existing_zen }}'
+            sequence:
+            - action: homeassistant.delete_label
+              data:
+                label_id: '{{ repeat.item }}'
+        - repeat:
+            for_each: '{{ _catalog }}'
+            sequence:
+            - action: homeassistant.create_label
+              data:
+                name: '{{ repeat.item.name }}'
+                description: '{{ repeat.item.description }}'
+                icon: '{{ repeat.item.icon }}'
+                color: '{{ repeat.item.color }}'
+        - event: zen_resolver_refresh
+        - variables:
+            response:
+              status: ok
+              action: install
+              deleted_count: '{{ _existing_zen | length }}'
+              created_count: 16
+              message: >-
+                Install complete. {{ _existing_zen | length }} zen_ label(s) deleted,
+                16 canonical labels created with icons and colors.
+                zen_resolver_refresh fired — Flynn will re-tag core cabinets.
+              caller_token: '{{ caller_token }}'
+        - stop: pass var scope
+          response_variable: response
+        alias: INSTALL
       - conditions:
         - alias: UPDATE
           condition: template
@@ -500,10 +571,11 @@ script:
         - stop: Return
           response_variable: response
     alias: Zen DojoTools Labels
-    description: 'Zen DojoTools Labels (4.1.0) — Label CRUD. Read, modify the index,
+    description: 'Zen DojoTools Labels (4.6.0) — Label CRUD. Read, modify the index,
       tag and untag entities, create, delete, and update labels. Update (description,
       icon, color) deletes and recreates the label then restores all entity associations.
-      Hint: Read details for one or more labels to find out what those labels are...'
+      Install: nukes all zen_ labels and recreates the canonical 16 with icons and colors
+      (new install or full reset). Requires confirm: true for all write operations.'
     fields:
       action_type:
         description: '''create'', ''read'', ''delete'', ''tag'', ''untag'', ''update'',
@@ -519,6 +591,7 @@ script:
             - untag
             - update
             - reset
+            - install
         default: read
       target_entities:
         description: List of entity_ids to tag or untag. Required for 'tag' and 'untag'

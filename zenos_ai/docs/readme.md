@@ -1,6 +1,6 @@
 # 📘 **ZenOS-AI Documentation Hub**
 
-> **Version:** 4.5.0 'Meridian' | **Last Updated:** March 2026 | **License:** MIT
+> **Version:** 4.5.5 'Ready Player Two' | **Last Updated:** March 2026 | **License:** MIT
 
 → [Project Overview & Install](../../README.md)
 
@@ -32,6 +32,7 @@ New to ZenOS-AI? Start here.
 * `cabinet_placement.md` — Where things go and why: Dojo vs Kata, drawer vs KFC, the quick-reference placement table. Read after entity_exposure.
 * `oobe.md` — OOBE walkthrough: the six-step first-boot configuration protocol to your conversation agent: actionable vs contextable vs invisible, the three-tier model
 * `troubleshooting.md` — Gauges → Kill Switches → Repair Tools. Health sensor quick-reads, summarizer kill switches, and a seven-step graduated repair sequence (resolver refresh → reseed → label reset → nuclear cabinet reset)
+* `user_management.md` — Add/remove/move AI users and human users. Provision new identity cabinets, deprovision or swap existing ones, transfer default labels, and perform targeted identity-layer repairs or full nukes.
 
 If you just installed ZenOS-AI and want to know what to do next, start here.
 
@@ -135,7 +136,7 @@ The Library is the glue that holds all subsystems together.
 
 Background research and whitepapers.
 
-* `whitepaper_cognitive_architecture.md` – Theory behind the Monastery, Summarizers, and Cabinets
+* `whitepaper_cognitive_architectures.md` – Theory behind the Monastery, Summarizers, and Cabinets
 
 Good for deep dives and formal reasoning.
 
@@ -207,7 +208,6 @@ Files:
 
 * `ninja_summarizer_spec.md`
 * `readme.md`
-* `_index.json`
 
 This is Friday’s working memory engine.
 
@@ -242,13 +242,15 @@ This is Friday’s trust spine — the system that decides which parts of the wo
 
 **File:** `docs/roadmap.md`
 
-Current milestone: **1.0 GA**
+**4.5.5 'Ready Player Two' — Shipped (2026-03-26)**
 
-* RC2 — complete (KF4, Dojo-driven scheduler, FileCabinet v4)
-* GA Stability Gates — Highlander resolver architecture delivered (2026-03-19)
-* GA deliverables — bootstrap, legacy import, cabinet loader, governance, Flynn finalization
-* SP1 — queued post-GA
-* v.next — KFC v1.1 (state key, master-switch-free controller), deeper memory, governance modules
+* Identity and lifecycle release — cabinet provisioning, warmup state machine, full household/family group management
+* Profile editor, zenai_essence, provisioner — all FG-38/FG-40 hardened and GA-ready
+* Cortex 32 (True Voice) is now the default prompt primitive set
+* SP1 — queued: `caller_token` enforcement, KFC 1.1, security architecture
+* v.next — deeper memory, governance modules, cabinet import/export
+
+See: [Release Notes — Ready Player Two](releases/ready_player_two.md)
 
 ---
 

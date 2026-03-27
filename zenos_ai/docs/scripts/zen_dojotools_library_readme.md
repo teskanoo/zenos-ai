@@ -1,4 +1,4 @@
-# Zen DojoTools Library — 4.5.0 'Meridian'
+# Zen DojoTools Library — 4.5.5 'Ready Player Two'
 
 *Friday's unified system utility runner*
 
@@ -16,8 +16,7 @@ The Library is **MCP-exposed**. Friday uses it directly to hash strings, slugify
 
 | Tool | What It Does |
 |---|---|
-| `library` | Routes query through `command_interpreter.jinja` (v1). Returns `{query, output}`. |
-| `library_2` | Routes query through `command_interpreter_2.jinja` (v2). Returns raw interpreter output. |
+| `library` | Routes query through `command_interpreter.jinja`. Returns `{query, output}`. |
 | `hash_md5` | Computes MD5 hash of the input string. Returns `{tool, query, output}`. |
 | `slugify` | Applies HA's `slugify()` filter to the input string. Returns `{tool, query, output}`. |
 
@@ -29,7 +28,7 @@ The Library is **MCP-exposed**. Friday uses it directly to hash strings, slugify
 
 | Field | Required | Description |
 |---|---|---|
-| `tool` | Yes | Tool to invoke — one of `library`, `library_2`, `hash_md5`, `slugify` |
+| `tool` | Yes | Tool to invoke — one of `library`, `hash_md5`, `slugify` |
 | `query` | No | Input string or Library command syntax (`~COMMANDS~`) |
 | `caller_token` | No | Opaque pass-through token for correlation. Not interpreted. |
 
@@ -37,9 +36,9 @@ The Library is **MCP-exposed**. Friday uses it directly to hash strings, slugify
 
 ## Library Command Syntax
 
-The `library` and `library_2` tools accept ZenOS Library Command Syntax — tilde-delimited domain dispatchers such as `~SECURITY~`, `~MEDIA~`, `~ELECTRICAL~`. These are defined in `command_interpreter.jinja` and `command_interpreter_2.jinja`.
+> **Retiring at GA.** The `~COMMANDS~` interface (`command_interpreter.jinja`) is being retired. Individual commands are migrating to index-supported constructs. No new commands should be added to `command_interpreter.jinja`.
 
-Kung Fu components register their library command via the `command` field in their Dojo drawer. The Ninja Summarizer calls the Library automatically before building the monk prompt — the output lands in `library_console` in the review data.
+The `library` tool currently routes queries through `command_interpreter.jinja`. Kung Fu components register their library command via the `command` field in their Dojo drawer. The Ninja Summarizer calls the Library automatically before building the monk prompt — the output lands in `library_console` in the review data.
 
 ---
 
@@ -87,19 +86,9 @@ query: "Security Manager"
 
 ### Run a Library command
 
-```yaml
-tool: library
-query: "~MEDIA~"
-```
+Pass a tilde-delimited command token as the query. The Ninja Summarizer does this automatically using the component's `command` field from the Dojo drawer.
 
-### Run an on-demand Ninja library command
-
-The Ninja Summarizer calls this automatically using the component's `command` field from the Dojo drawer. You can also call it manually for testing:
-
-```yaml
-tool: library
-query: "~SECURITY~"
-```
+> Individual command tokens (`~SECURITY~`, `~MEDIA~`, etc.) are not documented here — this interface is retiring at GA. Commands are migrating to index-supported constructs.
 
 ---
 
@@ -107,7 +96,6 @@ query: "~SECURITY~"
 
 | Dependency | Purpose |
 |---|---|
-| `command_interpreter.jinja` | v1 Library command dispatch engine |
-| `command_interpreter_2.jinja` | v2 Library command dispatch engine |
+| `command_interpreter.jinja` | Library command dispatch engine |
 | HA `md5` filter | MD5 hash computation |
 | HA `slugify()` filter | String slugification |

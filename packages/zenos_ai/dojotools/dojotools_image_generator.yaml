@@ -1,21 +1,25 @@
 ###############################################################################
 # ZenOS-AI: Image Generator
-# Version: 4.5.0
+# Version: 4.7.0
 #
 # Components:
 #   zen_dojotools_generate_image  — DojoTool: DALL-E via ai_task.generate_image
-#   image.zen_image_canvas        — Persistent slot: main display
-#   image.zen_image_portrait      — Persistent slot: AI portrait
-#   image.zen_image_wallpaper     — Persistent slot: wallpaper/background
-#   image.zen_image_id_pic        — Persistent slot: identity/selfie
-#   image.zen_image_dashboard_snap — Persistent slot: dashboard snapshot
-#   image.zen_image_home_state    — Persistent slot: home state visualization
+#   image.zen_image_canvas        — Trigger-based slot: main display
+#   image.zen_image_portrait      — Trigger-based slot: AI portrait
+#   image.zen_image_wallpaper     — Trigger-based slot: wallpaper/background
+#   image.zen_image_id_pic        — Trigger-based slot: identity/selfie
+#   image.zen_image_dashboard_snap — Trigger-based slot: dashboard snapshot
+#   image.zen_image_home_state    — Trigger-based slot: home state visualization
 #
-# Slot architecture:
-#   - input_text.zen_image_slot_<name> stores media_source_id (survives restart)
-#   - State-based image entities read from input_text — always current, stable
-#   - Script writes to the named slot after generation
-#   - zen_event fired for any real-time listeners
+# Slot architecture (v4.7.0):
+#   - Trigger-based image entities (ha.io/integrations/ai_task canonical pattern)
+#   - Script fires zen_event with url (auth sig valid for ~1hr)
+#   - Entity fetches url once on event, HA caches via image proxy permanently
+#   - Survives restarts — HA restores cached bytes, no re-fetch of expired url
+#   - input_text.zenos_image_task selects which ai_task entity to use
+#
+# IMPORTANT: Only ai_task.openai_ai_task_3 (gpt-image-1.5) supports GENERATE_IMAGE.
+# Set input_text.zenos_image_task to ai_task.openai_ai_task_3 after reload.
 ###############################################################################
 
 input_text:
@@ -24,36 +28,6 @@ input_text:
     max: 255
     icon: mdi:image-auto-adjust
 
-  zen_image_slot_canvas:
-    name: "ZenOS Image Slot: Canvas"
-    max: 255
-    icon: mdi:image-frame
-
-  zen_image_slot_portrait:
-    name: "ZenOS Image Slot: Portrait"
-    max: 255
-    icon: mdi:face-recognition
-
-  zen_image_slot_wallpaper:
-    name: "ZenOS Image Slot: Wallpaper"
-    max: 255
-    icon: mdi:wallpaper
-
-  zen_image_slot_id_pic:
-    name: "ZenOS Image Slot: ID Pic"
-    max: 255
-    icon: mdi:account-box
-
-  zen_image_slot_dashboard_snap:
-    name: "ZenOS Image Slot: Dashboard Snap"
-    max: 255
-    icon: mdi:view-dashboard
-
-  zen_image_slot_home_state:
-    name: "ZenOS Image Slot: Home State"
-    max: 255
-    icon: mdi:home-heart
-
 script:
   zen_dojotools_generate_image:
     alias: Zen DojoTools Generate Image
@@ -61,10 +35,10 @@ script:
     description: >-
       Generate an image using ai_task.generate_image and write it to a named
       display slot. Slots: canvas (default), portrait, wallpaper, id_pic,
-      dashboard_snap, home_state. Each slot maps to a persistent image entity
-      (image.zen_image_<slot>) that survives restarts. If no slot is given,
-      image goes to canvas. Result always includes slot so caller knows where
-      it landed. Fires zen_event (kind: image_generated). (v1.3.0)
+      dashboard_snap, home_state. Each slot maps to a trigger-based image entity
+      (image.zen_image_<slot>) — url fetched once on event, cached by HA proxy
+      permanently. If no slot is given, image goes to canvas. Result includes
+      slot and url. Fires zen_event (kind: image_generated). (v1.4.0)
     fields:
       image_prompt:
         name: Image Prompt
@@ -138,20 +112,16 @@ script:
               instructions: "{{ _prompt }}"
             response_variable: _response
 
-      # Write media_source_id to the named slot (persists across restarts)
-      - action: input_text.set_value
-        target:
-          entity_id: "input_text.zen_image_slot_{{ _slot }}"
-        data:
-          value: "{{ _response.media_source_id | default('') }}"
+      - variables:
+          _url: "{{ _response.url | default('') }}"
 
-      # Fire zen_event for any real-time listeners
+      # Fire zen_event — triggers matching slot image entity to fetch and cache url
       - event: zen_event
         event_data:
           event:
             kind: image_generated
             slot: "{{ _slot }}"
-            url: "{{ _response.url | default('') }}"
+            url: "{{ _url }}"
             media_source_id: "{{ _response.media_source_id | default('') }}"
             revised_prompt: "{{ _response.revised_prompt | default('') }}"
             model: "{{ _response.model | default('') }}"
@@ -162,14 +132,14 @@ script:
 
       - variables:
           final_response:
-            status: "{{ 'success' if _response.media_source_id | default('') != '' else 'error' }}"
+            status: "{{ 'success' if _url != '' else 'error' }}"
             message: >-
               {{ 'Image written to slot: ' ~ _slot ~ '.'
-                 if _response.media_source_id | default('') != ''
-                 else 'No media_source_id returned.' }}
+                 if _url != ''
+                 else 'No url returned from ai_task.' }}
             result:
               slot: "{{ _slot }}"
-              url: "{{ _response.url | default('') }}"
+              url: "{{ _url }}"
               media_source_id: "{{ _response.media_source_id | default('') }}"
               revised_prompt: "{{ _response.revised_prompt | default('') }}"
               model: "{{ _response.model | default('') }}"
@@ -182,40 +152,79 @@ script:
         response_variable: final_response
 
 template:
-  # State-based image entities — read from input_text slots, persist across restarts
-  - image:
+  # Trigger-based image entities — canonical HA pattern (ha.io/integrations/ai_task).
+  # Each entity listens for zen_event kind=image_generated filtered by slot.
+  # URL fetched once on event (auth sig valid), cached by HA image proxy permanently.
+  # Survives restarts — HA restores cached image, no re-fetch of expired URL needed.
+
+  - trigger:
+      - trigger: event
+        event_type: zen_event
+        event_data:
+          event:
+            kind: image_generated
+            slot: canvas
+    image:
       - name: "Zen Image Canvas"
         unique_id: zen_image_canvas
-        url: >-
-          {% set ms = states('input_text.zen_image_slot_canvas') %}
-          {{ "http://localhost:8123/ms," ~ (ms | urlencode()) if ms not in ['', 'unknown', 'unavailable'] else '' }}
+        url: "http://localhost:8123{{ trigger.event.data.event.url }}"
 
+  - trigger:
+      - trigger: event
+        event_type: zen_event
+        event_data:
+          event:
+            kind: image_generated
+            slot: portrait
+    image:
       - name: "Zen Image Portrait"
         unique_id: zen_image_portrait
-        url: >-
-          {% set ms = states('input_text.zen_image_slot_portrait') %}
-          {{ "http://localhost:8123/ms," ~ (ms | urlencode()) if ms not in ['', 'unknown', 'unavailable'] else '' }}
+        url: "http://localhost:8123{{ trigger.event.data.event.url }}"
 
+  - trigger:
+      - trigger: event
+        event_type: zen_event
+        event_data:
+          event:
+            kind: image_generated
+            slot: wallpaper
+    image:
       - name: "Zen Image Wallpaper"
         unique_id: zen_image_wallpaper
-        url: >-
-          {% set ms = states('input_text.zen_image_slot_wallpaper') %}
-          {{ "http://localhost:8123/ms," ~ (ms | urlencode()) if ms not in ['', 'unknown', 'unavailable'] else '' }}
+        url: "http://localhost:8123{{ trigger.event.data.event.url }}"
 
+  - trigger:
+      - trigger: event
+        event_type: zen_event
+        event_data:
+          event:
+            kind: image_generated
+            slot: id_pic
+    image:
       - name: "Zen Image ID Pic"
         unique_id: zen_image_id_pic
-        url: >-
-          {% set ms = states('input_text.zen_image_slot_id_pic') %}
-          {{ "http://localhost:8123/ms," ~ (ms | urlencode()) if ms not in ['', 'unknown', 'unavailable'] else '' }}
+        url: "http://localhost:8123{{ trigger.event.data.event.url }}"
 
+  - trigger:
+      - trigger: event
+        event_type: zen_event
+        event_data:
+          event:
+            kind: image_generated
+            slot: dashboard_snap
+    image:
       - name: "Zen Image Dashboard Snap"
         unique_id: zen_image_dashboard_snap
-        url: >-
-          {% set ms = states('input_text.zen_image_slot_dashboard_snap') %}
-          {{ "http://localhost:8123/ms," ~ (ms | urlencode()) if ms not in ['', 'unknown', 'unavailable'] else '' }}
+        url: "http://localhost:8123{{ trigger.event.data.event.url }}"
 
+  - trigger:
+      - trigger: event
+        event_type: zen_event
+        event_data:
+          event:
+            kind: image_generated
+            slot: home_state
+    image:
       - name: "Zen Image Home State"
         unique_id: zen_image_home_state
-        url: >-
-          {% set ms = states('input_text.zen_image_slot_home_state') %}
-          {{ "http://localhost:8123/ms," ~ (ms | urlencode()) if ms not in ['', 'unknown', 'unavailable'] else '' }}
+        url: "http://localhost:8123{{ trigger.event.data.event.url }}"

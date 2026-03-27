@@ -1,4 +1,4 @@
-# Zen Home Mode — 4.5.0 'Meridian'
+# Zen Home Mode — 4.5.5 'Ready Player Two'
 
 *Eight-state home presence and time-of-day state machine*
 

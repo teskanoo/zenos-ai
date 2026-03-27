@@ -1,0 +1,197 @@
+###############################################################################
+# ZenOS-AI Alert Manager
+# Version: 1.0.0
+#
+# Fire-once alert deduplication. Suppresses repeat notifications for the same
+# condition. Clears when the condition resolves so the alert can fire again
+# if it recurs.
+#
+# STORAGE:
+#   household_cabinet._zen_active_alerts — hidden dict drawer
+#   { alert_key: { fired_at, message, severity } }
+#
+# CALLER PATTERN — fire:
+#   event: zen_event
+#   event_data:
+#     event:
+#       kind: alert_fire
+#       alert_key: cab_schema_upgrade_needed   # unique slug
+#       message: "3 cabinets need schema migration"
+#       severity: warn                          # info | warn | error
+#       notify_target: persistent               # persistent (default) | mobile
+#
+# CALLER PATTERN — clear:
+#   event: zen_event
+#   event_data:
+#     event:
+#       kind: alert_clear
+#       alert_key: cab_schema_upgrade_needed
+#
+# alert_fire with an already-active key → silent no-op (no duplicate).
+# alert_clear with an inactive key → silent no-op.
+# Persistent notifications auto-dismiss on clear.
+###############################################################################
+
+automation:
+
+  - id: zen_alert_manager
+    alias: Zen Alert Manager
+    description: >-
+      Zen Alert Manager 1.0.0. Fire-once alert deduplication backed by
+      household_cabinet._zen_active_alerts. Suppresses repeated notifications
+      for the same alert_key until the condition clears.
+    mode: queued
+    max: 10
+
+    triggers:
+      - trigger: event
+        event_type: zen_event
+        event_data:
+          event:
+            kind: alert_fire
+        id: alert_fire
+
+      - trigger: event
+        event_type: zen_event
+        event_data:
+          event:
+            kind: alert_clear
+        id: alert_clear
+
+    actions:
+      - variables:
+          _ev:        "{{ trigger.event.data.event }}"
+          _kind:      "{{ trigger.id }}"
+          _key:       "{{ _ev.alert_key | default('') | trim }}"
+          _household: "{{ states('sensor.zen_default_household_cabinet_resolved') }}"
+
+      # ── Gate: alert_key required ────────────────────────────────────────────
+      - if:
+        - condition: template
+          value_template: "{{ _key == '' }}"
+        then:
+        - event: zen_event
+          event_data:
+            event:
+              kind: alert_manager_error
+              error: missing_alert_key
+              message: "zen_alert_manager: alert_fire/clear received with no alert_key — ignored."
+        - stop: missing alert_key
+
+      # ── Gate: household cabinet required ────────────────────────────────────
+      - if:
+        - condition: template
+          value_template: "{{ _household == '' or _household == 'unavailable' or _household == 'unknown' }}"
+        then:
+        - stop: household cabinet unavailable
+
+      # ── Read _zen_active_alerts ─────────────────────────────────────────────
+      - action: script.zen_dojotools_filecabinet
+        data:
+          action_type: read
+          volume_entity_id: "{{ _household }}"
+          key: _zen_active_alerts
+          caller_token: zen_alert_manager
+        response_variable: _fc_read
+
+      - variables:
+          _raw: "{{ _fc_read.get('value', {}) }}"
+          # FG-38 guard: value may be a native dict, a JSON string, or absent
+          _alerts: >-
+            {%- set r = _raw -%}
+            {%- set r = r if r is mapping else (r | from_json if r is string else {}) -%}
+            {{ r }}
+
+      # ── Route ───────────────────────────────────────────────────────────────
+      - choose:
+
+          # ── alert_fire ──────────────────────────────────────────────────────
+          - conditions: "{{ _kind == 'alert_fire' }}"
+            sequence:
+
+              # Already active — silent no-op
+              - if:
+                - condition: template
+                  value_template: "{{ _key in _alerts }}"
+                then:
+                - stop: already active
+
+              - variables:
+                  _message:       "{{ _ev.message | default(_key) }}"
+                  _severity:      "{{ _ev.severity | default('warn') | trim }}"
+                  _notify_target: "{{ _ev.notify_target | default('persistent') | trim }}"
+
+              # Fire notification
+              - choose:
+                  - conditions: "{{ _notify_target == 'persistent' }}"
+                    sequence:
+                      - action: persistent_notification.create
+                        data:
+                          notification_id: "zen_alert_{{ _key }}"
+                          title: >-
+                            ZenOS — {% if _severity == 'error' %}Error{% elif _severity == 'warn' %}Warning{% else %}Notice{% endif %}
+                          message: "{{ _message }}"
+                default:
+                  - action: "notify.{{ _notify_target }}"
+                    data:
+                      title: >-
+                        ZenOS — {% if _severity == 'error' %}Error{% elif _severity == 'warn' %}Warning{% else %}Notice{% endif %}
+                      message: "{{ _message }}"
+
+              # Write updated _zen_active_alerts
+              - variables:
+                  _entry:
+                    fired_at: "{{ now().isoformat() }}"
+                    message:  "{{ _message }}"
+                    severity: "{{ _severity }}"
+                  _updated: >-
+                    {%- set ns = namespace(d={}) -%}
+                    {%- for k, v in _alerts.items() -%}
+                      {%- set ns.d = dict(ns.d, **{k: v}) -%}
+                    {%- endfor -%}
+                    {%- set ns.d = dict(ns.d, **{_key: _entry}) -%}
+                    {{ ns.d | tojson }}
+
+              - action: script.zen_dojotools_filecabinet
+                data:
+                  action_type: write
+                  volume_entity_id: "{{ _household }}"
+                  key: _zen_active_alerts
+                  value: "{{ _updated }}"
+                  no_autoexpire: true
+                  caller_token: zen_alert_manager
+
+          # ── alert_clear ─────────────────────────────────────────────────────
+          - conditions: "{{ _kind == 'alert_clear' }}"
+            sequence:
+
+              # Not active — silent no-op
+              - if:
+                - condition: template
+                  value_template: "{{ _key not in _alerts }}"
+                then:
+                - stop: not active
+
+              # Remove key
+              - variables:
+                  _updated: >-
+                    {%- set ns = namespace(d={}) -%}
+                    {%- for k, v in _alerts.items() if k != _key -%}
+                      {%- set ns.d = dict(ns.d, **{k: v}) -%}
+                    {%- endfor -%}
+                    {{ ns.d | tojson }}
+
+              - action: script.zen_dojotools_filecabinet
+                data:
+                  action_type: write
+                  volume_entity_id: "{{ _household }}"
+                  key: _zen_active_alerts
+                  value: "{{ _updated }}"
+                  no_autoexpire: true
+                  caller_token: zen_alert_manager
+
+              # Dismiss persistent notification (no-op if it wasn't one)
+              - action: persistent_notification.dismiss
+                data:
+                  notification_id: "zen_alert_{{ _key }}"
+                continue_on_error: true

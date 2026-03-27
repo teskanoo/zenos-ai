@@ -1,4 +1,4 @@
-# Getting Started — ZenOS-AI 4.5.0 'Meridian'
+# Getting Started — ZenOS-AI 4.5.5 'Ready Player Two'
 
 *From fresh install to live agent*
 
@@ -91,13 +91,26 @@ When something isn't right. Covers:
 
 ---
 
+### 7. `user_management.md` — User and AI User Management
+
+For adding, removing, and moving identities after initial setup. Covers:
+
+* Provisioning a new AI user or human user from a stacks cabinet
+* Deprovisioning (removing) an identity and returning the cabinet to stacks
+* Swapping an identity to a different cabinet (replace mode)
+* Transferring the default label before a swap
+* Targeted identity-layer repairs: single cabinet reset, label fix, manifest rebuild
+* Full identity-layer nuke and restart
+
+---
+
 ## Recommended Order
 
 ```
 install.md → first_run.md → entity_exposure.md → cabinet_placement.md → oobe.md
 ```
 
-Keep `troubleshooting.md` open in a tab. You might need it.
+Keep `troubleshooting.md` and `user_management.md` open in a tab. You might need them.
 
 ---
 

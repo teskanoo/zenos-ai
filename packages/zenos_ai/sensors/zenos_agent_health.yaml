@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI — Agent Health
-# Version 4.0.0 RC2
+# Version: 4.5.5
 #
 # Ops dashboard sensors for go/no-go agent readiness.
 #
@@ -52,12 +52,15 @@ template:
 
         #######################################################################
         # STATE — worst of the three gate sensors
-        # Priority: critical > error > warn > disabled > ok
+        # Priority: critical > error > warmup > warn > disabled > ok
+        # warmup: boot window active AND at least one sensor not yet settled
         #######################################################################
         state: >-
           {%- set label_st = states('sensor.zen_label_health') %}
           {%- set cab_st   = states('sensor.zen_cabinet_health') %}
           {%- set mon_st   = states('sensor.zen_monastery_health') %}
+          {%- import 'zenos_ai/zenos_health.jinja' as HEALTH %}
+          {%- set _in_warmup = HEALTH.is_warmup() | trim | bool %}
 
           {%- set all = [label_st, cab_st, mon_st] %}
 
@@ -65,6 +68,8 @@ template:
             critical
           {%- elif 'error' in all %}
             error
+          {%- elif _in_warmup and (all | select('in', ['warn', 'unavailable']) | list | count > 0) %}
+            warmup
           {%- elif 'warn' in all %}
             warn
           {%- elif 'disabled' in all %}
@@ -77,6 +82,22 @@ template:
         # ATTRIBUTES
         #######################################################################
         attributes:
+
+          reason: >-
+            {%- set label_st = states('sensor.zen_label_health') %}
+            {%- set cab_st   = states('sensor.zen_cabinet_health') %}
+            {%- set mon_st   = states('sensor.zen_monastery_health') %}
+            {%- if label_st == 'critical' %}
+              {{ state_attr('sensor.zen_label_health', 'reason') | default('Labels critical — see zen_label_health.') }}
+            {%- elif label_st != 'ok' %}
+              {{ state_attr('sensor.zen_label_health', 'reason') | default('Labels ' ~ label_st ~ ' — see zen_label_health.') }}
+            {%- elif cab_st != 'ok' %}
+              {{ state_attr('sensor.zen_cabinet_health', 'reason') | default('Cabinets ' ~ cab_st ~ ' — see zen_cabinet_health.') }}
+            {%- elif mon_st != 'ok' %}
+              {{ state_attr('sensor.zen_monastery_health', 'reason') | default('Monastery ' ~ mon_st ~ ' — see zen_monastery_health.') }}
+            {%- else %}
+              All gates green.
+            {%- endif %}
 
           system_ready: >-
             {{ states('binary_sensor.flynn_system_ready') }}
@@ -110,12 +131,16 @@ template:
             {%- set label_st = states('sensor.zen_label_health') %}
             {%- set cab_st   = states('sensor.zen_cabinet_health') %}
             {%- set mon_st   = states('sensor.zen_monastery_health') %}
+            {%- import 'zenos_ai/zenos_health.jinja' as HEALTH %}
+            {%- set _in_warmup = HEALTH.is_warmup() | trim | bool %}
             {%- if label_st == 'critical' %}
               gate_0
             {%- elif label_st == 'warn' %}
               gate_1
-            {%- elif cab_st != 'ok' %}
+            {%- elif cab_st in ['error', 'critical'] %}
               gate_2
+            {%- elif _in_warmup and mon_st not in ['ok', 'disabled'] %}
+              warmup
             {%- elif mon_st != 'ok' %}
               gate_3
             {%- else %}
@@ -126,14 +151,22 @@ template:
             {%- set label_st = states('sensor.zen_label_health') %}
             {%- set cab_st   = states('sensor.zen_cabinet_health') %}
             {%- set mon_st   = states('sensor.zen_monastery_health') %}
+            {%- import 'zenos_ai/zenos_health.jinja' as HEALTH %}
+            {%- set _in_warmup = HEALTH.is_warmup() | trim | bool %}
             {%- if label_st == 'critical' %}
               Required labels missing. Trigger automation.flynn_stepgate_sentinel — Flynn will create them. HA restart required after.
             {%- elif label_st == 'warn' %}
               Labels exist but not assigned to cabinet entities. Trigger automation.flynn_stepgate_sentinel — Flynn will wire them.
-            {%- elif cab_st != 'ok' %}
+            {%- elif cab_st in ['error', 'critical'] %}
               Labels wired but required cabinets not initialized. Trigger automation.flynn_stepgate_sentinel — Flynn will initialize them.
+            {%- elif _in_warmup %}
+              System is settling after restart — this is normal. Health sensors will stabilize within a few minutes. No action needed.
+            {%- elif cab_st == 'warn' %}
+              Cabinet schema upgrade available — not urgent. System is fully operational. Upgrade when convenient via the cabinet admin tool.
             {%- elif mon_st == 'disabled' %}
               Summary pipeline is disabled. Enable zen_summarizers_enabled (and optionally zen_ninja_summarizer_enabled / zen_supersummarizer_enabled) in Settings > Helpers to restore full cognition.
+            {%- elif mon_st == 'warn' %}
+              Monastery still settling after boot — should clear on its own within a few minutes.
             {%- elif mon_st != 'ok' %}
               Cabinets ready but content not bootstrapped. Fill in Settings > Helpers (household name, primary user, persona name, conversation agent), then trigger automation.flynn_stepgate_sentinel.
             {%- else %}
@@ -159,6 +192,7 @@ template:
         #   critical/error = labels or cabs in critical/error
         #   warn (hard)    = labels or cabs in warn (structural, no agent check)
         #   error          = labels+cabs ok, 0 agents bootable
+        #   warmup         = boot window active, monastery not yet settled
         #   warn (soft)    = labels+cabs ok, ≥1 agent bootable, monastery != ok
         #   ok             = labels+cabs ok, ≥1 agent bootable, monastery ok
         #######################################################################
@@ -166,6 +200,8 @@ template:
           {%- set label_st = states('sensor.zen_label_health') %}
           {%- set cab_st   = states('sensor.zen_cabinet_health') %}
           {%- set mon_st   = states('sensor.zen_monastery_health') %}
+          {%- import 'zenos_ai/zenos_health.jinja' as HEALTH %}
+          {%- set _in_warmup = HEALTH.is_warmup() | trim | bool %}
 
           {%- if label_st in ['critical','error'] or cab_st in ['critical','error'] %}
             {%- if 'critical' in [label_st, cab_st]  %}
@@ -173,11 +209,11 @@ template:
             {%- else %}
               error
             {%- endif %}
-          {%- elif label_st == 'warn' or cab_st == 'warn' %}
+          {%- elif label_st == 'warn' %}
             warn
 
           {%- else %}
-            {#--- labels+cabs ok: check agent bootability ---#}
+            {#--- labels+cabs ok (cab warn is non-blocking): check agent bootability ---#}
             {%- set conv_eid = states('input_text.zenos_conversation_agent') | trim %}
             {%- set conv_avail =
                   conv_eid != ''
@@ -197,6 +233,8 @@ template:
 
             {%- if ns.ok_count == 0 %}
               error
+            {%- elif _in_warmup and mon_st not in ['ok', 'disabled'] %}
+              warmup
             {%- elif mon_st != 'ok' %}
               warn
             {%- else %}
@@ -208,6 +246,36 @@ template:
         # ATTRIBUTES
         #######################################################################
         attributes:
+
+          reason: >-
+            {%- set label_st = states('sensor.zen_label_health') %}
+            {%- set cab_st   = states('sensor.zen_cabinet_health') %}
+            {%- set mon_st   = states('sensor.zen_monastery_health') %}
+            {%- if label_st in ['critical','error'] or cab_st in ['critical','error'] %}
+              {{ state_attr('sensor.zen_flynn_health', 'reason') | default('Infrastructure critical — see zen_flynn_health.') }}
+            {%- elif label_st == 'warn' or cab_st == 'warn' %}
+              {{ state_attr('sensor.zen_flynn_health', 'reason') | default('Infrastructure warn — see zen_flynn_health.') }}
+            {%- else %}
+              {%- set conv_eid = states('input_text.zenos_conversation_agent') | trim %}
+              {%- set conv_avail = conv_eid != '' and conv_eid not in ['unknown','unavailable','none'] and states(conv_eid) not in ['unknown','unavailable'] %}
+              {%- set all_ai_cabs = label_entities('zen_ai_user_cabinet') | select('match', 'sensor\\.') | list %}
+              {%- set def_cab = states('sensor.zen_default_ai_user_cabinet_resolved') %}
+              {%- set ns = namespace(ok_count=0) %}
+              {%- for ag_cab in all_ai_cabs %}
+                {%- if states(ag_cab) not in ['unknown','unavailable'] and conv_avail and ag_cab == def_cab %}
+                  {%- set ns.ok_count = ns.ok_count + 1 %}
+                {%- endif %}
+              {%- endfor %}
+              {%- if ns.ok_count == 0 and not conv_avail %}
+                Conversation agent not configured or unavailable (input_text.zenos_conversation_agent).
+              {%- elif ns.ok_count == 0 %}
+                No bootable agent found — default AI user cabinet not assigned or persona missing.
+              {%- elif mon_st != 'ok' %}
+                {{ state_attr('sensor.zen_monastery_health', 'reason') | default('Monastery ' ~ mon_st ~ ' — see zen_monastery_health.') }}
+              {%- else %}
+                All checks passed.
+              {%- endif %}
+            {%- endif %}
 
           ##################################################################
           # FLYNN SUMMARY (infra, not in agent count)
@@ -239,7 +307,7 @@ template:
             {%- set mon_st   = states('sensor.zen_monastery_health') %}
             {%- set infra_gate =
                 'critical' if (label_st in ['critical','error'] or cab_st in ['critical','error']) else
-                'warn'     if (label_st == 'warn' or cab_st == 'warn') else
+                'warn'     if (label_st == 'warn') else
                 'ok' %}
 
             {#--- conversation agent ---#}
@@ -350,6 +418,8 @@ template:
                 {%- elif ag_ess_status != 'ok' %}
                   {%- set _miss = ag_probe.get('missing', []) | join(',') if ag_probe is mapping else '' %}
                   {%- set note = 'essence_' ~ ag_ess_status ~ ':' ~ _miss %}
+                {%- elif mon_st not in ['ok', 'disabled'] %}
+                  {%- set note = 'ready_monastery_' ~ mon_st %}
                 {%- else %}
                   {%- set note = 'ready' %}
                 {%- endif %}
@@ -373,7 +443,7 @@ template:
           agents_ok: >-
             {%- set labels_cabs_ok =
                   states('sensor.zen_label_health') == 'ok'
-                  and states('sensor.zen_cabinet_health') == 'ok' %}
+                  and states('sensor.zen_cabinet_health') in ['ok', 'warn'] %}
             {%- set conv_eid = states('input_text.zenos_conversation_agent') | trim %}
             {%- set conv_avail =
                   conv_eid != '' and conv_eid not in ['unknown','unavailable','none']

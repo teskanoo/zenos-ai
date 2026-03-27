@@ -1,4 +1,4 @@
-# ZenOS-AI Health Sensors — 4.5.0 'Meridian'
+# ZenOS-AI Health Sensors — 4.5.5 'Ready Player Two'
 
 *System observability stack — labels, cabinets, cognition, agents*
 
@@ -85,7 +85,7 @@ sensor.zen_label_health          ← updates every 1 minute
 |---|---|
 | `critical` | One or more required cabinet labels are missing from the index |
 | `error` | A required slot has multiple cabinets assigned, or a required cabinet is unavailable/unknown |
-| `warn` | A required label exists but no cabinet entity is tagged with it |
+| `warn` | A required label exists but no cabinet entity is tagged; OR a required cabinet is on legacy schema (state: `Variables`/`init`) — **non-blocking, system runs normally** |
 | `ok` | All required slots have exactly one healthy cabinet |
 
 **Required slots (7):** system, dojo, kata, default_household, default_family, default_user, default_ai_user
@@ -102,7 +102,7 @@ sensor.zen_label_health          ← updates every 1 minute
 | `slot_to_default_entity` | Default sensor entity ID per slot |
 | `resolver_suggestions` | Per-slot plain-language action strings |
 
-**Flynn gate:** Not `ok` → Gate 2 (initialize missing cabinets).
+**Flynn gate:** `error`/`critical` → Gate 2 hard stop (initialize missing cabinets, operator action required). `warn` → Gate 2 non-blocking: schema upgrade notification fired outside warmup window; during warmup or `ha_start`, logged and skipped.
 
 ---
 
@@ -220,8 +220,9 @@ Use `current_gate` and `next_step` when troubleshooting a stuck boot — they te
 |---|---|
 | `critical` | label_health or cabinet_health = `critical` or `error` |
 | `error` | label/cabinet = `error`, 0 agents bootable |
+| `warmup` | Inside boot warmup window (≤5 min) with monastery not yet settled — system initializing, check again shortly |
 | `warn` | Structural gates blocking; or ≥1 agent bootable but monastery ≠ `ok` |
-| `ok` | Infrastructure ok, ≥1 agent bootable, monastery ok |
+| `ok` | Infrastructure ok, ≥1 agent bootable, monastery ok, cabinet ok |
 
 **Agent bootability gates (per agent):**
 
@@ -250,9 +251,9 @@ Use `current_gate` and `next_step` when troubleshooting a stuck boot — they te
 
 ## binary_sensor.flynn_system_ready
 
-**State:** `on` when labels ok AND cabinets ok AND monastery in [`ok`, `warn`]
+**State:** `on` when labels ok AND cabinets in [`ok`, `warn`] AND monastery in [`ok`, `warn`]
 
-`warn` monastery is acceptable — schema and cabinets are valid, summarizer may not have run yet. This is the bootstrap eligibility gate, not a health gate.
+Cabinet `warn` and monastery `warn` are both acceptable — schema and cabinets are valid, legacy schema upgrade may be pending or summarizer may not have run yet. This is the bootstrap eligibility gate, not a health gate.
 
 ---
 
@@ -340,9 +341,9 @@ Options resolve dynamically at render time. Each select writes back to its input
 
 | Entity | Default | Purpose |
 |---|---|---|
-| `input_boolean.zen_summarizers_enabled` | `on` | Master — gates both summarizers |
-| `input_boolean.zen_supersummarizer_enabled` | `on` | SuperSummary on/off |
-| `input_boolean.zen_ninja_summarizer_enabled` | `on` | Ninja Summarizer on/off |
+| `input_boolean.zen_summarizers_enabled` | `off` | Master — gates both summarizers |
+| `input_boolean.zen_supersummarizer_enabled` | `off` | SuperSummary on/off |
+| `input_boolean.zen_ninja_summarizer_enabled` | `off` | Ninja Summarizer on/off |
 
 Master is checked first. If off, both summarizers exit immediately regardless of their individual switches. Turning any switch off is non-destructive — schedules, automations, and cabinet data are untouched.
 

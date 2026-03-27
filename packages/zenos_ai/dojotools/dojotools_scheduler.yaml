@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI DojoTools: Scheduler
-# Version: 4.5.0
+# Version: 4.5.5
 #
 # Automations:
 #   Zen DojoTools Scheduler — time/event orchestrator for the Dojo system
@@ -9,7 +9,7 @@
 # REFACTORED (4.1.0, 2026-03-10):
 #   - Ninja Summarizer dispatch is now Dojo-driven (loop replaces 10 hardcoded
 #     choose branches). Components register trigger_subscriptions + delay_seconds
-#     in their Dojo drawer via zen_dojotools_kungfu_writer.
+#     in their Dojo drawer via zen_dojotools_scribe.
 #   - Manifest, SuperSummary, FileCabinet GC remain as explicit choose branches.
 #   - Custom triggers: copy zenos_ai/docs/examples/zen_dojotools_scheduler_custom.yaml
 #     to your HA config, fill in your entity IDs, and subscribe components via
@@ -279,6 +279,7 @@ automation:
         sequence:
         - event: zen_resolver_refresh
         alias: Health Sensor Retrigger
+
 
     # ── Dojo-driven Ninja Summarizer dispatch ────────────────────────────────
     # Reads all KFC drawers from the Dojo cabinet. Filters to those whose

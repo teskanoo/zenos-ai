@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI — Cabinet Health
-# Version 4.3.0
+# Version: 4.5.5
 #
 # sensor.zen_cabinet_health
 #   Validates the presence and health of all Zen cabinets against defaults
@@ -33,6 +33,10 @@ template:
         # ATTRIBUTES
         #######################################################################
         attributes:
+
+          reason: >-
+            {%- import 'zenos_ai/zenos_health.jinja' as HEALTH -%}
+            {{- HEALTH.zen_cabinet_health_reason() -}}
 
           #####################################################################
           # LABEL HEALTH PASS-THROUGH
@@ -207,9 +211,7 @@ template:
                 {%- set ns.m = ns.m | combine({ slot: 'absent' }) -%}
               {%- else -%}
                 {%- set eid = (ents | first) -%}
-                {%- set _v = state_attr(eid, 'variables') -%}
-                {%- set cab_state = 'online' if (_v is mapping and 'AI_Cabinet_VolumeInfo' in _v) else 'init' -%}
-                {%- set ns.m = ns.m | combine({ slot: cab_state }) -%}
+                {%- set ns.m = ns.m | combine({ slot: states(eid) }) -%}
               {%- endif -%}
             {%- endfor -%}
             {{ ns.m | tojson }}
@@ -227,5 +229,27 @@ template:
           slot_to_default_entity: >
             {%- import 'zenos_ai/zenos_health.jinja' as HEALTH -%}
             {{- HEALTH.slot_to_default_entity() | from_json({}) -}}
+
+          #####################################################################
+          # SCROLL COUNT — drawers with ro: true across all online_mounted cabs
+          #####################################################################
+          scroll_count: >-
+            {%- set all_cabs = label_entities('Zen Cabinet' | slugify) | list -%}
+            {%- set ns = namespace(n=0) -%}
+            {%- for eid in all_cabs -%}
+              {%- if states(eid) == 'online_mounted' -%}
+                {%- set vars = state_attr(eid, 'variables') | default({}, true) -%}
+                {%- set vars = vars if vars is mapping else {} -%}
+                {%- for key, drawer in vars.items() if key != '_label_index' -%}
+                  {%- set entry = drawer if drawer is mapping else {} -%}
+                  {%- set mt = entry.get('meta', {}) -%}
+                  {%- set mt = mt if mt is mapping else (mt | from_json if mt is string else {}) -%}
+                  {%- if mt.get('ro', false) == true -%}
+                    {%- set ns.n = ns.n + 1 -%}
+                  {%- endif -%}
+                {%- endfor -%}
+              {%- endif -%}
+            {%- endfor -%}
+            {{ ns.n }}
 
           timestamp: "{{ now().isoformat() }}"

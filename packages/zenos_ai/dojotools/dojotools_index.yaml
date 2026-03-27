@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI DojoTools: Index Cluster
-# Version: 4.5.0
+# Version: 4.5.5
 #
 # Scripts:
 #   zen_dojotools_query   — ZQ-1 entity filter/query engine
@@ -81,6 +81,15 @@ script:
           text:
         description: 'Reserved. No-op in current version — Query returns entity IDs
           only.'
+      dry_run:
+        name: Dry Run
+        description: >-
+          If true, returns count and char estimate after filtering without
+          returning the full entity list. Use before committing to a large call.
+        required: false
+        default: false
+        selector:
+          boolean:
       caller_token:
         name: Caller Token
         required: false
@@ -203,6 +212,20 @@ script:
     - variables:
         result: '{% import ''zenos_ai/zen_query.jinja'' as zen %} {{ zen.zen_filter(filter_json,
           auto_base_list) }}'
+    - if:
+      - condition: template
+        value_template: "{{ dry_run | default(false) }}"
+      then:
+      - variables:
+          _dr_list: "{{ result | from_json if result is string else result | default([]) }}"
+          final:
+            status: dry_run
+            count: "{{ _dr_list | count }}"
+            result_chars: "{{ _dr_list | tojson | length }}"
+            sample: "{{ _dr_list[:5] }}"
+            caller_token: "{{ caller_token }}"
+      - stop: dry_run
+        response_variable: final
     - choose:
       - conditions:
         - condition: template
@@ -251,12 +274,92 @@ script:
 
   zen_dojotools_inspect:
     sequence:
-    # --------------------------------------------------------------
-    # Always normalize User/AI inputs so we don't have to react JIT
-    # --------------------------------------------------------------
     - variables:
         caller_token: "{{- caller_token | default('') -}}"
 
+    - alias: Show Help
+      choose:
+      - conditions:
+        - condition: template
+          value_template: "{{ mode | default('') == 'help' }}"
+        sequence:
+        - variables:
+            help_json: |-
+              {{
+                {
+                  "tool": "Zen DojoTools Inspect",
+                  "version": "4.5.1",
+                  "intent": "Deep entity inspection. Returns state, labels, device metadata, cabinet volume info, and optional recorder statistics for one or more entities. Called directly or via Index when expand_entities=true.",
+                  "inputs": {
+                    "entity_id": "Required for inspection. Single entity_id or list. Not required when mode=help.",
+                    "output_fields": "Field selector. Comma-separated string or list. Controls which blocks appear per entity. See output_fields_reference.",
+                    "extended": "Boolean (default false). Adds device_tree: via_device_id, parent_name, siblings, config_entries.",
+                    "label_targets": "Label names — resolves drawer blurbs from Dojo cabinet. Injected by Index; usable in direct calls.",
+                    "drawer_key": "Cabinet sensors only. Inspects a specific drawer key — value truncated to 64 chars.",
+                    "timeout": "Seconds (default 60, max 300).",
+                    "caller_token": "Governance stub. Echoed in response.",
+                    "mode": "inspect (default) — run inspection. help — return this schema."
+                  },
+                  "output_fields_reference": {
+                    "_note": "Prefix - to suppress a default. Prefix + to opt in. Comma-separated string or list.",
+                    "defaults_on": {
+                      "timestamps": "last_changed, last_updated. Suppress: -timestamps.",
+                      "device": "device_id, name, manufacturer, model, area_id, integration. Suppress: -device.",
+                      "volume": "Cabinet header (cabinet sensors only): id, version, friendly_name, flags. Suppress: -volume."
+                    },
+                    "opt_in": {
+                      "+attributes": "Full sanitized attribute dict. Key-scanned for safety. Suppressed for cabinet sensors.",
+                      "+statistics": "Eligibility gate only: {eligible, reason}. Does not fetch recorder data.",
+                      "+history": "24h hourly recorder stats. Fires only for stats_eligible entities. See history_result_schema."
+                    },
+                    "example": "+history,-device,-volume,-timestamps"
+                  },
+                  "history_result_schema": {
+                    "eligible_with_data": {"eligible": true, "state_class": "measurement", "unit": "W", "last_24h": [{"start": "<ISO UTC>", "end": "<ISO UTC>", "mean": 0.0, "min": 0.0, "max": 0.0}]},
+                    "eligible_no_data": {"eligible": true, "state_class": "measurement", "unit": "W", "reason": "No recorder data — check state_class and recorder config"},
+                    "ineligible": {"eligible": false, "state_class": "", "reason": "<missing state_class or unit_of_measurement>"},
+                    "traps": [
+                      "last_24h is an array of hourly buckets — NOT flat mean/min/max at history root.",
+                      "eligible=true with no last_24h key means entity has no recorder data yet.",
+                      "Run stats_eligible filter via Index BEFORE +history to avoid fetching ineligible entities."
+                    ]
+                  },
+                  "per_entity_output_structure": {
+                    "always": ["entity_id", "friendly_name", "domain", "state", "labels"],
+                    "default_on": ["last_changed", "last_updated", "device", "volume (cabinet only)"],
+                    "opt_in": ["+attributes", "+statistics", "+history"],
+                    "extended_only": ["device_tree"],
+                    "drawer_key_only": ["drawer"]
+                  },
+                  "top_level_output": {
+                    "results": "Array of per-entity result objects.",
+                    "drawers": "Drawer blurbs from Dojo cabinet keyed by label. Empty dict if no label_targets.",
+                    "inputs": "Echo of entity_id, extended, infer, timeout.",
+                    "error": "null on success."
+                  },
+                  "usage_examples": {
+                    "Example 1 — Basic inspect": {"entity_id": "sensor.kitchen_temperature"},
+                    "Example 2 — Attributes and device tree": {"entity_id": "sensor.kitchen_temperature", "output_fields": "+attributes", "extended": true},
+                    "Example 3 — 24h stats lean": {"entity_id": ["sensor.span_total_power", "sensor.dryer_power"], "output_fields": "+history,-device,-volume,-timestamps"},
+                    "Example 4 — Eligibility check only": {"entity_id": "sensor.span_total_power", "output_fields": "+statistics,-device,-volume,-timestamps"},
+                    "Example 5 — Cabinet drawer peek": {"entity_id": "sensor.zenos_dojo_cabinet", "drawer_key": "zen_summary"}
+                  },
+                  "ai_user_guidance": [
+                    "Use mode: help to retrieve this schema.",
+                    "+history fires only for stats_eligible entities (state_class + unit_of_measurement set). Run stats_eligible filter first.",
+                    "History data is at results[N].history.last_24h — hourly array. There is NO history.mean at the root.",
+                    "+statistics is a cheap eligibility check. +history fetches actual recorder data. They are independent.",
+                    "Inspect is called automatically by Index when expand_entities=true — output_fields passes through.",
+                    "Cabinet sensors suppress attributes. Use FileCabinet tools for drawer data."
+                  ]
+                }
+              }}
+        - stop: Return help JSON
+          response_variable: help_json
+
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
     - variables:
         entity_list: "{% if entity_id is iterable and (entity_id is not string) %}\n
           \ {{ entity_id }}\n{% else %}\n  [{{ entity_id }}]\n{% endif %}"
@@ -282,6 +385,7 @@ script:
         _show_volume: "{{ '-volume' not in output_fields_input }}"
         _show_attributes: "{{ '+attributes' in output_fields_input }}"
         _show_statistics: "{{ '+statistics' in output_fields_input }}"
+        _show_history: "{{ '+history' in output_fields_input }}"
     - repeat:
         for_each: '{{ entity_list }}'
         sequence:
@@ -423,6 +527,53 @@ script:
               %}\n{% endif %}\n{% if drawer_result is not none and drawer_result != 'none'
               %}\n  {% set ns.out = ns.out | combine({'drawer': drawer_result}) %}\n{%
               endif %}\n{{ ns.out }}"
+        - if:
+          - condition: template
+            value_template: "{{ _show_history and stats_eligible }}"
+          then:
+          - action: recorder.get_statistics
+            data:
+              statistic_ids:
+                - "{{ current_entity }}"
+              period: hour
+              types:
+                - mean
+                - min
+                - max
+              start_time: "{{ (now() - timedelta(hours=24)).isoformat() }}"
+            response_variable: _entity_stats
+          - variables:
+              _hs_raw: "{{ _entity_stats.get('statistics', _entity_stats) if _entity_stats is mapping else {} }}"
+              _hs_buckets: "{{ _hs_raw.get(current_entity, []) }}"
+              history_result: >-
+                {%- if _hs_buckets | count > 0 -%}
+                  {{ {'eligible': true, 'state_class': stat_class, 'unit': stat_uom, 'last_24h': _hs_buckets} }}
+                {%- else -%}
+                  {{ {'eligible': true, 'state_class': stat_class, 'unit': stat_uom, 'reason': 'No recorder data — check state_class and recorder config'} }}
+                {%- endif -%}
+          else:
+          - variables:
+              history_result:
+                eligible: "{{ stats_eligible }}"
+                state_class: "{{ stat_class }}"
+                reason: "{{ stats_reason }}"
+        - variables:
+            entity_result: "{% set ns = namespace(out={\n  'entity_id': current_entity,\n\
+              \  'friendly_name': friendly_name,\n  'domain': domain,\n  'state': state_str,\n\
+              \  'labels': label_details\n}) %}\n{% if _show_timestamps %}\n  {% set ns.out\
+              \ = ns.out | combine({'last_changed': last_changed, 'last_updated': last_updated})\
+              \ %}\n{% endif %}\n{% if _show_device and device_block is not none and device_block\
+              \ is mapping %}\n  {% set ns.out = ns.out | combine({'device': device_block})\
+              \ %}\n{% endif %}\n{% if _show_volume and is_cabinet_sensor %}\n  {% set ns.out\
+              \ = ns.out | combine({'volume': volume_result}) %}\n{% endif %}\n{% if _show_attributes\
+              \ %}\n  {% set ns.out = ns.out | combine({'attributes': safe_attributes}) %}\n\
+              {% endif %}\n{% if _show_statistics %}\n  {% set ns.out = ns.out | combine({'statistics':\
+              \ statistics_result}) %}\n{% endif %}\n{% if _show_history %}\n  {% set ns.out\
+              \ = ns.out | combine({'history': history_result}) %}\n{% endif %}\n{% if extended_mode\
+              \ and device_tree is not none and device_tree is mapping %}\n  {% set ns.out\
+              \ = ns.out | combine({'device_tree': device_tree}) %}\n{% endif %}\n{% if\
+              \ drawer_result is not none and drawer_result != 'none' %}\n  {% set ns.out\
+              \ = ns.out | combine({'drawer': drawer_result}) %}\n{% endif %}\n{{ ns.out }}"
             results: '{{ (results + [entity_result]) | list }}'
     - alias: Read drawer blurbs by label_targets
       choose:
@@ -459,7 +610,7 @@ script:
       response_variable: inspect_result
     alias: Zen DojoTOOLS Inspect
     mode: parallel
-    description: Inspect (4.2.1). Deep dive on one or more entities. Attributes
+    description: Inspect (4.5.1). Deep dive on one or more entities. Attributes
       are key-scanned for safety. Cabinet sensors expose header metadata only; use cabinet
       tools for full volume access.
     fields:
@@ -480,8 +631,9 @@ script:
         selector:
           text:
         description: "Field selection. Defaults on: timestamps, device, volume. Opt-in:
-          +attributes, +statistics. Suppress defaults: -timestamps, -device, -volume.
-          Comma-separated string or list."
+          +attributes, +statistics, +history (24h recorder stats per entity — use
+          ZQ-1 stats_eligible filter first). Suppress defaults: -timestamps, -device,
+          -volume. Comma-separated string or list."
       label_targets:
         required: false
         default: []
@@ -510,6 +662,15 @@ script:
         name: Timeout
         default: 60
         required: false
+      mode:
+        required: false
+        default: inspect
+        selector:
+          select:
+            options:
+            - inspect
+            - help
+        description: "inspect (default) — run inspection and return entity results. help — return full output_fields reference and result schema."
       caller_token:
         name: Caller Token
         required: false
@@ -542,10 +703,16 @@ script:
             filter_json: '{} '
             caller_token: '{{ caller_token }}'
           response_variable: zen_query_help
+        - action: script.zen_dojotools_inspect
+          data:
+            mode: help
+            caller_token: '{{ caller_token }}'
+          response_variable: zen_inspect_help
         - variables:
             query_help: '{{ zen_query_help | default({}) | tojson }}'
+            inspect_contract: '{{ zen_inspect_help | default({}) }}'
             help_json: "{{\n  {\n    \"tool\": \"Zen DojoTools Index\",\n    \"version\":
-              \"4.2.1\",\n    \"intent\": \"High-resolution reasoning. Convert
+              \"4.5.1\",\n    \"intent\": \"High-resolution reasoning. Convert
               arbitrary entity + label sets into a unified hypergraph suitable for fusion,
               summarization, planning, and contextual inference.\",\n    \"you_should_use_this_tool_when\":
               [\n      \"You need to combine labels, entities, or both into a logical
@@ -571,7 +738,8 @@ script:
               \"Single label or text token resolved by label_entities().\",\n      \"entities_2\":
               \"Second entity list.\",\n      \"label_2\": \"Second label or token.\",\n
               \     \"operator\": \"AND | OR | NOT | XOR | * (full label graph).\",\n
-              \     \"expand_entities\": \"true/false — expands metadata, drawers, attributes.\",\n
+              \     \"expand_entities\": \"true/false — expands metadata, drawers, attributes. MUST be true for output_fields to have any effect.\",\n
+              \     \"output_fields\": \"Passed to Inspect when expand_entities=true. Defaults on: timestamps, device, volume. Opt-in: +history (24h recorder stats per entity). Suppress: -timestamps, -device, -volume. Example: '+history,-device,-volume,-timestamps'. Has no effect if expand_entities=false.\",\n
               \     \"filter_json\": \"Optional dict following ZenQuery schema.\",\n
               \     \"mode\": \"normal | hypergraph\",\n      \"timeout\": \"Indexer
               callback timeout in seconds.\"\n    },\n    \"filter_json\": {\n      \"overview\":
@@ -611,7 +779,7 @@ script:
               \">\", \"state_value\": 60}\n      },\n      \"Example 5 — Build a root
               graph for Summarizer or Fusion\": {\n        \"label_1\": \"climate\",\n
               \       \"expand_entities\": true,\n        \"mode\": \"hypergraph\"\n
-              \     }\n    },\n    \"best_practices\": [\n      \"Use (Hyper)Index before
+              \     },\n      \"Example 6 — 24h recorder stats for energy entities\": {\n        \"label_1\": \"energy_manager\",\n        \"expand_entities\": true,\n        \"filter_json\": {\"shortcuts\": {\"stats_eligible\": true}},\n        \"output_fields\": \"+history,-device,-volume,-timestamps\",\n        \"_note\": \"History data at result.expanded[N].history.last_24h — array of hourly buckets {start,end,min,max,mean}. Run stats_eligible filter first to skip ineligible entities.\"\n      }\n    },\n    \"quick_recipes\": {\n      \"history_stats\": {\n        \"label_1\": \"<your_label>\",\n        \"expand_entities\": true,\n        \"filter_json\": {\"shortcuts\": {\"stats_eligible\": true}},\n        \"output_fields\": \"+history,-device,-volume,-timestamps\",\n        \"_NOTE\": \"expand_entities MUST be true or output_fields is ignored.\",\n        \"_result_path\": \"result.expanded[N].history.last_24h → [{start, end, min, max, mean}]\",\n        \"_trap\": \"stats_eligible filter BEFORE +history — avoids fetching stats for sensors with no recorder data.\"\n      }\n    },\n    \"best_practices\": [\n      \"Use (Hyper)Index before
               any fusion or summarization to avoid bloated context.\",\n      \"Prefer
               labels as the primary driver, entities only when needed.\",\n      \"Use
               expand_entities sparingly — hypergraph mode is already powerful.\",\n
@@ -627,7 +795,7 @@ script:
               not just lists.\",\n      \"Use filter_json to stay efficient and avoid
               overwhelming context.\",\n      \"Before writing a kata or fusion output,
               get a fresh HyperIndex snapshot.\",\n      \"If a result is empty unexpectedly,
-              re-run in normal mode to debug.\"\n    ]\n  }\n}}\n"
+              re-run in normal mode to debug.\",\n      \"Use filter_json stats_eligible:true BEFORE +history to avoid fetching stats for ineligible entities — it is a pre-flight filter, not optional.\",\n      \"History data lives at result.expanded[N].history.last_24h — array of hourly buckets, NOT flat mean/min/max fields. Ineligible entities return {eligible: false, reason: ...}.\"\n    ],\n    \"inspect_passthrough_contract\": inspect_contract\n  }\n}}\n"
         - stop: Return help JSON
           response_variable: help_json
     - variables:
@@ -789,6 +957,19 @@ script:
           entities_base: "{% if strict_mode %}\n  {{ response_entities }}\n{% else %}\n
             \ {{ response_entities if response_entities else fallback_entities_base
             }}\n{% endif %}"
+    - if:
+      - condition: template
+        value_template: "{{ dry_run | default(false) }}"
+      then:
+      - variables:
+          final_response:
+            status: dry_run
+            entity_count: "{{ entities_base | count }}"
+            will_expand: "{{ expand_entities | default(false) }}"
+            sample: "{{ entities_base[:5] }}"
+            caller_token: "{{ caller_token }}"
+      - stop: dry_run
+        response_variable: final_response
     - choose:
       - conditions:
         - condition: template
@@ -967,8 +1148,17 @@ script:
         selector:
           text:
         description: "Passed to Inspect when expand_entities=true. Defaults on: timestamps,
-          device, volume. Opt-in: +attributes, +statistics. Suppress: -timestamps,
+          device, volume. Opt-in: +attributes, +statistics, +history. Suppress: -timestamps,
           -device, -volume."
+      dry_run:
+        name: Dry Run
+        description: >-
+          If true, returns entity_count and expand flag after set resolution without
+          calling Inspect. Use to gauge scope before a full expand_entities=true call.
+        required: false
+        default: false
+        selector:
+          boolean:
       caller_token:
         name: Caller Token
         required: false

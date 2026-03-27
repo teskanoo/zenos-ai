@@ -2,14 +2,14 @@
 # ZenOS-AI DojoTools: Utilities Bundle
 # Phase 1 migration from scripts.yaml
 #
-# Version: 4.5.0
+# Version: 4.5.5
 #
 # Scripts:
-#   zen_dojotools_calculator   — math + GUID generator (v4.0.0 RC2)
-#   zen_dojotools_dice_roller  — D&D dice / random (v4.0.0 RC2)
-#   zen_dojotools_announce     — TTS announcement router (v4.0.0 RC2)
-#   zen_dojotools_music_search — Music Assistant search (v4.0.0 RC2)
-#   zen_dojotools_help         — ZenOS-AI about/help (v4.0.0 RC2)
+#   zen_dojotools_calculator   — math + GUID generator (v4.5.x)
+#   zen_dojotools_dice_roller  — D&D dice / random (v4.5.x)
+#   zen_dojotools_announce     — TTS announcement router (v4.5.x)
+#   zen_dojotools_music_search — Music Assistant search (v4.5.x)
+#   zen_dojotools_help         — ZenOS-AI about/help (v4.5.x)
 #   zen_dojotools_wait         — timed delay utility
 #   dojotools_volume_auditor   — cabinet volume accessibility scanner (fixed _report)
 ###############################################################################
@@ -396,8 +396,8 @@ script:
         caller_token: "{{- caller_token | default('') -}}"
 
     - variables:
-        tool_version: "4.0.0 RC2"
-        os_version: "4.0.0 RC2"
+        tool_version: "4.5.x"
+        os_version: "4.5.x"
         action: about
         about_text: |-
           ZenOS-AI — modular, local-first AI home automation framework on Home
@@ -415,7 +415,7 @@ script:
             Kitchen Sync (Mealie↔Grocy bridge), Firefly III (finance), Wiki.js.
           Room Manager: label-intersection state machine — 7 states:
             override → asleep → occupied → active → wasp → idle_dark → inactive.
-          Kung Fu Components (KF4 RC2): The atomic unit of contextual intelligence.
+          Kung Fu Components (KF4): The atomic unit of contextual intelligence.
             Each KFC owns a domain of the home. The dojo drawer IS the component spec.
             The label IS the scope. The HyperIndex IS the data layer. Monks read the
             drawer brief, traverse the label graph, interpret entity semantics, and
@@ -474,7 +474,7 @@ script:
             - DojoTools suite (utilities, comms, data, summarizer, AI, admin)
             - Plugins (Mealie, Grocy, Kitchen Sync, Firefly III, Wiki.js)
             - Room Manager (label-intersection state machine)
-            - Kung Fu Components KF4 RC2 (label=scope, drawer=spec, HyperIndex=data)
+            - Kung Fu Components KF4 (label=scope, drawer=spec, HyperIndex=data)
             - Summarizer pipeline (Scheduler → Ninja per KFC → SuperSummary → Kata → Friday)
             - Health sensors (label, cabinet, monastery, agent gates)
           escalation:

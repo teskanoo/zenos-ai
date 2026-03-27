@@ -1,9 +1,9 @@
 ###############################################################################
 # ZenOS-AI DojoTools: Manifest
-# Version: 4.5.0
+# Version: 4.5.5
 #
 # Scripts:
-#   zen_dojotools_manifest — Runtime health and volume manifest (v4.0.0 RC2)
+#   zen_dojotools_manifest — Runtime health and volume manifest (v4.5.x)
 #
 # MIGRATED FROM: scripts.yaml (2026-03-06)
 #
@@ -24,7 +24,7 @@
 script:
   zen_dojotools_manifest:
     alias: Zen DojoTools Manifest
-    description: 'Zen DojoTools Manifest (4.0.0 RC2) Sandbox Safe! Runtime-only health,
+    description: 'Zen DojoTools Manifest (4.5.x) Sandbox Safe! Runtime-only health,
       zero persistent health storage. Authoritative manifest  scanner for AI_Cabinet
       volumes. Extracts users, metadata, context, capacity, access flags, ACLs, drawers.
       Writes ONLY the compiled manifest to the Zen Default Household cabinet.
@@ -37,6 +37,12 @@ script:
           boolean:
         name: show hidden
         description: Include hidden/system volumes in results?
+      show_stacks:
+        selector:
+          boolean:
+        name: Show Stacks
+        description: Include online_unmounted (stacks) cabinets in results. Default false.
+        default: false
       extended:
         selector:
           boolean:
@@ -64,6 +70,7 @@ script:
         manifest_key: zen_library_manifest
         read_hidden: '{{ show_hidden | default(false) }}'
         read_extended: '{{ extended | default(false) }}'
+        read_stacks: '{{ show_stacks | default(false) }}'
         hide_labels:
         - hidden_volume
         - read_only_volume
@@ -113,10 +120,9 @@ script:
           endif %}\n  {%- endfor %}\n\n  {{ ns.by_cat | tojson }}\n{% endmacro %}\n\n{%-
           set result = namespace(data={}) %}\n\n{%- for ent in states.sensor | map(attribute='entity_id')
           | list %}\n  {%- set vars = state_attr(ent, 'variables') %}\n\n  {%- if vars
-          is mapping and (vars.get('AI_Cabinet_VolumeInfo') is not none) %}\n    {%-
+          is mapping and (vars.get('AI_Cabinet_VolumeInfo') is not none) and (states(ent) in ['online_mounted', 'Variables'] or (read_stacks and states(ent) == 'online_unmounted')) %}\n    {%-
           set _vi_raw = vars.AI_Cabinet_VolumeInfo -%}\n    {%- set _vi_norm = (_vi_raw
-          | from_json) if _vi_raw is string else _vi_raw -%}\n    {%- set info = _vi_norm.get('value',
-          _vi_norm) if _vi_norm is mapping else {} %}\n    {%- set st = states[ent]
+          | from_json) if _vi_raw is string else _vi_raw -%}\n    {%- set _vi_val = _vi_norm.get('value', {}) if _vi_norm is mapping else {} -%}\n    {%- set info = _vi_val if _vi_val is mapping else (_vi_val | from_json if _vi_val is string else {}) %}\n    {%- set st = states[ent]
           %}\n    {%- set friendly = st.attributes.friendly_name | default(ent) %}\n
           \   {%- set lc = st.last_changed.isoformat() %}\n    {%- set lu = st.last_updated.isoformat()
           %}\n    {%- set volume_labels = labels(ent) | default([]) %}\n\n    {%- set
@@ -145,7 +151,7 @@ script:
           \   {%- set readable = (not storage_warning) %}\n\n    {%- set drawer_index
           = build_drawer_index(vars) | trim | from_json %}\n    {%- set acls_obj = acls_by_category(info)
           | from_json %}\n\n    {%- set health_obj =\n      compute_health(info, pct_chars,
-          writeable, readable) | from_json\n    %}\n\n    {%- if read_extended %}\n      {%- set rec = {\n        'entity_id': ent,\n        'friendly_name': friendly,\n        'context': vars.get('_context', {}),\n        'metadata': {\n          'id': info.get('id'),\n          'schema_version': info.get('schema_version'),\n          'labels': volume_labels | sort,\n          'timestamps': { 'last_changed': lc, 'last_updated': lu }\n        },\n        'stats': { 'drawer_count': drawers | count },\n        'capacity': {\n          'chars_used': char_count, 'chars_max': max_chars,\n          'percent_used': pct_chars, 'warning': storage_warning\n        },\n        'access': { 'writeable': writeable, 'readable': readable },\n        'drawer_index': drawer_index,\n        'acls_by_category': acls_obj,\n        'health': health_obj\n      } %}\n    {%- else %}\n      {%- set rec = {\n        'entity_id': ent,\n        'friendly_name': friendly,\n        'id': info.get('id'),\n        'drawers': drawers | count,\n        'capacity': pct_chars | string + '%',\n        'status': health_obj.get('status', 'unknown'),\n        'writeable': writeable\n      } %}\n    {%- endif %}\n\n    {%- set result.data = result.data | combine({ ent: rec }) %}\n  {%- endif %}\n{%- endfor %}\n\n{{ result.data }}"
+          writeable, readable) | from_json\n    %}\n\n    {%- if read_extended %}\n      {%- set rec = {\n        'entity_id': ent,\n        'friendly_name': friendly,\n        'context': vars.get('_context', {}),\n        'metadata': {\n          'id': info.get('id'),\n          'schema_version': info.get('schema_version'),\n          'labels': volume_labels | sort,\n          'timestamps': { 'last_changed': lc, 'last_updated': lu }\n        },\n        'stats': { 'drawer_count': drawers | count },\n        'capacity': {\n          'chars_used': char_count, 'chars_max': max_chars,\n          'percent_used': pct_chars, 'warning': storage_warning\n        },\n        'access': { 'writeable': writeable, 'readable': readable },\n        'drawer_index': drawer_index,\n        'acls_by_category': acls_obj,\n        'health': health_obj\n      } %}\n    {%- else %}\n      {%- set rec = {\n        'entity_id': ent,\n        'friendly_name': friendly,\n        'id': info.get('id'),\n        'drawers': drawers | count,\n        'capacity': pct_chars | string + '%',\n        'status': 'needs_touch' if states(ent) == 'Variables' else health_obj.get('status', 'unknown'),\n        'writeable': writeable,\n        'legacy_schema': states(ent) == 'Variables',\n        'legacy_message': 'Pre-RC2 cab — data intact. Needs a schema touch to migrate to RP2 state machine (one-way). Fire any set_variable or use force_action to provision.' if states(ent) == 'Variables' else none\n      } %}\n    {%- endif %}\n\n    {%- set result.data = result.data | combine({ ent: rec }) %}\n  {%- endif %}\n{%- endfor %}\n\n{{ result.data }}"
     - event: set_variable_legacy
       event_data:
         key: '{{ manifest_key }}'
@@ -234,7 +240,7 @@ script:
   dojotools_zen_inspect:
     alias: Zen DojoTools Inspect
     mode: parallel
-    description: Inspect (4.0.0 RC2). Deep dive on one or more entities. Attributes
+    description: Inspect (4.5.x). Deep dive on one or more entities. Attributes
       are key-scanned for safety. Cabinet sensors expose header metadata only; use cabinet
       tools for full volume access.
     fields:

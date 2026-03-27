@@ -1,4 +1,4 @@
-# Zen DojoTools AdminTools — 4.5.0 'Meridian'
+# Zen DojoTools AdminTools — 4.5.5 'Ready Player Two'
 
 *Ring-2 administrative tools: component registration, cabinet repair, template management, and prompt configuration*
 
@@ -6,9 +6,9 @@
 
 ## Overview
 
-AdminTools is the **Ring-2 administrative layer** of ZenOS-AI. It handles tasks that fall outside normal runtime behavior: registering new Kung Fu components, repairing cabinets, pressing schema templates, and loading the AI's identity substrate.
+AdminTools is the **Ring-2 administrative layer** of ZenOS-AI. It handles tasks that fall outside normal runtime behavior: repairing cabinets, pressing schema templates, and loading the AI's identity substrate.
 
-Most tools in this module are **admin-only** — they are not exposed to the AI agent and should not be called by Friday during normal operation. The exception is `zen_dojotools_kungfu_writer`, which is fully MCP-exposed and is the correct way for Friday or any operator to register a new KFC component.
+All tools in this module are **admin-only** — they are not exposed to the AI agent and should not be called by Friday during normal operation. For KFC component registration (writing Dojo drawers), use `zen_dojotools_scribe` — it is a DojoTools script (fully MCP-exposed) and is the correct tool for Friday and operators alike.
 
 ---
 
@@ -16,96 +16,14 @@ Most tools in this module are **admin-only** — they are not exposed to the AI 
 
 | Script | Version | MCP-Exposed | Purpose |
 |---|---|---|---|
-| `zen_dojotools_kungfu_writer` | 4.5.0 | **Yes** | Register or update a Kung Fu component in the Dojo |
 | `zen_admintools_reset_template` | 1.1.0 | No | Press zen_template and kfc_template into cabinets |
 | `zen_admintools_reset_labels` | 4.5.0 | No | Nuclear: delete all zen_ labels and assignments, trigger Flynn rebuild |
 | `zen_admintools_cabinetadmin` | 4.5.0 | No | Inspect, restore, reset, hammer, init, or reset_all Ring-0 cabinets |
-| `zen_admintools_cabinetadmin_stamp` | 1.x | No | Factory-stamp or repair a cabinet's VolumeInfo drawer |
+| `zen_admintools_cabinetadmin_factory` | 1.x | No | Factory-stamp or repair a cabinet's VolumeInfo drawer |
 | `zen_admintools_kfc_migration_press` | 1.1.0 | No | One-time migration: seed scheduling fields into KFC drawers |
-| `zen_admintools_zenos_prompt_loader` | 4.5.0 | No | Load versioned Cortex, Directives, and Purpose (v27 = RC2, v29/latest = GA Ninja Fusion, v30 = Living Index) |
+| `zen_admintools_zenos_prompt_loader` | 4.5.5 | No | Load versioned Cortex, Directives, and Purpose (v32 = True Voice (default/latest), v30 = Living Index, v29 = Ninja Fusion, v27 = RC2) |
 
----
-
-## zen_dojotools_kungfu_writer
-
-The primary tool for registering a new Kung Fu Component (KFC) into the Zen Dojo Cabinet. This is the only AdminTools script accessible to AI agents.
-
-Each call creates or updates a drawer in the Dojo cabinet. That drawer becomes the component's canonical spec: it tells the Scheduler when to run, the Ninja Summarizer what data to gather, and the AI how to interpret what it finds.
-
-### Input Fields
-
-| Field | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `action` | select | Yes | `help` | `write` or `help` |
-| `kata_key` | text | write | — | Unique component ID, slugified (e.g., `hot_tub_manager`) |
-| `friendly_name` | text | write | — | Human-readable component title |
-| `component_summary` | text | No | — | One-sentence description of what this component monitors |
-| `label` | text | No | — | HyperIndex label used to discover relevant entities |
-| `command` | text | No | — | Library macro token (e.g., `~ALERTS~`) |
-| `trigger_subscriptions` | text | No | — | Comma-separated trigger IDs this component subscribes to |
-| `delay_seconds` | number | No | `0` | Stagger delay (0–300s, step 5) to spread inference load |
-| `enabled` | boolean | No | `true` | Maps to `meta.enabled`. Set to `false` to disable the component. |
-| `requires_cert` | text | No | — | Maps to `meta.requires.cert`. HALMark capability certificate required for dispatch. |
-| `requires_level` | number | No | — | Maps to `meta.requires.level`. Minimum licensure level (1–4) required for dispatch. |
-| `master_switch` | entity | No | — | **Deprecated** — use `enabled` (`meta.enabled`) instead. Legacy `input_boolean` gate; honored if present but no longer written by default. |
-| `tool` | text | No | — | Associated tool name |
-| `version` | text | No | — | Semantic version string |
-| `component_instructions` | text | No | — | Operational notes passed to the monk during summarization |
-| `more_info` | text | No | — | Extended context for the monk |
-| `confirm_action` | boolean | Yes | `false` | Must be `true` to execute a write |
-
-### Valid Trigger IDs
-
-```
-ha_start              daily_midnight        daily_noon
-hourly_trigger        quarter_hour          every_10_minutes
-every_5_minutes       home_mode_updates     alarm_panel
-door_opens_or_closes  lock_changes          window_opens_or_closes
-garage_door           home_occupancy_change force_summary
-force_ninja           force_supersummary    force_gc
-```
-
-> Hardware triggers (`nathan_bed_changes`, `kim_bed_changes`, `water_flow_stop`, `hot_tub_state`, `elec_panel_door_change`, `mb_wake`, `test_button`, `start_home_wake`, `start_home_evening`) are available in the trigger ID list but only active if you have added them to a custom scheduler. See `docs/examples/zen_dojotools_scheduler_custom.yaml`.
-
-### Actions
-
-**`help`** — Returns the live `kfc_template` schema from the Dojo cabinet. Safe to call anytime. Use this to see the current schema before writing a new component.
-
-**`write`** — Upserts the component drawer in the Dojo cabinet. Requires `confirm_action: true`. Idempotent — re-running with the same `kata_key` updates the existing drawer in place.
-
-### Response Format
-
-```json
-{
-  "status": "success",
-  "message": "KFC drawer written: hot_tub_manager",
-  "drawer": "hot_tub_manager",
-  "cabinet": "zen_dojo_cabinet"
-}
-```
-
-### Example: Register a New Component
-
-```yaml
-action: write
-kata_key: hot_tub_manager
-friendly_name: Hot Tub Manager
-enabled: true
-component_summary: Monitors hot tub temperature, chemistry, and filter status
-label: hot_tub
-command: ~HOT_TUB~
-trigger_subscriptions: quarter_hour, hot_tub_state
-delay_seconds: 30
-confirm_action: true
-```
-
-### Example: Inspect the KFC Schema
-
-```yaml
-action: help
-```
-
-Returns the live `kfc_template` — the canonical field reference for all KFC drawers.
+> **KFC registration:** `zen_dojotools_kungfu_writer` has been removed. Use `zen_dojotools_scribe` — see `dojotools_scribe.yaml` for full documentation.
 
 ---
 
@@ -169,16 +87,19 @@ Two tool calls. Order matters — labels first, then cabinets.
 
 ## zen_admintools_cabinetadmin
 
-Ring-2 cabinet maintenance tool. Supports inspecting, restoring, resetting, and hammering the 14 Ring-0 system cabinets.
+Ring-2 cabinet maintenance tool. Provisions new expansion cabinets, inspects cabinet state, recovers broken cabinets, and manages mount state. Also handles Ring-0 system cabinet repair and nuclear resets.
 
-**Not MCP-exposed.** Admin use only. Destructive modes require explicit confirmation.
+**Not MCP-exposed.** Admin use only. Destructive modes require explicit safety gates — do not bypass them. Run `mode: help` for a full operation guide.
 
 ### Input Fields
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `mode` | select | `inspect` | `inspect`, `restore`, `reset`, `hammer`, `init`, `reset_all` |
-| `target_cabinet` | entity (sensor) | — | Single cabinet to target; leave empty to target all Ring-0 cabinets |
+| `mode` | select | `help` | See modes table below |
+| `target_cabinet` | entity (sensor) | — | Cabinet to operate on; leave empty for Ring-0 scope (inspect) or not applicable (mount_status, reset_all) |
+| `cab_type` | text | `''` | Cabinet type for `init` and `hammer + confirm_init`. E.g. `AI Data Storage Cabinet`, `AI Household Cabinet` |
+| `confirm_action` | boolean | `false` | Required for `init` when target state is `unknown` (no recorder history) |
+| `confirm_init` | boolean | `false` | `hammer` only — re-stamp fresh VolumeInfo immediately after wipe. Set `cab_type` accordingly |
 | `hammer_ok` | boolean | `false` | Required `true` for `hammer` mode |
 | `confirm` | boolean | `false` | Required `true` for `reset_all` |
 
@@ -186,12 +107,29 @@ Ring-2 cabinet maintenance tool. Supports inspecting, restoring, resetting, and 
 
 | Mode | Destructive | Description |
 |---|---|---|
-| `inspect` | No | List all drawers in targeted cabinet(s) with counts |
-| `restore` | No | Stamp a `_restored_marker` drawer if cabinet is empty |
-| `reset` | **Yes** | Clear all drawers in targeted cabinet(s) |
-| `hammer` | **Yes** | Clear all drawers + stamp `_hammered` marker. Requires `hammer_ok: true` |
-| `init` | **Yes** | Initialize cabinet with `AI_Cabinet_VolumeInfo` drawer; clears if targeting all |
-| `reset_all` | **NUCLEAR** | Wipe all Ring-0 cabinets + reseed schemas + trigger Flynn bootstrap. `confirm: true` required |
+| `help` | No | Return structured guide: all modes, when to use, field reference |
+| `inspect` | No | Read all drawers on the target cabinet and return their values. Always run before any destructive op |
+| `init` | Conditional | Stamp a virgin cabinet with VolumeInfo + GUID. Refuses if already initialized (`good`) or has residue (`potentially_bad` — hammer first). Requires `confirm_action: true` when state is `unknown` |
+| `hammer` | **Yes** | Clear all drawers + stamp `_hammered` marker. Set `confirm_init: true` to re-stamp immediately. Requires `hammer_ok: true` |
+| `restore` | No | Attempt recovery of a cabinet that lost VolumeInfo after HA restart |
+| `reset` | **Yes** | Clear all drawers with no audit marker |
+| `mount_status` | No | Return mounted/unmounted state for all `zen_cabinet` entities. No target needed |
+| `repair_mount` | No | Force `meta.mounted: true` on a stuck cabinet. Does not touch drawer content |
+| `repair_dismount` | No | Force `meta.mounted: false` on a stuck cabinet. Mirror of `repair_mount` |
+| `reset_all` | **NUCLEAR** | Wipe all Ring-0 cabinets + reseed schemas + trigger Flynn bootstrap. `confirm: true` required. User and expansion cabinets untouched |
+| `flip_schema_version` | No | Toggle `cab_schema_version` in syscab (0=legacy, 1+=mount-aware). Controls Flynn operating mode |
+
+### Init classifier
+
+`init` mode classifies the target before acting:
+
+| Class | Conditions | Action |
+|---|---|---|
+| `virgin` | No VolumeInfo, no `_label_index`, no `_context`, no non-system drawers, no GUID | Delegate to `cabinetadmin_factory` → stamp |
+| `good` | VolumeInfo present + GUID present | Refuse: `already_initialized` |
+| `potentially_bad` | Any other residue | Refuse: `repair_required` — hammer first |
+
+`unavailable` state (recorder not yet restored) always blocks init. `unknown` state (no recorder history) blocks unless `confirm_action: true`.
 
 ### Ring-0 Cabinets
 
@@ -225,7 +163,7 @@ sensor.zenos_default_ai_user_history_cabinet
 
 ---
 
-## zen_admintools_cabinetadmin_stamp
+## zen_admintools_cabinetadmin_factory
 
 Factory tool for stamping or repairing a cabinet's `AI_Cabinet_VolumeInfo`, `_label_index`, and `_zen_relationships` drawers.
 
@@ -265,6 +203,10 @@ Use this when a cabinet is missing its metadata header — for example, after cr
 - Cabinet metadata is corrupt or missing after an upgrade
 - GUID needs to be regenerated (e.g., cloned from another install)
 
+> **Backup first.** While cabinetadmin_factory is designed to preserve existing data (Repair/Restamp path preserves GUID and mounts), a full HA backup before any schema repair operation is strongly recommended. Cabinet data is not version-controlled — a bad stamp cannot be undone except from backup.
+
+> **RP2 note.** On a live RP2 installation, any write to `AI_Cabinet_VolumeInfo` triggers a full state re-derivation on the cabinet sensor — the state will briefly show `init` until the boot-touch event advances it. `cabinetadmin_factory` automatically fires `cabinet_boot_touch` after every write (both Init and Repair paths), so the cabinet will advance to `online_mounted` within seconds. No manual intervention needed.
+
 ---
 
 ## zen_admintools_kfc_migration_press
@@ -289,7 +231,7 @@ This script has already been run on all production installs. It exists for refer
 
 ### When to Use
 
-Only needed if you are importing KFC drawers that were written before KF4 RC2. New installs and components written via `zen_dojotools_kungfu_writer` already include these fields.
+Only needed if you are importing KFC drawers that were written before KF4 RC2. New installs and components written via `zen_dojotools_scribe` already include these fields.
 
 ---
 
@@ -307,6 +249,14 @@ Loads the AI's identity substrate: **Cortex**, **Directives**, and **Purpose**. 
 | `Directives` | 14 behavioral rules: tone, safety, confirmation patterns, tool preferences |
 | `Cortex` | Full reasoning substrate — schema references, DojoTools index, behavior rules, error policy, library access patterns |
 
+### System Cabinet Authorization
+
+`sensor.zenos_system_cabinet` (syscab) is **hard read-only** to `zen_dojotools_filecabinet` — all write actions are wire-blocked, no force bypass. The prompt loader is the designated write path for syscab. This is intentional: it prevents any agent or automation from rewriting the AI's own prompt substrate at runtime.
+
+On every run, the prompt loader also stamps `meta.mounted: true` on syscab — ensuring the cabinet is in `online_mounted` state after load. This is idempotent and safe to re-run.
+
+> **Backup first.** Before running the prompt loader against a production install — especially a version upgrade — take a full HA backup. The syscab Cortex is not version-controlled at the drawer level. If a load is interrupted or the wrong version is selected, restoring from backup is the only recovery path.
+
 ### When to Use
 
 - After a fresh install, if the Cortex is empty or missing
@@ -317,7 +267,7 @@ Loads the AI's identity substrate: **Cortex**, **Directives**, and **Purpose**. 
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `cortex_version` | select | `latest` | `latest` or `29` = 2026 GA Ninja Fusion. `30` = Living Index (opt-in). `27` = 2026 RC2 |
+| `cortex_version` | select | `latest` | `latest` or `32` = True Voice (GA default). `30` = Living Index. `29` = Ninja Fusion. `27` = RC2 |
 | `ship_zen_system` | boolean | `true` | If `true`, also writes the `zen_system` KFC drawer after loading. Set `false` to load Cortex only without touching the Dojo. |
 
 Use the `cortex_version` field to select which version to load. The three primitives (Purpose, Directives, Cortex) are versioned together as a set:
@@ -325,10 +275,11 @@ Use the `cortex_version` field to select which version to load. The three primit
 | Version | Codename | Notes |
 |---|---|---|
 | `27` | Quiet Fusion (RC2) | 2026 RC2 — 4.2.x series |
-| `29` / `latest` | Ninja Fusion | 2026 GA — includes Context Resolution directive and scope-aware context stack |
-| `30` | Living Index | Opt-in — adds label policy, memory policy, expanded audit schema, and `zen_dojotools_labels` as a core tool. Requires Friday Memory Delta Spec installed in AI user cabinet. |
+| `29` | Ninja Fusion | 2026 GA — Context Resolution directive and scope-aware context stack |
+| `30` | Living Index | Label policy, memory policy, expanded audit schema, `zen_dojotools_labels` as core tool. Requires Friday Memory Delta Spec. |
+| `32` / `latest` | True Voice | 4.5.5 GA default — signal frame, environment schema, native wake path |
 
-Cortex 30 is an explicit opt-in. Selecting `latest` or passing no `cortex_version` loads v29.
+Selecting `latest` or passing no `cortex_version` loads v32.
 
 ### Custom Prompt Material
 

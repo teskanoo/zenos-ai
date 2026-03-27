@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI — Label Health
-# Version 4.0.0 RC2
+# Version 4.5.x
 #
 # sensor.zen_label_health
 #   Validates the presence and health of all Zen labels against a canonical
@@ -38,6 +38,21 @@ template:
         # ATTRIBUTES
         #######################################################################
         attributes:
+
+          reason: >-
+            {%- import 'zenos_ai/zenos_health.jinja' as HEALTH -%}
+            {%- set missing = HEALTH.missing_label_ids() | from_json([]) -%}
+            {%- set unassigned = HEALTH.unassigned_label_ids() | from_json([]) -%}
+            {%- set unhealthy = HEALTH.unhealthy_label_ids() | from_json([]) -%}
+            {%- if missing | count > 0 -%}
+              Required label(s) missing from HA: {{ missing | join(', ') }} — trigger Flynn stepgate to create them.
+            {%- elif unhealthy | count > 0 -%}
+              Entities assigned to label(s) {{ unhealthy | join(', ') }} are unavailable — check entity configuration.
+            {%- elif unassigned | count > 0 -%}
+              Required label(s) exist but have no entities assigned: {{ unassigned | join(', ') }} — trigger Flynn stepgate to wire them.
+            {%- else -%}
+              All required labels present and healthy.
+            {%- endif -%}
 
           # ALWAYS stored as a list, not CSV
           required_labels: >

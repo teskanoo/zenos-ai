@@ -1,9 +1,9 @@
 ###############################################################################
 # ZenOS-AI DojoTools: FileCabinet
-# Version: 4.5.0
+# Version: 4.5.5
 #
 # Scripts:
-#   zen_dojotools_filecabinet — Cabinet volume K/V storage engine (v4.0.0 RC2)
+#   zen_dojotools_filecabinet — Cabinet volume K/V storage engine (v4.5.x)
 #
 # MIGRATED FROM: scripts.yaml (2026-03-06)
 #
@@ -35,6 +35,7 @@ script:
         label_input_list: "{{ [] }}"
         read_volume: "{{ {} }}"
         force_action: "{{ force_action | default(false) }}"
+        create_label: "{{ create_label | default(false) }}"
         action_type: "{{ action_type | default('help') }}"
         volume_entity: >
           {% set _veid = volume_entity_id | default('') %}
@@ -45,7 +46,14 @@ script:
           {% else %}
             ''
           {% endif %}
-        key: "{{ key | default('') | slugify }}"
+        raw_key: "{{ key | default('') | trim }}"
+        key: >-
+          {%- set _rk = key | default('') | trim -%}
+          {%- if _rk.startswith('_') and (force_action | default(false)) -%}
+            _{{ _rk[1:] | slugify }}
+          {%- else -%}
+            {{ _rk | slugify }}
+          {%- endif -%}
         raw_value: "{{ value | default('') }}"
         label_input: "{{ label_input | default('') }}"
         label_targets: "{{ label_targets | default('') }}"
@@ -160,7 +168,10 @@ script:
               {% set try_json = true %}
             {% endif %}
             {% if try_json %}
-              {% set parsed = temp | from_json %}
+              {# from_json(none) — returns none on invalid JSON instead of raising ValueError.
+                 Without the default, embedded markdown/newlines in a JSON blob crash the
+                 entire scheduler run (incident: 2026-03-23 zen_system ha_start deadlock). #}
+              {% set parsed = temp | from_json(none) %}
               {% if parsed is none %}
                 {% set error = "Write failed: Input value is not valid JSON. Please reformat using proper JSON syntax (e.g., escaped quotes, valid brackets)." %}
               {% endif %}
@@ -173,7 +184,7 @@ script:
                 | replace('\\t', '\\\\t')
               %}
               {% set wrapped = '"' ~ js ~ '"' %}
-              {% set parsed = wrapped | from_json %}
+              {% set parsed = wrapped | from_json(none) %}
               {% if parsed is none %}
                 {% set error = "Write failed: Could not coerce string to JSON—possibly invalid input or encoding." %}
               {% endif %}
@@ -185,7 +196,7 @@ script:
             {{ parsed }}
           {% endif %}
         parsed_entity_labels: >
-          {% if is_create or is_update %}
+          {% if is_create or is_update or is_relabel %}
             {% if label_input is string %}
               {% set s = label_input | replace('\\n', ',') %}
               {{
@@ -219,7 +230,7 @@ script:
             []
           {% endif %}
         all_system_labels: >
-          {% if is_create or is_update %}
+          {% if is_create or is_update or is_relabel %}
             {{ labels() | map('lower') | sort | list }}
           {% else %}
             []
@@ -227,14 +238,14 @@ script:
         dropped_labels: "{{ parsed_entity_labels | reject('in', all_system_labels) | sort | list }}"
         accepted_entity_labels: "{{ parsed_entity_labels | select('in', all_system_labels) | sort | list }}"
         updated_label_index: >
-          {% if (is_create | default(false)) or (is_update | default(false)) %}
+          {% if (is_create | default(false)) or (is_update | default(false)) or (is_relabel | default(false)) %}
             {%- set vol = (prewrite_volume if prewrite_volume is mapping else initial_volume) -%}
             {%- set current_index = vol.get('_label_index', {}).get('value', {}) -%}
             {%- set current = current_index if current_index is mapping else {} -%}
           
             {%- set drawer_name = key | lower | slugify -%}
              {%- set new_labels = (
-                    accepted_entity_labels
+                    parsed_entity_labels
                     | map('string')
                     | map('lower')
                     | map('slugify')
@@ -347,6 +358,9 @@ script:
             {% if no_autorecycle %}
               {% set meta = meta | combine({'no_autorecycle': true}) %}
             {% endif %}
+            {% if 'zen_scroll' in accepted_entity_labels %}
+              {% set meta = meta | combine({'ro': true}) %}
+            {% endif %}
             {% if drawer_acl is mapping and drawer_acl | length > 0 %}
               {% set meta = meta | combine({'acl': drawer_acl}) %}
             {% endif %}
@@ -390,12 +404,37 @@ script:
           {%- else -%}
           {}
           {%- endif -%}
+        existing_drawer_is_ro: >
+          {%- set _e = initial_volume.get(key, {}) if initial_volume is mapping else {} -%}
+          {%- set _m = _e.get('meta', {}) if _e is mapping else {} -%}
+          {%- set _m = _m if _m is mapping else (_m | from_json if _m is string else {}) -%}
+          {{ _m.get('ro', false) == true if _m is mapping else false }}
+        cabinet_ro_blocked: >
+          {%- set _vi_raw = initial_volume.get('AI_Cabinet_VolumeInfo', {}) if initial_volume is mapping else {} -%}
+          {%- set _vi_raw = _vi_raw if _vi_raw is mapping else {} -%}
+          {%- set _vi = _vi_raw.get('value', _vi_raw) if _vi_raw is mapping else {} -%}
+          {%- set _vi = _vi if _vi is mapping else (_vi | from_json if _vi is string else {}) -%}
+          {{ _vi.get('flags', {}).get('cabinet_ro', false) == true }}
+        # Slugified names of system drawers that FileCabinet must never write.
+        # Keys starting with _ are caught by the _ guard above; these catch
+        # non-_ variants that slugify to the same system drawer name.
+        # meta: mount state — managed by mount_cabinet/dismount_cabinet only.
+        # label_index: slugified _label_index — internal label registry.
+        # zen_relationships: slugified _zen_relationships — relationship graph.
+        # ai_cabinet_volumeinfo: VolumeInfo — cabinetadmin_factory / set_variable_legacy only.
+        protected_system_drawers:
+          - ai_cabinet_volumeinfo
+          - label_index
+          - zen_relationships
+          - meta
+        is_protected_drawer: "{{ is_write_action and key in protected_system_drawers }}"
         is_create_new: "{{ action_type == 'create' and key != '' and not key_exists_initial}}"
         is_force_update_new: "{{ action_type == 'update' and key != '' and not key_exists_initial and force_action}}"
         is_force_create_over_existing: "{{ action_type == 'create' and key != '' and key_exists_initial and force_action}}"
         is_create_path: "{{ is_create_new or is_force_update_new or is_force_create_over_existing}}"
         is_update_path: "{{ is_update and key_exists_initial}}"
-        is_write_action: "{{ action_type in ['create','update','delete','move','copy']}}"
+        is_write_action: "{{ action_type in ['create','update','delete','move','copy','mount_cabinet','dismount_cabinet','relabel']}}"
+        is_relabel: "{{ action_type == 'relabel' }}"
         json_parse_failed: >
           {{ (parsed_value is string and parsed_value.startswith('Write failed')) 
               or (parsed_value is mapping and (parsed_value.get('error','') | string).startswith('Write failed'))
@@ -412,7 +451,7 @@ script:
           condition: template
           value_template: >
             {{
-              (action_type not in ['manifest', 'read', 'delete', 'move', 'copy', 'clone', 'set_mount', 'remove_mount', 'help' ])
+              (action_type not in ['manifest', 'read', 'delete', 'move', 'copy', 'clone', 'set_mount', 'remove_mount', 'mount_cabinet', 'dismount_cabinet', 'set_cabinet_ro', 'relabel', 'help' ])
                 and (
                       (parsed_value is string and parsed_value.startswith('Write failed'))
                       or
@@ -440,10 +479,104 @@ script:
               }}
         - stop: JSON Parse Failure
           response_variable: fatal_response
+    # ── create_label: auto-create unknown HA labels before write ──────────────
+    - if: "{{ create_label | bool and is_write_action and dropped_labels | length > 0 }}"
+      then:
+        - repeat:
+            for_each: "{{ dropped_labels }}"
+            sequence:
+              - action: homeassistant.create_label
+                data:
+                  name: "{{ repeat.item }}"
     - choose:
+      # ── WIRE-LEVEL LOCKOUT: SYSTEM CABINET ────────────────────────────────────
+      # sensor.zenos_system_cabinet is ALWAYS read-only to this tool. No exceptions.
+      # No force_action bypass. No caller_token override.
+      #
+      # WHY: The system cabinet holds the AI prompt substrate (Purpose, Directives,
+      # Cortex). If the agent could write here, it could rewrite its own prompt.
+      # This is the wire-level enforcement of that constraint — the tool physically
+      # cannot write to syscab regardless of caller, mode, or flags.
+      #
+      # Legitimate syscab writes (prompt_loader, Flynn bootstrap, cabinetadmin)
+      # fire set_variable_zenos_system_cabinet directly — they never touch this tool.
+      # ──────────────────────────────────────────────────────────────────────────
+      - conditions:
+        - alias: Error - Syscab hard RO (wire-level lockout)
+          condition: template
+          value_template: "{{ is_write_action and volume_entity == 'sensor.zenos_system_cabinet' }}"
+        sequence:
+        - variables:
+            final_response:
+              status: error
+              failure: syscab_write_blocked
+              message: >-
+                Write blocked: sensor.zenos_system_cabinet is read-only to FileCabinet.
+                This cabinet holds the AI prompt substrate and cannot be written by
+                any agent-accessible tool. Use the designated admin scripts for
+                system cabinet operations.
+              volume_entity: "{{ volume_entity }}"
+              key: "{{ key }}"
+        - stop: Syscab write blocked
+          response_variable: final_response
+      - conditions:
+        - alias: Error - Reserved key (leading underscore)
+          condition: template
+          value_template: "{{ is_write_action and raw_key.startswith('_') and not force_action }}"
+        sequence:
+        - variables:
+            final_response:
+              status: error
+              failure: reserved_key
+              message: >-
+                Write blocked: key '{{ raw_key }}' starts with '_'.
+                System-reserved keys require force_action: true to write via FileCabinet.
+                Use the appropriate admin tool or pass force_action: true for system drawer operations.
+              key_raw: "{{ raw_key }}"
+              key_slugified: "{{ key }}"
+              volume_entity: "{{ volume_entity }}"
+        - stop: Reserved key
+          response_variable: final_response
+      - conditions:
+        - alias: Error - Protected system drawer
+          condition: template
+          value_template: "{{ is_protected_drawer }}"
+        sequence:
+        - variables:
+            final_response:
+              status: error
+              failure: protected_drawer
+              message: >-
+                Write blocked: key '{{ raw_key }}' slugifies to '{{ key }}'
+                which is a protected system drawer. FileCabinet cannot write
+                system drawers ({{ protected_system_drawers | join(', ') }}).
+                Use the appropriate admin tool for this operation.
+              key_raw: "{{ raw_key }}"
+              key_slugified: "{{ key }}"
+              volume_entity: "{{ volume_entity }}"
+              protected_drawers: "{{ protected_system_drawers }}"
+        - stop: Protected system drawer
+          response_variable: final_response
+      - conditions:
+        - alias: Error - Cabinet is read-only
+          condition: template
+          value_template: "{{ is_write_action and cabinet_ro_blocked }}"
+        sequence:
+        - variables:
+            final_response:
+              status: error
+              failure: cabinet_ro
+              message: >-
+                Write blocked: cabinet '{{ volume_entity }}' is marked read-only
+                (flags.cabinet_ro: true). Writes must go through the designated
+                admin tool for this cabinet.
+              volume_entity: "{{ volume_entity }}"
+              key: "{{ key }}"
+        - stop: Cabinet read-only
+          response_variable: final_response
       - conditions:
         - condition: template
-          value_template: "{{ action_type in ['create','update','delete','move','copy','set_mount','remove_mount'] }}"
+          value_template: "{{ action_type in ['create','update','delete','move','copy','set_mount','remove_mount','mount_cabinet','dismount_cabinet'] }}"
           alias: Is a 'write' action
         sequence:
         - variables:
@@ -530,6 +663,17 @@ script:
           response_variable: final_response
       - conditions:
         - condition: template
+          value_template: "{{ action_type in ['create', 'update', 'delete'] and key != '' and key_exists_initial and existing_drawer_is_ro }}"
+          alias: Error - Read-only drawer (zen_scroll)
+        sequence:
+        - variables:
+            final_response:
+              status: error
+              message: "Write blocked: drawer '{{ key }}' is read-only (zen_scroll). Use CabinetAdmin set_ro_flag to clear before writing."
+        - stop: Read-only drawer
+          response_variable: final_response
+      - conditions:
+        - condition: template
           value_template: "{{ action_type == 'set_mount' and (key == '' or target_guid == '') }}"
           alias: Error - set_mount missing key or target_guid
         sequence:
@@ -594,9 +738,23 @@ script:
                   destination drawer with action."
                 move: Requirements and usage identical to Copy,  will also attempt a
                   delete source after copy.
+                set_cabinet_ro: "Stamps cabinet_ro: true in AI_Cabinet_VolumeInfo.flags for the
+                  target cabinet. Idempotent. BLOCKED on sensor.zenos_system_cabinet (syscab is
+                  hard RO — use zen_admintools_zenos_prompt_loader or zen_admintools_cabinetadmin_factory
+                  to update syscab). No force_action bypass for syscab. Requires volume_entity."
+                relabel: "Updates _label_index only for the specified drawer — does NOT touch the
+                  drawer value. No value param required (ignored if supplied). Use when you need to
+                  update entity labels on a drawer without re-serializing or re-validating its value.
+                  Bypasses JSON parse check. Drawer must exist; returns drawer_not_found if absent."
                 help: Returns help
+              system_cabinet_note: "sensor.zenos_system_cabinet is HARD READ-ONLY to FileCabinet.
+                This is a wire-level lockout — no exceptions, no force_action bypass. It holds the
+                AI prompt substrate (Purpose, Directives, Cortex). To update prompt primitives use
+                zen_admintools_zenos_prompt_loader. For VolumeInfo repair use
+                zen_admintools_cabinetadmin_factory. This prevents the AI from rewriting its own
+                directives."
               about:
-                version: 4.0.0 RC2
+                version: 4.5.x
                 branch: beta
                 manual: "summary: >\n  The Zen DojoTools File Cabinet is your go-to
                   tool for managing data in volumes.\n  Volumes are digital storage
@@ -848,12 +1006,18 @@ script:
                  and (volume_entity not in [None, '', '*'])
                  and (key not in [None, '', '*'])
             %}
-            
+
+            {% set is_wildcard_read =
+                 (action_type == 'read')
+                 and (volume_entity not in [None, '', '*'])
+                 and (key in [None, '', '*'])
+            %}
+
             {% set has_labels = normalized_label_targets is iterable and (normalized_label_targets | length) > 0 %}
-            
+
             {% set is_label_read = (action_type == 'read') and has_labels %}
-            
-            {{ is_direct_read or is_label_read }}
+
+            {{ is_direct_read or is_wildcard_read or is_label_read }}
         sequence:
         - variables:
             ignore_label_prefixes:
@@ -871,16 +1035,16 @@ script:
               {% else %}
               
                 {#- --------------------------------------------------
-                    CASE 1: DIRECTORY LISTING ("", "*")
+                    CASE 1: WILDCARD READ ("", "*") — return all drawers with full values
                     -------------------------------------------------- -#}
                 {% if parsed_key in ['', '*'] %}
-                  {%- set ns_draw = namespace(drawers=[]) -%}
+                  {%- set ns_draw = namespace(result={}) -%}
                   {%- for d in vol.keys() | list -%}
                     {%- if d not in always_hide_drawers and not (d[:1] in ['_', '.']) -%}
-                      {%- set ns_draw.drawers = ns_draw.drawers + [d] -%}
+                      {%- set ns_draw.result = ns_draw.result | combine({d: vol[d]}) -%}
                     {%- endif -%}
                   {%- endfor -%}
-                  {{ {"drawers": ns_draw.drawers, "label_index": label_index} }}
+                  {{ ns_draw.result }}
               
                 {#- --------------------------------------------------
                    CASE 2: DIRECT KEY READ
@@ -918,6 +1082,7 @@ script:
           metadata: {}
           data:
             show_hidden_volumes: "{{ show_hidden_volumes }}"
+            show_stacks: "{{ show_stacks | default(false) }}"
           response_variable: final_response
         - stop: Manifest read complete
           response_variable: final_response
@@ -946,7 +1111,7 @@ script:
         - choose:
           - conditions:
             - condition: template
-              value_template: '{{ accepted_entity_labels | length > 0 }}'
+              value_template: '{{ parsed_entity_labels | length > 0 }}'
               alias: Valid Labels
             sequence:
             - alias: Update the index
@@ -987,8 +1152,8 @@ script:
               verification:
                 confirmed: "{{ write_verified }}"
               warnings: >
-                {%- if dropped_labels | length > 0 -%}
-                  Warning: {{ dropped_labels | length }} ignored label(s): {{ dropped_labels }}
+                {%- if dropped_labels | length > 0 and not create_label -%}
+                  Warning: {{ dropped_labels | length }} ignored label(s): {{ dropped_labels }}. Pass create_label: true to auto-create.
                 {%- else -%}
                   None
                 {%- endif -%}
@@ -1021,7 +1186,7 @@ script:
         - choose:
           - conditions:
             - condition: template
-              value_template: '{{ accepted_entity_labels | length > 0 }}'
+              value_template: '{{ parsed_entity_labels | length > 0 }}'
               alias: Valid Labels
             sequence:
             - alias: Update the Index
@@ -1032,15 +1197,20 @@ script:
                 set_timestamp: true
                 volume_entity: "{{ volume_entity }}"
         - alias: Read after Write Verification (update)
+          # Wait for the NEW value specifically — not just "entry exists".
+          # Old: entry is mapping → fires immediately for updates (old value satisfies it).
+          # Fix: entry.get('value') == new_entry.value waits for the updated value.
+          # Timeout 10s: post-reload propagation can exceed 5s.
+          # See: bug_filecabinet_confirmed_false_negative.md, incident 2026-03-23.
           wait_template: >
             {%- set vol = state_attr(volume_entity, 'variables') -%}
             {%- if vol is mapping -%}
-              {%- set entry = vol.get(key) -%}
-              {{ entry is mapping }}
+              {%- set entry = vol.get(key, {}) -%}
+              {{ entry.get('value') == new_entry.value }}
             {%- else -%}
               false
             {%- endif -%}
-          timeout: 00:00:05
+          timeout: 00:00:10
           continue_on_timeout: true
         - variables:
             verify_volume: "{{ state_attr(volume_entity, 'variables') | default({}, true) }}"
@@ -1219,8 +1389,8 @@ script:
             src_drawer_value: >-
               {%- set ns = namespace(d=src_drawer_data) -%}
               {%- if ns.d is string and (ns.d | trim)[:1] in ['{', '['] -%}
-                {%- set _parsed = ns.d | from_json -%}
-                {%- if _parsed is not string -%}
+                {%- set _parsed = ns.d | from_json(none) -%}
+                {%- if _parsed is not none and _parsed is not string -%}
                   {%- set ns.d = _parsed -%}
                 {%- endif -%}
               {%- endif -%}
@@ -1269,7 +1439,7 @@ script:
         - choose:
           - conditions:
             - condition: template
-              value_template: '{{ accepted_entity_labels | length > 0 }}'
+              value_template: '{{ parsed_entity_labels | length > 0 }}'
               alias: Valid Labels
             sequence:
             - alias: Update the Index
@@ -1507,8 +1677,8 @@ script:
                   {%- set src = initial_volume.get(repeat.item) -%}
                   {%- set ns = namespace(d=src) -%}
                   {%- if ns.d is string and (ns.d | trim)[:1] in ['{', '['] -%}
-                    {%- set _parsed = ns.d | from_json -%}
-                    {%- if _parsed is not string -%}
+                    {%- set _parsed = ns.d | from_json(none) -%}
+                    {%- if _parsed is not none and _parsed is not string -%}
                       {%- set ns.d = _parsed -%}
                     {%- endif -%}
                   {%- endif -%}
@@ -1573,7 +1743,9 @@ script:
               {% for eid in label_entities('zen_cabinet') | list %}
                 {% set vinfo = state_attr(eid, 'variables') %}
                 {% if vinfo is mapping %}
-                  {% set vi = vinfo.get('AI_Cabinet_VolumeInfo', {}).get('value', {}) %}
+                  {%- set _vi_raw = vinfo.get('AI_Cabinet_VolumeInfo', {}) -%}
+                  {%- set vi = _vi_raw.get('value', {}) if _vi_raw is mapping else {} -%}
+                  {%- set vi = vi if vi is mapping else (vi | from_json if vi is string else {}) -%}
                   {% if vi is mapping and vi.get('id', '') == target_guid %}
                     {% set ns.found = eid %}
                   {% endif %}
@@ -1720,6 +1892,274 @@ script:
                 confirmed: "{{ remove_verified }}"
         - stop: remove_mount complete
           response_variable: final_response
+      - conditions:
+        - condition: template
+          value_template: "{{ action_type == 'mount_cabinet' }}"
+          alias: Mount Cabinet
+        sequence:
+        - variables:
+            cab_current_state: "{{ states(volume_entity) }}"
+        - choose:
+          - conditions:
+            - condition: template
+              value_template: "{{ cab_current_state == 'init' }}"
+              alias: Cabinet not loaded yet
+            sequence:
+            - variables:
+                final_response:
+                  status: error
+                  message: "mount_cabinet failed: '{{ volume_entity }}' is in 'init' state — VolumeInfo not yet loaded."
+            - stop: Cabinet in init
+              response_variable: final_response
+          - conditions:
+            - condition: template
+              value_template: "{{ cab_current_state == 'online_mounted' }}"
+              alias: Already mounted — idempotent
+            sequence:
+            - variables:
+                final_response:
+                  status: success
+                  message: "Cabinet '{{ volume_entity }}' is already mounted (idempotent)."
+                  state: online_mounted
+            - stop: Already mounted
+              response_variable: final_response
+        - event: set_variable_legacy
+          event_data:
+            key: meta
+            value: "{{ {'mounted': true} }}"
+            volume_entity: "{{ volume_entity }}"
+            set_timestamp: true
+        - alias: mount_cabinet state transition wait
+          wait_template: "{{ states(volume_entity) == 'online_mounted' }}"
+          timeout: 00:00:05
+          continue_on_timeout: true
+        - variables:
+            mount_verified: "{{ states(volume_entity) == 'online_mounted' }}"
+        - variables:
+            final_response:
+              status: "{{ 'success' if mount_verified else 'warning' }}"
+              message: >
+                {%- if mount_verified -%}
+                  Cabinet '{{ volume_entity }}' mounted (verified).
+                {%- else -%}
+                  Mount write issued for '{{ volume_entity }}' but state not yet confirmed.
+                {%- endif -%}
+              state: "{{ states(volume_entity) }}"
+              verification:
+                confirmed: "{{ mount_verified }}"
+        - event: zen_event
+          event_data:
+            event:
+              kind: cabinet_mounted
+              component: "{{ volume_entity }}"
+              severity: info
+              summary: "Cabinet '{{ volume_entity }}' mounted."
+        - stop: mount_cabinet complete
+          response_variable: final_response
+      - conditions:
+        - condition: template
+          value_template: "{{ action_type == 'dismount_cabinet' }}"
+          alias: Dismount Cabinet
+        sequence:
+        - variables:
+            _default_label_slugs:
+              - zen_default_household_cabinet
+              - zen_default_family_cabinet
+              - zen_default_user_cabinet
+              - zen_default_ai_user_cabinet
+        - variables:
+            cab_is_default: >
+              {%- set ns = namespace(v=false) -%}
+              {%- for lbl in _default_label_slugs -%}
+                {%- if volume_entity in (label_entities(lbl) | list) -%}
+                  {%- set ns.v = true -%}
+                {%- endif -%}
+              {%- endfor -%}
+              {{ ns.v }}
+            cab_current_state: "{{ states(volume_entity) }}"
+        - choose:
+          - conditions:
+            - condition: template
+              value_template: "{{ cab_is_default }}"
+              alias: Dismount lock — default label holder
+            sequence:
+            - variables:
+                final_response:
+                  status: error
+                  message: "dismount_cabinet blocked: '{{ volume_entity }}' holds a zen_default_* label. Transfer the default label before dismounting."
+            - stop: Default label lock
+              response_variable: final_response
+          - conditions:
+            - condition: template
+              value_template: "{{ cab_current_state == 'init' }}"
+              alias: Cabinet not loaded
+            sequence:
+            - variables:
+                final_response:
+                  status: error
+                  message: "dismount_cabinet failed: '{{ volume_entity }}' is in 'init' state — VolumeInfo not yet loaded."
+            - stop: Cabinet in init
+              response_variable: final_response
+          - conditions:
+            - condition: template
+              value_template: "{{ cab_current_state == 'online_unmounted' }}"
+              alias: Already dismounted — idempotent
+            sequence:
+            - variables:
+                final_response:
+                  status: success
+                  message: "Cabinet '{{ volume_entity }}' is already dismounted (in the stacks, idempotent)."
+                  state: online_unmounted
+            - stop: Already dismounted
+              response_variable: final_response
+        - event: set_variable_legacy
+          event_data:
+            key: meta
+            value: "{{ {'mounted': false} }}"
+            volume_entity: "{{ volume_entity }}"
+            set_timestamp: true
+        - alias: dismount_cabinet state transition wait
+          wait_template: "{{ states(volume_entity) == 'online_unmounted' }}"
+          timeout: 00:00:05
+          continue_on_timeout: true
+        - variables:
+            dismount_verified: "{{ states(volume_entity) == 'online_unmounted' }}"
+        - variables:
+            final_response:
+              status: "{{ 'success' if dismount_verified else 'warning' }}"
+              message: >
+                {%- if dismount_verified -%}
+                  Cabinet '{{ volume_entity }}' dismounted and in the stacks (verified).
+                {%- else -%}
+                  Dismount write issued for '{{ volume_entity }}' but state not yet confirmed.
+                {%- endif -%}
+              state: "{{ states(volume_entity) }}"
+              verification:
+                confirmed: "{{ dismount_verified }}"
+        - event: zen_event
+          event_data:
+            event:
+              kind: cabinet_dismounted
+              component: "{{ volume_entity }}"
+              severity: info
+              summary: "Cabinet '{{ volume_entity }}' dismounted (in the stacks)."
+        - stop: dismount_cabinet complete
+          response_variable: final_response
+      # ── set_cabinet_ro — stamp cabinet_ro: true in VolumeInfo flags ──────────
+      # Blocked on syscab — use zen_admintools_zenos_prompt_loader or
+      # zen_admintools_cabinetadmin_factory to manage the syscab RO flag.
+      # Idempotent: safe to call if cabinet_ro is already true.
+      - conditions:
+        - condition: template
+          value_template: "{{ action_type == 'set_cabinet_ro' }}"
+          alias: Set Cabinet RO Flag
+        sequence:
+        - choose:
+          - conditions:
+            - condition: template
+              value_template: "{{ volume_entity == 'sensor.zenos_system_cabinet' }}"
+            sequence:
+            - variables:
+                final_response:
+                  status: error
+                  failure: syscab_write_blocked
+                  message: >-
+                    set_cabinet_ro blocked on sensor.zenos_system_cabinet.
+                    The syscab cabinet_ro flag is managed by zen_admintools_zenos_prompt_loader
+                    and zen_admintools_cabinetadmin_factory (admin plane). Use those tools.
+                  volume_entity: "{{ volume_entity }}"
+            - stop: Syscab set_cabinet_ro blocked
+              response_variable: final_response
+          default:
+          - variables:
+              _scro_vi_raw: '{{ initial_volume.get(''AI_Cabinet_VolumeInfo'', {}) if initial_volume is mapping else {} }}'
+              _scro_vi_mapped: '{{ _scro_vi_raw if _scro_vi_raw is mapping else {} }}'
+              _scro_vi_val_raw: '{{ _scro_vi_mapped.get(''value'', _scro_vi_mapped) }}'
+              _scro_vi_val: '{{ _scro_vi_val_raw if _scro_vi_val_raw is mapping else (_scro_vi_val_raw | from_json if _scro_vi_val_raw is string else {}) }}'
+              _scro_flags: '{{ _scro_vi_val.get(''flags'', {}) }}'
+              _scro_flags_mapped: '{{ _scro_flags if _scro_flags is mapping else {} }}'
+              _scro_ro_already: '{{ _scro_flags_mapped.get(''cabinet_ro'', false) == true }}'
+          - if: '{{ _scro_ro_already }}'
+            then:
+            - variables:
+                final_response:
+                  status: ok
+                  message: "cabinet_ro already true on '{{ volume_entity }}'. No change."
+                  volume_entity: "{{ volume_entity }}"
+                  cabinet_ro: true
+            - stop: Already RO
+              response_variable: final_response
+          - event: set_variable_legacy
+            event_data:
+              key: AI_Cabinet_VolumeInfo
+              value: "{{ {'value': _scro_vi_val | combine({'flags': _scro_flags_mapped | combine({'cabinet_ro': true})})} }}"
+              volume_entity: "{{ volume_entity }}"
+              set_timestamp: true
+          - variables:
+              final_response:
+                status: success
+                message: "cabinet_ro: true stamped on '{{ volume_entity }}'."
+                volume_entity: "{{ volume_entity }}"
+                cabinet_ro: true
+          - stop: set_cabinet_ro complete
+            response_variable: final_response
+      # ── RELABEL ────────────────────────────────────────────────────────────────
+      # Updates _label_index only — does NOT touch the drawer value.
+      # Use when tagging an existing drawer without modifying its content.
+      # Large payload drawers (kata components, etc.) should ALWAYS use relabel
+      # instead of passing the full value through an update call.
+      # ───────────────────────────────────────────────────────────────────────────
+      - conditions:
+        - condition: template
+          value_template: "{{ action_type == 'relabel' }}"
+          alias: Relabel drawer (label index only)
+        sequence:
+        - choose:
+          - conditions:
+            - condition: template
+              value_template: "{{ key == '' or not key_exists_initial }}"
+            sequence:
+            - variables:
+                final_response:
+                  status: error
+                  failure: drawer_not_found
+                  message: "relabel requires an existing drawer key. '{{ raw_key }}' not found in this cabinet."
+                  volume_entity: "{{ volume_entity }}"
+                  key: "{{ key }}"
+            - stop: relabel — drawer not found
+              response_variable: final_response
+          - conditions:
+            - condition: template
+              value_template: "{{ existing_drawer_is_ro }}"
+            sequence:
+            - variables:
+                final_response:
+                  status: error
+                  failure: drawer_ro
+                  message: "relabel blocked: drawer '{{ key }}' is read-only (zen_scroll)."
+                  volume_entity: "{{ volume_entity }}"
+                  key: "{{ key }}"
+            - stop: relabel — drawer is ro
+              response_variable: final_response
+          default:
+          - event: set_variable_legacy
+            event_data:
+              key: _label_index
+              value: "{{ updated_label_index }}"
+              set_timestamp: true
+              volume_entity: "{{ volume_entity }}"
+          - variables:
+              final_response:
+                status: success
+                message: "Labels updated on drawer '{{ key }}' (index only — drawer value unchanged)."
+                volume_entity: "{{ volume_entity }}"
+                entry:
+                  drawer: "{{ key }}"
+                  labels_applied: "{{ accepted_entity_labels }}"
+                  labels_dropped: "{{ dropped_labels }}"
+                caller_token: "{{ caller_token | trim }}"
+          - stop: relabel complete
+            response_variable: final_response
       default:
       - variables:
           final_response:
@@ -1728,7 +2168,7 @@ script:
       - stop: Invalid parameters
         response_variable: final_response
     alias: Zen DojoTools FileCabinet
-    description: "Zen DojoTools FileCabinet (v4.0.0 RC2+) 100% More Health, No Bad JSON!
+    description: "Zen DojoTools FileCabinet (v4.5.x+) 100% More Health, No Bad JSON!
       No more ghost Writes, output mapping, Parser engages on Create / Update to validate
       input.\nCabinetVolumes are The Library's storage. To use ALWAYS pull a Volume
       Manifest 'Manifest' (list of all volumes with rich metadata) FIRST if you do not
@@ -1739,10 +2179,10 @@ script:
       (yes, a list) to scan drawers for subjects. STRONG recommendation to HELP() and
       pull a manifest - READ() immediately.\nIMPORTANT: Read By Label is currently limited
       to ONE cabinet at a time.\nMOUNT OPS: set_mount links a drawer in this volume to another cabinet by GUID (requires key +
-      target_guid). remove_mount unlinks it. Both verify the write and return previous_guid for undo.\nCLONE: clone copies all cabinet drawers to destination_cabinet. Default: destination gets a new GUID (source untouched). With transfer_guid+force_action: GUID travels to destination, source is cleared and marked needs_restamp (Highlander mode — one cabinet owns a GUID)."
+      target_guid). remove_mount unlinks it. Both verify the write and return previous_guid for undo.\nCABINET MOUNT/DISMOUNT: mount_cabinet / dismount_cabinet flip meta.mounted (state: online_mounted / online_unmounted). dismount_cabinet blocked if cabinet holds a zen_default_* label — transfer first. Both fire zen_event on completion.\nRO DRAWERS: Include 'zen_scroll' in label_input to make a drawer read-only (one-way — removing the label later does NOT revert ro). ro drawers block all create/update/delete — no force bypass. Use CabinetAdmin set_ro_flag to clear.\nCLONE: clone copies all cabinet drawers to destination_cabinet. Default: destination gets a new GUID (source untouched). With transfer_guid+force_action: GUID travels to destination, source is cleared and marked needs_restamp (Highlander mode — one cabinet owns a GUID).\n\u26a0\ufe0f SYSTEM CABINET (sensor.zenos_system_cabinet) IS HARD READ-ONLY to FileCabinet. It holds the AI prompt substrate (Purpose, Directives, Cortex). All writes are blocked — no force_action bypass. Use zen_admintools_zenos_prompt_loader to update prompt primitives, or zen_admintools_cabinetadmin_factory for VolumeInfo repair. This is wire-level lockout — the tool cannot write there."
     fields:
       action_type:
-        description: "'manifest', 'create', 'read', 'update', 'delete', 'move', 'copy', 'clone', 'set_mount', 'remove_mount', 'help' (default: help)"
+        description: "'manifest', 'create', 'read', 'update', 'delete', 'move', 'copy', 'clone', 'set_mount', 'remove_mount', 'mount_cabinet', 'dismount_cabinet', 'set_cabinet_ro', 'relabel', 'help' (default: help). relabel: updates _label_index only — does NOT touch drawer value, no value param required. NOTE: sensor.zenos_system_cabinet (syscab) is hard read-only — all write actions blocked. Use zen_admintools_zenos_prompt_loader or zen_admintools_cabinetadmin_factory for syscab operations."
         required: true
         selector:
           select:
@@ -1757,6 +2197,10 @@ script:
             - clone
             - set_mount
             - remove_mount
+            - mount_cabinet
+            - dismount_cabinet
+            - set_cabinet_ro
+            - relabel
             - help
         default: manifest
       volume_entity_id:
@@ -1853,6 +2297,13 @@ script:
           only use when you're trying to debug, confirm etc.)  System Drawers are always
           hidden.
         required: true
+      show_stacks:
+        selector:
+          boolean:
+        name: Show Stacks
+        description: Include online_unmounted (stacks) cabinets in manifest results.
+        required: false
+        default: false
       start:
         description: Start time in ISO 8601. Used when searching for entities updated
           or changed after... Defaults to no end date [Experimental - currently unused]
@@ -1934,4 +2385,14 @@ script:
         default: ''
         selector:
           text:
+      create_label:
+        name: Create Label
+        description: >-
+          When true, auto-creates any HA labels in label_input that do not exist
+          in the label registry before writing. Errors with failure: label_create_failed
+          if creation fails. Default false.
+        required: false
+        default: false
+        selector:
+          boolean:
     icon: mdi:folder-key

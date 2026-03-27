@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI — Prompt Health
-# Version: 4.5.0
+# Version: 4.5.5
 #
 # sensor.zen_prompt_health
 #   Official prompt resolver surface for the default AI user.

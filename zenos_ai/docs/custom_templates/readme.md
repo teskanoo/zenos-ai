@@ -1,4 +1,4 @@
-# Custom Templates — ZenOS-AI 4.5.0 'Meridian'
+# Custom Templates — ZenOS-AI 4.5.5 'Ready Player Two'
 
 *Jinja templates powering prompt assembly, context construction, and query processing*
 
@@ -49,11 +49,9 @@ Used internally by HyperIndex and the Index tool for hypergraph traversal, adjac
 | File | Purpose |
 |---|---|
 | `conversation_agent_prompt_template.yaml` | Paste this into your conversation agent's system prompt in HA. Three lines — imports `zen_os_1.jinja` and calls `render_prompt()`. |
-| `command_interpreter.jinja` | Library v1 command dispatch engine. Routes `~COMMANDS~` syntax to subsystem handlers. |
-| `command_interpreter_2.jinja` | Library v2 command dispatch engine. |
+| `command_interpreter.jinja` | Library v1 command dispatch engine. Routes `~COMMANDS~` syntax to subsystem handlers. **Retiring at GA** — individual commands are migrating to index-supported constructs. No new commands should be added here. |
 | `library_index.jinja` | Library index — registered command domains and their handlers. |
-| `zenos_health.jinja` | Health sensor macro library — `required_labels()`, `slots_all()`, `slot_to_label()`, cabinet state helpers. |
-| `zenos_summarizer_system_health.jinja` | Summarizer system health macros. |
+| `zenos_health.jinja` | Health sensor macro library — `required_labels()`, `slots_all()`, `slot_to_label()`, cabinet state helpers, `is_warmup()`. |
 | `flynn_onboarding.jinja` | Flynn onboarding macros including `active_notification()` — surfaces highest-priority Flynn persistent notification into the prompt. |
 
 ---

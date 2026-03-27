@@ -1,4 +1,4 @@
-# Zen DojoTools Labels — 4.5.0 'Meridian'
+# Zen DojoTools Labels — 4.5.5 'Ready Player Two'
 
 *Create, read, update, delete, and assign labels in the Home Assistant label index*
 
@@ -258,7 +258,7 @@ Every KFC component has a `label` field in its Dojo drawer. That label is what t
 Checklist when adding a component:
 1. Create the label (`create`)
 2. Tag all relevant entities (`tag`)
-3. Reference the label in the KFC drawer (`zen_dojotools_kungfu_writer`)
+3. Reference the label in the KFC drawer (`zen_dojotools_scribe`)
 4. Dry-run with `force_summary` (post=false) and verify the Kata has data
 
 ---

@@ -1,8 +1,7 @@
 ###############################################################################
 # ZenOS-AI — System Health Package
-# v2.4.0 — Active component detection: master_switch gate removed. Aligned
-#           with supersummary: components now gated by meta.enabled (default
-#           true) instead of kung_fu_system_switch input_boolean state.
+# v4.5.5 — Expansion slot rename: secondary/tertiary/quaternary_user +
+#           secondary_ai_user → expansion_1-4. expansion_5 added.
 #
 # Changelog:
 #   v2.4.0 (2026-03-22) — master_switch gate removed from active component
@@ -13,6 +12,8 @@
 #                          (secondary_user, tertiary_user, quaternary_user,
 #                          secondary_ai_user). Vault cabinet: label only, no
 #                          resolver, no knowledge-pipeline traversal ever.
+#   v4.5.1 (2026-03-23) — Expansion slot rename: secondary/tertiary/quaternary_user
+#                          + secondary_ai_user → expansion_1-4. expansion_5 added.
 #   v2.2.0 (2026-03-19) — zen_system_cabinet_resolved added (7th resolver).
 #                          FG-38 v3 three-round normalization applied to
 #                          _zt_val, _ss_v, _sched, _sum_d across all health
@@ -39,10 +40,7 @@
 #   - sensor.zen_default_ai_user_cabinet_resolved
 #   - sensor.zen_default_family_cabinet_resolved
 #   - sensor.zen_default_user_cabinet_resolved
-#   - sensor.zen_secondary_user_cabinet_resolved       [optional]
-#   - sensor.zen_tertiary_user_cabinet_resolved        [optional]
-#   - sensor.zen_quaternary_user_cabinet_resolved      [optional]
-#   - sensor.zen_secondary_ai_user_cabinet_resolved    [optional]
+#   (pool user/ai_user cabs enumerated via label_entities, no ordinal resolvers)
 #
 # NOTE: zen_vault_cabinet has NO resolver by design. Vault is structurally
 #   absent from all knowledge-pipeline traversals. Access gated via identity.
@@ -102,93 +100,91 @@ template:
       - name: Zen Default Household Cabinet Resolved
         unique_id: zen_default_household_cabinet_resolved
         state: >-
-          {{ label_entities('zen_default_household_cabinet')
-             | select('match', 'sensor\.')
-             | first | default('unavailable') }}
+          {%- set _sv = state_attr('sensor.zenos_system_cabinet', 'variables') -%}
+          {%- set _sv = _sv if _sv is mapping else {} -%}
+          {%- set _se = _sv.get('cab_schema_version', {}) -%}
+          {%- set _ma = ((_se.get('value', 0) if _se is mapping else 0) | int(0)) >= 1 -%}
+          {%- set _cands = label_entities('zen_default_household_cabinet') | select('match', 'sensor\.') | list -%}
+          {%- if _ma -%}{%- set ns = namespace(r='unavailable') -%}
+          {%- for e in _cands -%}{%- if ns.r == 'unavailable' and states(e) == 'online_mounted' -%}{%- set ns.r = e -%}{%- endif -%}{%- endfor -%}
+          {{ ns.r }}{%- else -%}{{ _cands | first | default('unavailable') }}{%- endif -%}
         availability: >-
-          {{ label_entities('zen_default_household_cabinet')
-             | select('match', 'sensor\.')
-             | list | count > 0 }}
+          {%- set _sv = state_attr('sensor.zenos_system_cabinet', 'variables') -%}
+          {%- set _sv = _sv if _sv is mapping else {} -%}
+          {%- set _se = _sv.get('cab_schema_version', {}) -%}
+          {%- set _ma = ((_se.get('value', 0) if _se is mapping else 0) | int(0)) >= 1 -%}
+          {%- set _cands = label_entities('zen_default_household_cabinet') | select('match', 'sensor\.') | list -%}
+          {%- if _ma -%}{%- set ns = namespace(r=false) -%}
+          {%- for e in _cands -%}{%- if states(e) == 'online_mounted' -%}{%- set ns.r = true -%}{%- endif -%}{%- endfor -%}
+          {{ ns.r }}{%- else -%}{{ _cands | count > 0 }}{%- endif -%}
 
       - name: Zen Default AI User Cabinet Resolved
         unique_id: zen_default_ai_user_cabinet_resolved
         state: >-
-          {{ label_entities('zen_default_ai_user_cabinet')
-             | select('match', 'sensor\.')
-             | first | default('unavailable') }}
+          {%- set _sv = state_attr('sensor.zenos_system_cabinet', 'variables') -%}
+          {%- set _sv = _sv if _sv is mapping else {} -%}
+          {%- set _se = _sv.get('cab_schema_version', {}) -%}
+          {%- set _ma = ((_se.get('value', 0) if _se is mapping else 0) | int(0)) >= 1 -%}
+          {%- set _cands = label_entities('zen_default_ai_user_cabinet') | select('match', 'sensor\.') | list -%}
+          {%- if _ma -%}{%- set ns = namespace(r='unavailable') -%}
+          {%- for e in _cands -%}{%- if ns.r == 'unavailable' and states(e) == 'online_mounted' -%}{%- set ns.r = e -%}{%- endif -%}{%- endfor -%}
+          {{ ns.r }}{%- else -%}{{ _cands | first | default('unavailable') }}{%- endif -%}
         availability: >-
-          {{ label_entities('zen_default_ai_user_cabinet')
-             | select('match', 'sensor\.')
-             | list | count > 0 }}
+          {%- set _sv = state_attr('sensor.zenos_system_cabinet', 'variables') -%}
+          {%- set _sv = _sv if _sv is mapping else {} -%}
+          {%- set _se = _sv.get('cab_schema_version', {}) -%}
+          {%- set _ma = ((_se.get('value', 0) if _se is mapping else 0) | int(0)) >= 1 -%}
+          {%- set _cands = label_entities('zen_default_ai_user_cabinet') | select('match', 'sensor\.') | list -%}
+          {%- if _ma -%}{%- set ns = namespace(r=false) -%}
+          {%- for e in _cands -%}{%- if states(e) == 'online_mounted' -%}{%- set ns.r = true -%}{%- endif -%}{%- endfor -%}
+          {{ ns.r }}{%- else -%}{{ _cands | count > 0 }}{%- endif -%}
 
       - name: Zen Default Family Cabinet Resolved
         unique_id: zen_default_family_cabinet_resolved
         state: >-
-          {{ label_entities('zen_default_family_cabinet')
-             | select('match', 'sensor\.')
-             | first | default('unavailable') }}
+          {%- set _sv = state_attr('sensor.zenos_system_cabinet', 'variables') -%}
+          {%- set _sv = _sv if _sv is mapping else {} -%}
+          {%- set _se = _sv.get('cab_schema_version', {}) -%}
+          {%- set _ma = ((_se.get('value', 0) if _se is mapping else 0) | int(0)) >= 1 -%}
+          {%- set _cands = label_entities('zen_default_family_cabinet') | select('match', 'sensor\.') | list -%}
+          {%- if _ma -%}{%- set ns = namespace(r='unavailable') -%}
+          {%- for e in _cands -%}{%- if ns.r == 'unavailable' and states(e) == 'online_mounted' -%}{%- set ns.r = e -%}{%- endif -%}{%- endfor -%}
+          {{ ns.r }}{%- else -%}{{ _cands | first | default('unavailable') }}{%- endif -%}
         availability: >-
-          {{ label_entities('zen_default_family_cabinet')
-             | select('match', 'sensor\.')
-             | list | count > 0 }}
+          {%- set _sv = state_attr('sensor.zenos_system_cabinet', 'variables') -%}
+          {%- set _sv = _sv if _sv is mapping else {} -%}
+          {%- set _se = _sv.get('cab_schema_version', {}) -%}
+          {%- set _ma = ((_se.get('value', 0) if _se is mapping else 0) | int(0)) >= 1 -%}
+          {%- set _cands = label_entities('zen_default_family_cabinet') | select('match', 'sensor\.') | list -%}
+          {%- if _ma -%}{%- set ns = namespace(r=false) -%}
+          {%- for e in _cands -%}{%- if states(e) == 'online_mounted' -%}{%- set ns.r = true -%}{%- endif -%}{%- endfor -%}
+          {{ ns.r }}{%- else -%}{{ _cands | count > 0 }}{%- endif -%}
 
       - name: Zen Default User Cabinet Resolved
         unique_id: zen_default_user_cabinet_resolved
         state: >-
-          {{ label_entities('zen_default_user_cabinet')
-             | select('match', 'sensor\.')
-             | first | default('unavailable') }}
+          {%- set _sv = state_attr('sensor.zenos_system_cabinet', 'variables') -%}
+          {%- set _sv = _sv if _sv is mapping else {} -%}
+          {%- set _se = _sv.get('cab_schema_version', {}) -%}
+          {%- set _ma = ((_se.get('value', 0) if _se is mapping else 0) | int(0)) >= 1 -%}
+          {%- set _cands = label_entities('zen_default_user_cabinet') | select('match', 'sensor\.') | list -%}
+          {%- if _ma -%}{%- set ns = namespace(r='unavailable') -%}
+          {%- for e in _cands -%}{%- if ns.r == 'unavailable' and states(e) == 'online_mounted' -%}{%- set ns.r = e -%}{%- endif -%}{%- endfor -%}
+          {{ ns.r }}{%- else -%}{{ _cands | first | default('unavailable') }}{%- endif -%}
         availability: >-
-          {{ label_entities('zen_default_user_cabinet')
-             | select('match', 'sensor\.')
-             | list | count > 0 }}
+          {%- set _sv = state_attr('sensor.zenos_system_cabinet', 'variables') -%}
+          {%- set _sv = _sv if _sv is mapping else {} -%}
+          {%- set _se = _sv.get('cab_schema_version', {}) -%}
+          {%- set _ma = ((_se.get('value', 0) if _se is mapping else 0) | int(0)) >= 1 -%}
+          {%- set _cands = label_entities('zen_default_user_cabinet') | select('match', 'sensor\.') | list -%}
+          {%- if _ma -%}{%- set ns = namespace(r=false) -%}
+          {%- for e in _cands -%}{%- if states(e) == 'online_mounted' -%}{%- set ns.r = true -%}{%- endif -%}{%- endfor -%}
+          {{ ns.r }}{%- else -%}{{ _cands | count > 0 }}{%- endif -%}
 
-      # ── Optional cabset expansion ─────────────────────────────────────────
-      # Unavailable when the label has no entities — not an error condition.
-
-      - name: Zen Secondary User Cabinet Resolved
-        unique_id: zen_secondary_user_cabinet_resolved
-        state: >-
-          {{ label_entities('zen_secondary_user_cabinet')
-             | select('match', 'sensor\.')
-             | first | default('unavailable') }}
-        availability: >-
-          {{ label_entities('zen_secondary_user_cabinet')
-             | select('match', 'sensor\.')
-             | list | count > 0 }}
-
-      - name: Zen Tertiary User Cabinet Resolved
-        unique_id: zen_tertiary_user_cabinet_resolved
-        state: >-
-          {{ label_entities('zen_tertiary_user_cabinet')
-             | select('match', 'sensor\.')
-             | first | default('unavailable') }}
-        availability: >-
-          {{ label_entities('zen_tertiary_user_cabinet')
-             | select('match', 'sensor\.')
-             | list | count > 0 }}
-
-      - name: Zen Quaternary User Cabinet Resolved
-        unique_id: zen_quaternary_user_cabinet_resolved
-        state: >-
-          {{ label_entities('zen_quaternary_user_cabinet')
-             | select('match', 'sensor\.')
-             | first | default('unavailable') }}
-        availability: >-
-          {{ label_entities('zen_quaternary_user_cabinet')
-             | select('match', 'sensor\.')
-             | list | count > 0 }}
-
-      - name: Zen Secondary AI User Cabinet Resolved
-        unique_id: zen_secondary_ai_user_cabinet_resolved
-        state: >-
-          {{ label_entities('zen_secondary_ai_user_cabinet')
-             | select('match', 'sensor\.')
-             | first | default('unavailable') }}
-        availability: >-
-          {{ label_entities('zen_secondary_ai_user_cabinet')
-             | select('match', 'sensor\.')
-             | list | count > 0 }}
+      # ── Pool user/ai_user members ───────────────────────────────────────────
+      # No ordinal resolver sensors — pool members enumerated via
+      # label_entities('zen_user_cabinet') and label_entities('zen_ai_user_cabinet').
+      # Explicit entity_id required when targeting a pool member directly.
 
   ###########################################################################
   # 1️⃣ ZEN MONASTERY HEALTH — global cognition rollup
@@ -284,6 +280,68 @@ template:
             {%- endif %}
           {%- endif %}
         attributes:
+          reason: >-
+            {%- set dojo_cab = states('sensor.zen_dojo_cabinet_resolved') %}
+            {%- set kata_cab = states('sensor.zen_kata_cabinet_resolved') %}
+            {%- if not is_state('input_boolean.zen_summarizers_enabled', 'on') %}
+              Summarizers disabled via zen_summarizers_enabled helper.
+            {%- elif dojo_cab in ['unknown','unavailable','none'] %}
+              Dojo cabinet resolver is {{ dojo_cab }} — labels may not be assigned.
+            {%- elif kata_cab in ['unknown','unavailable','none'] %}
+              Kata cabinet resolver is {{ kata_cab }} — labels may not be assigned.
+            {%- else %}
+              {%- set kata = state_attr(kata_cab,'variables') or {} %}
+              {%- set dojo = state_attr(dojo_cab,'variables') or {} %}
+              {%- set _sum_raw = kata.get('zen_summary', {}) %}
+              {%- set summary = _sum_raw if _sum_raw is mapping else (_sum_raw | from_json if _sum_raw is string else {}) %}
+              {%- set ts = summary.get('timestamp') if summary is mapping else none %}
+              {%- set stale = ts and (now() - as_datetime(ts) >= timedelta(minutes=15)) %}
+              {%- set crit_stale = ts and (now() - as_datetime(ts) >= timedelta(minutes=30)) %}
+              {%- set _zt_drawer = kata.get('zen_template', {}) %}
+              {%- set _zt_v1 = _zt_drawer.get('value', {}) if _zt_drawer is mapping else {} %}
+              {%- set _zt_v2 = _zt_v1 if _zt_v1 is mapping else (_zt_v1 | from_json if _zt_v1 is string else {}) %}
+              {%- set _zt_val = _zt_v2 if _zt_v2 is mapping else (_zt_v2 | from_json if _zt_v2 is string else {}) %}
+              {%- set schema_ok = kata and (_zt_val is mapping) and _zt_val.get('structure', {}) is mapping %}
+              {%- set _ns = namespace(active=[]) %}
+              {%- for _k, _raw in dojo.items() %}
+                {%- set _d_val = _raw.get('value', _raw) if _raw is mapping else {} %}
+                {%- set _d_v2 = _d_val if _d_val is mapping else (_d_val | from_json if _d_val is string else {}) %}
+                {%- set _d = _d_v2 if _d_v2 is mapping else (_d_v2 | from_json if _d_v2 is string else {}) %}
+                {%- if _d.get('kata_key','') | trim != '' and _d.get('trigger_subscriptions') is not none %}
+                  {%- set _meta = _d.get('meta', {}) -%}
+                  {%- set _meta = _meta if _meta is mapping else {} -%}
+                  {%- if _meta.get('enabled', true) | bool %}
+                    {%- set _ns.active = _ns.active + [_d.get('kata_key', _k)] %}
+                  {%- endif %}
+                {%- endif %}
+              {%- endfor %}
+              {%- set _ss_drawer = kata.get('zen_supersummary_status', {}) %}
+              {%- set _ss_val = _ss_drawer.get('value', {}) if _ss_drawer is mapping else {} %}
+              {%- set _ss_val = _ss_val if _ss_val is mapping else (_ss_val | from_json if _ss_val is string else {}) %}
+              {%- set _ss_status = _ss_val.get('status', 'unknown') %}
+              {%- set monk_err = _ss_status in ['error','timeout','none','null','unknown'] %}
+              {%- set _age_min = ((now() - as_datetime(ts)).total_seconds() / 60) | int if ts else 0 %}
+              {%- if not schema_ok %}
+                zen_template schema missing from kata cabinet — run zen_admintools_reset_template.
+              {%- elif monk_err and crit_stale %}
+                SuperSummary status {{ _ss_status }} and zen_summary is {{ _age_min }} min old — fire summary_force to recover.
+              {%- elif _ns.active | count > 0 and not summary %}
+                {{ _ns.active | count }} active KFC components but no zen_summary in kata — fire summary_force or wait for next scheduler tick.
+              {%- elif monk_err %}
+                SuperSummary status is {{ _ss_status }} — no successful run recorded in kata (zen_supersummary_status drawer).
+              {%- elif crit_stale %}
+                zen_summary is {{ _age_min }} min old (threshold: 30 min) — fire summary_force to refresh.
+              {%- elif stale %}
+                zen_summary is {{ _age_min }} min old (threshold: 15 min) — awaiting next Ninja run or fire summary_force.
+              {%- elif not ts %}
+                No zen_summary in kata yet — Ninja Summarizer has not run since boot. Fire summary_force.
+              {%- elif _ns.active | count == 0 %}
+                No active KFC components in dojo — components need kata_key and trigger_subscriptions to be eligible.
+              {%- else %}
+                All checks passed.
+              {%- endif %}
+            {%- endif %}
+
           dojo_cabinet: "{{ states('sensor.zen_dojo_cabinet_resolved') }}"
           kata_cabinet: "{{ states('sensor.zen_kata_cabinet_resolved') }}"
 
@@ -417,6 +475,31 @@ template:
             {%- endif %}
           {%- endif %}
         attributes:
+          reason: >-
+            {%- set kata_cab = states('sensor.zen_kata_cabinet_resolved') %}
+            {%- if not is_state('input_boolean.zen_ninja_summarizer_enabled', 'on') %}
+              Ninja Summarizer disabled via zen_ninja_summarizer_enabled helper.
+            {%- elif kata_cab in ['unknown','unavailable','none'] %}
+              Kata cabinet resolver is {{ kata_cab }} — labels may not be assigned.
+            {%- else %}
+              {%- set kata = state_attr(kata_cab,'variables') or {} %}
+              {%- set _drawer_raw = kata.get('zen_scheduler', {}) %}
+              {%- set drawer = _drawer_raw if _drawer_raw is mapping else (_drawer_raw | from_json(none) if _drawer_raw is string else {}) %}
+              {%- set ts = drawer.get('timestamp') if drawer is mapping else none %}
+              {%- set stale = ts and (now() - as_datetime(ts) >= timedelta(minutes=20)) %}
+              {%- set ai_task_set = states('input_text.zenos_ai_task_entity') | trim not in ['', 'unknown', 'unavailable'] %}
+              {%- set _age_min = ((now() - as_datetime(ts)).total_seconds() / 60) | int if ts else 0 %}
+              {%- if not ai_task_set %}
+                AI task entity not configured — input_text.zenos_ai_task_entity is blank.
+              {%- elif not drawer %}
+                zen_scheduler drawer missing from kata — Ninja Summarizer has never run.
+              {%- elif stale %}
+                zen_scheduler last run {{ _age_min }} min ago (threshold: 20 min) — pipeline may be stalled.
+              {%- else %}
+                All checks passed.
+              {%- endif %}
+            {%- endif %}
+
           kata_cabinet: "{{ states('sensor.zen_kata_cabinet_resolved') }}"
           ai_task_entity: "{{ states('input_text.zenos_ai_task_entity') | trim }}"
           last_timestamp: >-
@@ -424,6 +507,18 @@ template:
             {%- set _sched_d = _vars.get('zen_scheduler', {}) %}
             {%- set _sched_d = _sched_d if _sched_d is mapping else (_sched_d | from_json if _sched_d is string else {}) %}
             {{ _sched_d.get('timestamp') | default('none') }}
+
+          component_timings: >-
+            {%- set _kc = states('sensor.zen_kata_cabinet_resolved') %}
+            {%- set _vars = state_attr(_kc, 'variables') or {} %}
+            {%- set _ns = namespace(timings={}) %}
+            {%- for k, raw in _vars.items() if k.startswith('zen_ninja_last_run_') %}
+              {%- set _v = raw.get('value', {}) if raw is mapping else {} %}
+              {%- set _v = _v if _v is mapping else (_v | from_json if _v is string else {}) %}
+              {%- set slug = k[19:] %}
+              {%- set _ns.timings = _ns.timings | combine({slug: _v}) %}
+            {%- endfor %}
+            {{ _ns.timings | tojson }}
 
   ###########################################################################
   # 3️⃣ SUPER SUMMARY (High Priestess)
@@ -472,6 +567,35 @@ template:
             {%- endif %}
           {%- endif %}
         attributes:
+          reason: >-
+            {%- set kata_cab = states('sensor.zen_kata_cabinet_resolved') %}
+            {%- if not is_state('input_boolean.zen_supersummarizer_enabled', 'on') %}
+              SuperSummary disabled via zen_supersummarizer_enabled helper.
+            {%- elif kata_cab in ['unknown','unavailable','none'] %}
+              Kata cabinet resolver is {{ kata_cab }} — labels may not be assigned.
+            {%- else %}
+              {%- set kata = state_attr(kata_cab,'variables') or {} %}
+              {%- set _ss_d = kata.get('zen_supersummary_status', {}) %}
+              {%- set _ss_v = _ss_d.get('value', {}) if _ss_d is mapping else {} %}
+              {%- set _ss_v = _ss_v if _ss_v is mapping else (_ss_v | from_json(none) if _ss_v is string else {}) %}
+              {%- set monk = (_ss_v.get('status', 'unknown') if _ss_v is mapping else 'unknown') %}
+              {%- set _sum_raw = kata.get('zen_summary', {}) %}
+              {%- set summary = _sum_raw if _sum_raw is mapping else (_sum_raw | from_json(none) if _sum_raw is string else {}) %}
+              {%- set ts = (summary.get('timestamp') if summary is mapping else none) %}
+              {%- set _age_min = ((now() - as_datetime(ts)).total_seconds() / 60) | int if ts else 0 %}
+              {%- set crit_stale = ts and (now() - as_datetime(ts) >= timedelta(minutes=30)) %}
+              {%- set stale = ts and (now() - as_datetime(ts) >= timedelta(minutes=15)) %}
+              {%- if monk in ['error','timeout','none','null'] %}
+                SuperSummary status is {{ monk }} — no successful run recorded in kata (zen_supersummary_status drawer).
+              {%- elif crit_stale %}
+                zen_summary is {{ _age_min }} min old (threshold: 30 min) — fire summary_force to refresh.
+              {%- elif stale %}
+                zen_summary is {{ _age_min }} min old (threshold: 15 min) — awaiting next Ninja run.
+              {%- else %}
+                All checks passed.
+              {%- endif %}
+            {%- endif %}
+
           kata_cabinet: "{{ states('sensor.zen_kata_cabinet_resolved') }}"
           monk_status: >-
             {%- set _vars = state_attr(states('sensor.zen_kata_cabinet_resolved'),'variables') or {} %}
@@ -487,6 +611,18 @@ template:
 
           pipeline_master: "{{ is_state('input_boolean.zen_summarizers_enabled', 'on') }}"
           supersummary_enabled: "{{ is_state('input_boolean.zen_supersummarizer_enabled', 'on') }}"
+          last_duration_seconds: >-
+            {%- set _vars = state_attr(states('sensor.zen_kata_cabinet_resolved'),'variables') or {} %}
+            {%- set _ss_d = _vars.get('zen_supersummary_status', {}) %}
+            {%- set _ss_v = _ss_d.get('value', {}) if _ss_d is mapping else {} %}
+            {%- set _ss_v = _ss_v if _ss_v is mapping else (_ss_v | from_json if _ss_v is string else {}) %}
+            {{ _ss_v.get('duration_seconds', none) | default('none', true) }}
+          last_run_at: >-
+            {%- set _vars = state_attr(states('sensor.zen_kata_cabinet_resolved'),'variables') or {} %}
+            {%- set _ss_d = _vars.get('zen_supersummary_status', {}) %}
+            {%- set _ss_v = _ss_d.get('value', {}) if _ss_d is mapping else {} %}
+            {%- set _ss_v = _ss_v if _ss_v is mapping else (_ss_v | from_json if _ss_v is string else {}) %}
+            {{ _ss_v.get('run_started_at', none) | default('none', true) }}
 
 
 ###############################################################################

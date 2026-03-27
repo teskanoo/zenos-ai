@@ -53,8 +53,8 @@ tag entities. The loop auto-discovers it on the next tick.
 
 ## Creating Components
 
-Use `zen_dojotools_kungfu_writer` (AI-accessible tool) to write drawers.
-Run with `action=help` to get the live schema from the Dojo cabinet.
+Use `zen_dojotools_scribe` (MCP-exposed) to write drawers.
+Run with `mode=schema` to get the live `kfc_template` from the Dojo cabinet.
 
 ### Drawer Schema (kfc_template)
 

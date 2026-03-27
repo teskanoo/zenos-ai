@@ -1,4 +1,4 @@
-# Zen DojoTools Core — 4.5.0 'Meridian'
+# Zen DojoTools Core — 4.5.5 'Ready Player Two'
 
 *FileCabinet garbage collector — drawer lifecycle management*
 

@@ -112,7 +112,7 @@ A sensor is only treated as a cabinet if:
 
 This prevents false positives from misconfigured template sensors.
 
-> **GA Implementation Note — 4.5.0 'Meridian': Highlander Resolver Architecture**
+> **GA Implementation Note — 4.5.5 'Ready Player Two': Highlander Resolver Architecture**
 >
 > Cabinet entity resolution across OS code previously relied on `label_entities()` at script
 > runtime — a race-prone, stale-on-boot pattern. As of GA, each core cabinet (dojo, kata,
@@ -304,7 +304,7 @@ A consistent view of:
 
 This yields a deterministic workflow for understanding any misbehaviour.
 
-> **GA Implementation Note — 4.5.0 'Meridian': Health Sensor Stack**
+> **GA Implementation Note — 4.5.5 'Ready Player Two': Health Sensor Stack**
 >
 > The observability layer ships as a layered health sensor stack:
 > `zen_label_health` → `zen_cabinet_health` → `zen_monastery_health` →

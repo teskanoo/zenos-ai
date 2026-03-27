@@ -1,4 +1,4 @@
-# Zen DojoTools Scheduler — 4.5.0 'Meridian'
+# Zen DojoTools Scheduler — 4.5.5 'Ready Player Two'
 
 **File:** `packages/zenos_ai/dojotools/dojotools_scheduler.yaml`
 **Automation:** `automation.zen_dojotools_scheduler`
@@ -45,7 +45,7 @@ These trigger IDs are active in the core scheduler. Components subscribe to them
 
 ## How Components Subscribe
 
-Components register in their KFC drawer (via `zen_dojotools_kungfu_writer`). The relevant fields:
+Components register in their KFC drawer (via `zen_dojotools_scribe`). The relevant fields:
 
 ```yaml
 trigger_subscriptions:

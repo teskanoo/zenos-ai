@@ -8,12 +8,24 @@ ZenOS-AI is a cabinet-centric AI framework for deterministic, inspectable househ
 
 ## Current Status
 
-**Meridian — Shipped (2026-03-21)**
+**4.5.5 'Ready Player Two' — Shipped (2026-03-26)**
+
+Identity and lifecycle release. Cabinet provisioning system (mount-aware state machine,
+RP2 provisioner, expansion slots, scroll ceremony). Warmup as first-class sensor state.
+Identity model v4.5.0 — full household/family group management, 12 new modes, depth-2
+security resolution, enriched manifest. Profile editor GA-hardened. Cortex 32 (True Voice)
+now the default. UAT passed 21/21 on live install 2026-03-26.
+
+See: [Release Notes — Ready Player Two](releases/ready_player_two.md)
+
+---
+
+**Previous: Meridian — Shipped (2026-03-21)**
 
 Hardening and governance batch. `caller_token` SP1 §4a stub wired to all 15 AI-accessible
 DojoTools scripts. Cortex 31 cabinet state visibility. KFC schema 1.2.0. Labels UPDATE
 patch semantics (pre-read, confirm gate, no data-loss path). Scheduler, summarizer, and
-history bug fixes. UAT passed on live install 2026-03-21.
+history bug fixes.
 
 See: [Release Notes — Meridian](releases/meridian.md)
 

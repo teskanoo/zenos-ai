@@ -1,28 +1,26 @@
 ###############################################################################
 # ZenOS-AI DojoTools: AdminTools
-# Version: 4.5.0
+# Version: 4.5.5
 #
 # Scripts:
 #   zen_admintools_reset_template        — Kata + Dojo template press (v1.1.0)
-#   zen_admintools_cabinetadmin          — Cabinet inspect/restore/reset/hammer (v4.0.0 RC2)
-#   zen_dojotools_kungfu_writer          — Dojo component writer (v4.0.0 RC2)
-#   zen_admintools_cabinetadmin_stamp   — Cabinet factory stamper/repairer (v1.x)
+#   zen_admintools_cabinetadmin          — Cabinet inspect/restore/reset/hammer (v4.5.x)
+#   zen_admintools_cabinetadmin_factory   — Cabinet factory stamper/repairer (v1.x)
 #   zen_admintools_zenos_prompt_loader   — Cortex/Directives/Purpose loader
+#
+# NOTE: zen_dojotools_kungfu_writer removed 2026-03-25 — superseded by zen_dojotools_scribe
 #
 # MIGRATED FROM: scripts.yaml (2026-03-06)
 #
-# FG-14 FIXED: boolean: {} in cabinetadmin, 10x text: {} + boolean: {} in kungfu_writer (now zen_dojotools_kungfu_writer),
-#              5x boolean: {} + 2x text: {} in cabinetadmin_stamp
-# FG (sandbox) FIXED: mounts.append() -> namespace(mounts=[]) in cabinetadmin_stamp
+# FG-14 FIXED: boolean: {} in cabinetadmin, 5x boolean: {} + 2x text: {} in cabinetadmin_factory
+# FG (sandbox) FIXED: mounts.append() -> namespace(mounts=[]) in cabinetadmin_factory
 #
 # === UAT PASS — 2026-03-06 ===
 # Auditor: Claude (Anthropic, Sonnet 4.6)
 # HALMark: 0.9.11-draft — PASS Level 3 (Steward Safe) — no remaining FG hits
 # UAT Cases: 1/1 PASS (non-destructive only; destructive scripts load-verified only)
 #
-# zen_dojotools_kungfu_writer:
-#   help action → response clean ✓
-# zen_admintools_reset_template, cabinetadmin, cabinetadmin_stamp, prompt_loader:
+# zen_admintools_reset_template, cabinetadmin, cabinetadmin_factory, prompt_loader:
 #   not MCP-exposed; verified via config check pass + clean restart ✓
 #
 # config check → go; restart → clean ✓
@@ -41,7 +39,7 @@ script:
           null,\n      \"subjective\": null,\n      \"urgency\": 0,\n      \"confidence\":
           0.0,\n      \"criticality\": 1,\n      \"emotion_queue\": [],\n      \"errors\":
           [],\n      \"timestamp\": null\n    }\n  },\n  \"example\": {\n    \"system\":
-          {\n      \"cortex\": \"nominal\",\n      \"os_version\": \"ZenOS-AI (4.0.0 RC2)\",\n
+          {\n      \"cortex\": \"nominal\",\n      \"os_version\": \"ZenOS-AI (4.5.x)\",\n
           \     \"build_version\": \"SuperSummary 1.0.0-beta\"\n    },\n    \"home_overview\":
           {\n      \"status\": \"ok\",\n      \"risks\": [\"storm watch active\"],\n
           \     \"events\": [\"2025-09-23T07:15:00Z: power dip detected\"]\n    },\n
@@ -160,7 +158,7 @@ script:
                 volume_entity_id:
                   - "{{ _rtt_dojo }}"
                 key: kfc_template
-                value: '{{ kfc_template_seed | tojson }}'
+                value: '{{ kfc_template_seed }}'
                 set_timestamp: true
                 label_input: kfc, dojo, zen
         - alias: Upconvert KFC drawers 1.1.0 → 1.2.0
@@ -306,31 +304,49 @@ script:
     - event: zen_resolver_refresh
 
     - variables:
-        result: >-
-          Nuclear label reset complete. {{ zen_labels | length }} zen_ label(s)
-          deleted. zen_resolver_refresh fired. Flynn will recreate and reassign
-          on next sentinel cycle.
-    - variables:
-        result: "{{ result | combine({'caller_token': caller_token | default('')}) if result is mapping else result }}"
+        result:
+          status: success
+          message: >-
+            Nuclear label reset complete. {{ zen_labels | length }} zen_ label(s)
+            deleted. zen_resolver_refresh fired. Flynn will recreate and reassign
+            on next sentinel cycle.
+          deleted_count: "{{ zen_labels | length }}"
+          caller_token: "{{ caller_token }}"
     - stop: reset labels complete
       response_variable: result
 
   zen_admintools_cabinetadmin:
     alias: Zen AdminTools CabinetAdmin
     description: >-
-      Zen AdminTools CabinetAdmin (4.0.0 RC2). Pattern A — strict redirector
-      mode. All writes routed exclusively through set_variable_legacy /
-      clear_variables_legacy for safe cabinet volume routing.
+      Low-level cabinet lifecycle tool. Manages ZenOS cabinet sensors at the
+      hardware and provisioning layer. USE ONLY when a cabinet needs to be
+      provisioned for the first time, recovered from a broken state, or
+      diagnosed. Do NOT use for normal data operations — reading and writing
+      drawer content uses zen_dojotools_filecabinet instead.
 
-      Ops: inspect, restore, reset, hammer, init, reset_all.
+      Cabinet sensors have a state machine: init (no VolumeInfo yet) →
+      online_unmounted → online_mounted. Cabinets must be provisioned (init
+      mode) before any other system can use them. A cabinet in 'init' state
+      has no identity, no GUID, and cannot hold user data.
 
-      ⚠️  reset_all is NUCLEAR — wipes ALL ring-0 canonical cabinets, reseeds
-      schemas, and triggers Flynn bootstrap. No undo. User cabinets are NOT
-      touched. This tool calls zen_admintools_reset_template and fires Flynn
-      sentinel via cabinet health sensor change. If you want to customize the
-      sequence (skip a cabinet, change order), read the docs and call the
-      individual tools directly — that is exactly what reset_all does under
-      the hood. confirm: true required for reset_all.
+      Key operations — call mode: help for full details:
+      inspect — read all drawers; always run this first before any destructive op.
+      init — stamp a virgin cabinet with VolumeInfo + GUID; safe, refuses if
+        already initialized; requires cab_type for non-default cabinet roles.
+      hammer — wipe all drawers and mark destroyed; use when init refuses due to
+        residue; set confirm_init: true to re-stamp immediately after wipe;
+        requires hammer_ok: true as explicit safety gate.
+      restore — recover a cabinet that lost VolumeInfo from HA recorder restart.
+      mount_status — list mounted/unmounted state across all zen_cabinet entities.
+      repair_mount / repair_dismount — force mount state on a stuck cabinet;
+        does not touch drawer content.
+      reset_all — NUCLEAR, wipes all ring-0 system cabinets and reboots Flynn;
+        requires confirm: true; user and expansion cabinets are untouched.
+
+      Safety gates that block destructive ops: hammer requires hammer_ok: true;
+      init on an unknown-state cabinet requires confirm_action: true; reset_all
+      requires confirm: true. An AI must not set these without explicit human
+      instruction — they exist to prevent accidental data loss.
     mode: parallel
     max: 10
     fields:
@@ -339,13 +355,18 @@ script:
         selector:
           select:
             options:
+            - help
             - inspect
+            - init
+            - hammer
             - restore
             - reset
-            - hammer
-            - init
+            - mount_status
+            - repair_mount
+            - repair_dismount
             - reset_all
-        default: inspect
+            - flip_schema_version
+        default: help
       target_cabinet:
         name: Target Cabinet
         selector:
@@ -353,6 +374,36 @@ script:
             filter:
             - domain: sensor
         default: ''
+      cab_type:
+        name: Cabinet Type (init only)
+        description: >-
+          Cabinet type passed to cabinetadmin_factory for virgin cabinet initialization
+          (e.g. ai_user, household, AI Data Storage Cabinet). Default empty = stamp
+          uses its own default type.
+        required: false
+        default: ''
+        selector:
+          text:
+      confirm_action:
+        name: Confirm Init (init only)
+        description: >-
+          Required when target cabinet state is unknown (no recorder history —
+          could be virgin or a wiped initialized cab). Explicit human confirmation
+          before stamping. Not required when state is init (unambiguously virgin).
+        required: false
+        default: false
+        selector:
+          boolean:
+      confirm_init:
+        name: Auto-Init After Hammer
+        description: >-
+          If true, run cabinetadmin_factory on the wiped cabinet immediately
+          after hammer completes. Cabinet is re-stamped with a fresh GUID and
+          VolumeInfo. Requires cab_type to set the correct cabinet type.
+        required: false
+        default: false
+        selector:
+          boolean:
       hammer_ok:
         name: Allow Hammer Destroy Mode
         selector:
@@ -365,6 +416,17 @@ script:
         default: false
         selector:
           boolean:
+      schema_version:
+        name: Schema Version (flip_schema_version only)
+        description: >-
+          Target cab_schema_version value to write into syscab. If omitted,
+          auto-flips (0→1 or 1→0). Integer. Controls legacy vs mount-aware mode.
+        required: false
+        selector:
+          number:
+            min: 0
+            max: 9
+            mode: box
       caller_token:
         name: Caller Token
         description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
@@ -411,17 +473,125 @@ script:
           {%- else -%}
             {{- [target_cabinet] -}}
           {%- endif -%}
+    - if:
+      - condition: template
+        value_template: '{{ op == ''help'' }}'
+      then:
+      - variables:
+          _help:
+            status: info
+            tool: zen_admintools_cabinetadmin
+            summary: >-
+              Cabinet admin tool for provisioning, inspection, and recovery of
+              ZenOS cabinet sensors. Use for new hardware setup and
+              troubleshooting. Not needed for normal household/member operations.
+            when_to_use:
+              provisioning_new_cab: >-
+                New expansion cabinet added to HA → run inspect first to confirm
+                state, then init (set cab_type to match intended role, e.g.
+                'AI Data Storage Cabinet'). The cabinet must be in 'init' state
+                (no VolumeInfo). Init is safe — it refuses if already initialized.
+              cab_has_old_or_broken_volumeinfo: >-
+                Provisioner fails because cabinet has stale VolumeInfo (e.g. old
+                schema with 'guid' instead of 'id'). Run hammer with
+                confirm_init: true and the correct cab_type. Hammer wipes the
+                cabinet and stamps a fresh VolumeInfo in one step. Re-provision
+                after.
+              cab_stuck_mounted_or_dismounted: >-
+                Cabinet sensor shows wrong mount state after a failed cycle.
+                Use repair_mount or repair_dismount to force the correct state.
+                Does not touch any drawer data.
+              want_to_see_all_drawers: >-
+                Run inspect on the target cabinet. Returns every drawer and its
+                current value. Do this before any destructive operation.
+              full_system_reset: >-
+                reset_all wipes ALL ring-0 system cabinets and triggers Flynn
+                bootstrap. Only use after a bad deployment or schema migration.
+                confirm: true required. No undo. User cabinets are NOT touched.
+            modes:
+              help: Return this help text. No target needed.
+              inspect: >-
+                Read all drawers on the target cabinet and return their current
+                values. Safe — read-only. No target = runs across all ring-0
+                cabinets. Run this first when troubleshooting any cabinet issue.
+              init: >-
+                Stamp a virgin cabinet with VolumeInfo, GUID, and initial
+                drawers. Refuses if cabinet is already initialized (good) or
+                has residue (potentially_bad — hammer first). Cabinet must be
+                in 'init' sensor state or 'unknown' (unknown requires
+                confirm_action: true). Requires cab_type if non-default.
+              hammer: >-
+                Wipe all drawers and mark cabinet as destroyed (_hammered marker).
+                Stronger than reset — the _hammered marker signals that the
+                cabinet was intentionally wiped. Requires hammer_ok: true.
+                Set confirm_init: true to immediately stamp a fresh VolumeInfo
+                after wiping — saves a separate init call. Use when a cabinet
+                has bad state that init refuses to overwrite.
+              restore: >-
+                Attempt to recover a cabinet that lost its VolumeInfo from HA
+                recorder. Reads existing drawer state and repairs where possible.
+              reset: >-
+                Wipe all drawers from the target cabinet. No _hammered marker.
+                Use when you want a clean cabinet without the destroyed tag.
+              mount_status: >-
+                Return mounted/unmounted state for every zen_cabinet entity.
+                No target needed. Useful to see which cabinets are online_mounted
+                vs online_unmounted at a glance.
+              repair_mount: >-
+                Force-write meta.mounted=true on a cabinet stuck in the wrong
+                state. Use when cabinet should be mounted but sensor disagrees
+                after a failed mount cycle. Does not modify any drawer content.
+              repair_dismount: >-
+                Force-write meta.mounted=false on a stuck cabinet. Mirror of
+                repair_mount for the dismounted direction.
+              reset_all: >-
+                NUCLEAR — wipes ALL ring-0 canonical cabinets, reseeds schemas,
+                and triggers Flynn bootstrap. No undo. User and expansion
+                cabinets are NOT touched. confirm: true required.
+              flip_schema_version: >-
+                Toggle cab_schema_version in syscab (0=legacy, 1+=mount-aware).
+                Controls Flynn operating mode. Normally not needed — only use
+                during schema migrations or to recover a stuck Flynn.
+            fields:
+              target_cabinet: >-
+                Cabinet entity to operate on. Leave blank for inspect, hammer,
+                init, restore, reset, and repair ops = operates on all ring-0
+                cabinets (inspect) or requires a target (others). mount_status
+                and reset_all ignore this field.
+              cab_type: >-
+                Required for init (and hammer with confirm_init). Sets the
+                cabinet type written into VolumeInfo. Common values: 'AI Data
+                Storage Cabinet', 'AI Household Cabinet', 'AI Family Cabinet',
+                'AI User Cabinet', 'Chat History Cabinet'. Default = factory
+                default type.
+              confirm_action: >-
+                Required when cab state is 'unknown' (no recorder history —
+                could be virgin or wiped-initialized). Explicit confirmation
+                before init stamps. Not needed when state is 'init' (unambiguously
+                virgin) or 'online_unmounted'.
+              confirm_init: >-
+                Hammer only. If true, stamps a fresh VolumeInfo immediately
+                after wiping the cabinet. Equivalent to hammer + init in one
+                call. Set cab_type accordingly.
+              hammer_ok: Required for hammer mode. Explicit safety gate.
+              confirm: Required for reset_all. Explicit safety gate.
+      - stop: help returned
+        response_variable: _help
     - choose:
       - conditions:
         - condition: template
           value_template: '{{ op == ''hammer'' and not hammer_ok }}'
         sequence:
         - variables:
-            result: 'Hammer mode requires hammer_ok: true'
-        - variables:
-            result: "{{ result | combine({'caller_token': caller_token | default('')}) if result is mapping else result }}"
+            result:
+              status: error
+              message: 'Hammer mode requires hammer_ok: true'
+              caller_token: "{{ caller_token }}"
         - stop: hammer blocked
           response_variable: result
+    - variables:
+        inspect_acc: {}
+        result: {}
     - repeat:
         for_each: '{{ effective_targets }}'
         sequence:
@@ -435,7 +605,26 @@ script:
               value_template: '{{ op == ''inspect'' }}'
             sequence:
             - variables:
-                inspect_acc: '{{ inspect_acc | combine({cab: drawers}) }}'
+                _scroll_keys: >-
+                  {%- set ns = namespace(s=[]) -%}
+                  {%- for key, drawer in vars.items() if key != '_label_index' -%}
+                    {%- set entry = drawer if drawer is mapping else {} -%}
+                    {%- set mt = entry.get('meta', {}) -%}
+                    {%- set mt = mt if mt is mapping else (mt | from_json if mt is string else {}) -%}
+                    {%- if mt.get('ro', false) -%}
+                      {%- set ns.s = ns.s + [key] -%}
+                    {%- endif -%}
+                  {%- endfor -%}
+                  {{ ns.s }}
+            - variables:
+                inspect_acc: >-
+                  {{- inspect_acc | combine({
+                    cab: {
+                      'state': states(cab),
+                      'drawers': drawers | reject('in', _scroll_keys) | list,
+                      'scroll': _scroll_keys
+                    }
+                  }) -}}
           - conditions:
             - condition: template
               value_template: '{{ op == ''restore'' }}'
@@ -476,27 +665,188 @@ script:
                   value: destroyed
                   timestamp: '{{ now().isoformat() }}'
                 set_timestamp: true
+            - if: "{{ confirm_init | default(false) | bool }}"
+              then:
+              - action: script.zen_admintools_cabinetadmin_factory
+                data:
+                  confirm_action: true
+                  cabinet_entity: "{{ cab }}"
+                  cabinet_type: "{{ cab_type | default('') }}"
+                response_variable: _hammer_init_result
+              - variables:
+                  _hammer_init_guid: "{{ _hammer_init_result.get('guid', '') if _hammer_init_result is mapping else '' }}"
           - conditions:
             - condition: template
               value_template: '{{ op == ''init'' }}'
             sequence:
+            # ── Boot guard — refuse if cab not yet restored from recorder ──
+            # unavailable = recorder hasn't restored yet, state is indeterminate.
+            # unknown = no recorder history at all = truly virgin. Allow.
             - if:
               - condition: template
-                value_template: '{{ use_universe }}'
+                value_template: "{{ states(cab) == 'unavailable' }}"
               then:
-              - event: clear_variables_legacy
-                event_data:
-                  volume_entity: '{{ cab }}'
-                  key: '*'
-              - event: set_variable_legacy
-                event_data:
-                  volume_entity: '{{ cab }}'
-                  key: AI_Cabinet_VolumeInfo
-                  value:
-                    value:
-                      initialized: true
-                      timestamp: '{{ now().isoformat() }}'
-                  set_timestamp: true
+              - variables:
+                  result:
+                    status: refused
+                    mode: init
+                    target: "{{ cab }}"
+                    action_taken: none
+                    reason: cab_unavailable
+              - stop: cab unavailable — wait for HA to stabilize
+                response_variable: result
+            # ── Unknown guard — require confirm_action when state is unknown ─
+            # unknown = no recorder history. Could be truly virgin OR a wiped
+            # initialized cab. Cannot distinguish without explicit confirmation.
+            # init state = triggered + no VolumeInfo = unambiguously virgin → skip.
+            - if:
+              - condition: template
+                value_template: "{{ states(cab) == 'unknown' and not (confirm_action | default(false)) }}"
+              then:
+              - variables:
+                  result:
+                    status: refused
+                    mode: init
+                    target: "{{ cab }}"
+                    action_taken: none
+                    reason: confirm_required
+                    message: >-
+                      Cabinet state is unknown (no recorder history). Cannot confirm
+                      virgin status. Set confirm_action: true to proceed.
+              - stop: confirm required — unknown cab state
+                response_variable: result
+            # ── Classifier ─────────────────────────────────────────────────
+            - variables:
+                _vars: >-
+                  {%- set v = state_attr(cab, 'variables') | default(none, true) -%}
+                  {{ v if v is mapping else {} }}
+                has_volumeinfo: "{{ 'AI_Cabinet_VolumeInfo' in _vars }}"
+                has_label_index: "{{ '_label_index' in _vars }}"
+                has_context:     "{{ '_context' in _vars }}"
+                non_system_drawers: >-
+                  {%- set sys = ['AI_Cabinet_VolumeInfo','_label_index','_context',
+                                 '_restored_marker','_hammered'] -%}
+                  {{ _vars.keys() | reject('in', sys) | reject('match', '^_') | list }}
+                _vi_raw: "{{ _vars.get('AI_Cabinet_VolumeInfo', {}) }}"
+                _vi_val: >-
+                  {%- set r = _vi_raw.get('value', {}) if _vi_raw is mapping else {} -%}
+                  {{ r if r is mapping else (r | from_json if r is string else {}) }}
+                cabinet_guid: "{{ _vi_val.get('id', '') | string | trim }}"
+                cabinet_state_class: >-
+                  {%- if not has_volumeinfo and not has_label_index and not has_context
+                         and (non_system_drawers | length == 0)
+                         and (cabinet_guid == '') -%}
+                    virgin
+                  {%- elif has_volumeinfo and cabinet_guid != '' -%}
+                    good
+                  {%- else -%}
+                    potentially_bad
+                  {%- endif -%}
+            # ── Route ──────────────────────────────────────────────────────
+            - choose:
+              - conditions: "{{ cabinet_state_class == 'virgin' }}"
+                sequence:
+                - action: script.zen_admintools_cabinetadmin_factory
+                  data:
+                    confirm_action: true
+                    cabinet_entity: "{{ cab }}"
+                    cabinet_type: "{{ cab_type | default('') }}"
+                  response_variable: _stamp_result
+                - variables:
+                    result:
+                      status: success
+                      mode: init
+                      target: "{{ cab }}"
+                      classification: virgin
+                      action_taken: stamped
+                      reason: initialized
+                      stamp_result: "{{ _stamp_result }}"
+              - conditions: "{{ cabinet_state_class == 'good' }}"
+                sequence:
+                - variables:
+                    result:
+                      status: refused
+                      mode: init
+                      target: "{{ cab }}"
+                      classification: good
+                      action_taken: none
+                      reason: already_initialized
+                - stop: already initialized
+                  response_variable: result
+              default:
+              # ── REARM GATE (potentially_bad only) ────────────────────────
+              # Virgin and good cabs proceed automatically. Only potentially_bad
+              # requires manual confirmation — residue present, human decides:
+              # hammer or repair. Must rearm input_boolean.zenos_cab_init_rearm.
+              - if:
+                - condition: template
+                  value_template: "{{ not is_state('input_boolean.zenos_cab_init_rearm', 'on') }}"
+                then:
+                - variables:
+                    result:
+                      status: refused
+                      mode: init
+                      target: "{{ cab }}"
+                      classification: potentially_bad
+                      action_taken: none
+                      reason: rearm_required
+                - stop: rearm required — potentially_bad cabinet
+                  response_variable: result
+              - action: input_boolean.turn_off
+                target:
+                  entity_id: input_boolean.zenos_cab_init_rearm
+              - variables:
+                  result:
+                    status: refused
+                    mode: init
+                    target: "{{ cab }}"
+                    classification: "{{ cabinet_state_class }}"
+                    action_taken: none
+                    reason: repair_required
+              - stop: repair required
+                response_variable: result
+          # ── repair_mount — force meta.mounted: true (bypass state guards) ──
+          - conditions:
+            - condition: template
+              value_template: '{{ op == ''repair_mount'' }}'
+            sequence:
+            - event: set_variable_legacy
+              event_data:
+                volume_entity: '{{ cab }}'
+                key: meta
+                value: "{{ {'mounted': true} }}"
+                set_timestamp: true
+            - wait_template: "{{ states(cab) == 'online_mounted' }}"
+              timeout: '00:00:05'
+              continue_on_timeout: true
+            - event: zen_event
+              event_data:
+                event:
+                  kind: cabinet_mounted
+                  component: "{{ cab }}"
+                  severity: info
+                  summary: "CabinetAdmin repair_mount: '{{ cab }}' forced to mounted (verified: {{ states(cab) == 'online_mounted' }})."
+          # ── repair_dismount — force meta.mounted: false (bypass state guards) ─
+          - conditions:
+            - condition: template
+              value_template: '{{ op == ''repair_dismount'' }}'
+            sequence:
+            - event: set_variable_legacy
+              event_data:
+                volume_entity: '{{ cab }}'
+                key: meta
+                value: "{{ {'mounted': false} }}"
+                set_timestamp: true
+            - wait_template: "{{ states(cab) in ['online_unmounted', 'dismounted'] }}"
+              timeout: '00:00:05'
+              continue_on_timeout: true
+            - event: zen_event
+              event_data:
+                event:
+                  kind: cabinet_dismounted
+                  component: "{{ cab }}"
+                  severity: info
+                  summary: "CabinetAdmin repair_dismount: '{{ cab }}' forced to dismounted (verified: {{ states(cab) in ['online_unmounted', 'dismounted'] }})."
     # ── inspect — emit accumulated result after loop ─────────────────────────
     - if:
       - condition: template
@@ -506,6 +856,79 @@ script:
           inspect_acc: "{{ inspect_acc | combine({'caller_token': caller_token | default('')}) if inspect_acc is mapping else inspect_acc }}"
       - stop: inspect complete
         response_variable: inspect_acc
+    # ── hammer — return result with optional init_guid ────────────────────────
+    - if:
+      - condition: template
+        value_template: '{{ op == ''hammer'' }}'
+      then:
+      - variables:
+          _hammer_result: "{{
+            {
+              'status': 'ok',
+              'op': 'hammer',
+              'target': cab,
+              'init_guid': _hammer_init_guid | default(''),
+              'auto_init': confirm_init | default(false) | bool,
+              'caller_token': caller_token | default('')
+            }
+          }}"
+      - stop: hammer complete
+        response_variable: _hammer_result
+    # ── init — return result after classification and stamp ───────────────────
+    - if:
+      - condition: template
+        value_template: '{{ op == ''init'' }}'
+      then:
+      - stop: init complete
+        response_variable: result
+    # ── mount_status — read mount state across all zen_cabinet entities ───────
+    - if:
+      - condition: template
+        value_template: '{{ op == ''mount_status'' }}'
+      then:
+      - variables:
+          _all_cabs: >-
+            {{ label_entities('Zen Cabinet' | slugify) | list }}
+      - variables:
+          mount_status_result: >-
+            {%- set ns = namespace(m={}) -%}
+            {%- for eid in _all_cabs -%}
+              {%- set _v = state_attr(eid, 'variables') | default({}, true) -%}
+              {%- set _v = _v if _v is mapping else {} -%}
+              {%- set _mt = _v.get('meta', {}) -%}
+              {%- set _mt = _mt if _mt is mapping else (_mt | from_json if _mt is string else {}) -%}
+              {%- set ns.m = ns.m | combine({eid: {'state': states(eid), 'mounted': _mt.get('mounted', false)}}) -%}
+            {%- endfor -%}
+            {{ ns.m | combine({'caller_token': caller_token}) }}
+      - stop: mount_status complete
+        response_variable: mount_status_result
+    # ── flip_schema_version — toggle cab_schema_version in syscab ────────────
+    - if:
+      - condition: template
+        value_template: '{{ op == ''flip_schema_version'' }}'
+      then:
+      - variables:
+          _syscab_vars: '{{ state_attr(''sensor.zenos_system_cabinet'', ''variables'') | default({}, true) }}'
+          _syscab_mapped: '{{ _syscab_vars if _syscab_vars is mapping else {} }}'
+          _csve: '{{ _syscab_mapped.get(''cab_schema_version'', {}) }}'
+          _csve_mapped: '{{ _csve if _csve is mapping else {} }}'
+          _current_v: '{{ _csve_mapped.get(''value'', 0) | int(0) }}'
+          _new_v: '{{ schema_version | default(none) | int(-1) if schema_version | default(none) is not none else (1 if _current_v == 0 else 0) }}'
+      - event: set_variable_legacy
+        event_data:
+          key: cab_schema_version
+          value: "{{ {'value': _new_v} }}"
+          volume_entity: sensor.zenos_system_cabinet
+          set_timestamp: true
+      - variables:
+          result:
+            status: success
+            message: "cab_schema_version {{ _current_v }} → {{ _new_v }} in syscab. Flynn now runs in {{ 'mount-aware' if _new_v >= 1 else 'legacy' }} mode."
+            previous_value: "{{ _current_v }}"
+            new_value: "{{ _new_v }}"
+            caller_token: "{{ caller_token }}"
+      - stop: flip_schema_version complete
+        response_variable: result
     # ── reset_all — nuclear cabinet wipe + reseed + Flynn bootstrap ──────────
     - if:
       - condition: template
@@ -516,12 +939,13 @@ script:
           value_template: '{{ not confirm }}'
         then:
         - variables:
-            result: >-
-              reset_all refused — confirm: true required. This wipes all ring-0
-              canonical cabinets, reseeds schemas, and triggers Flynn bootstrap.
-              No undo. Set confirm: true to proceed.
-        - variables:
-            result: "{{ result | combine({'caller_token': caller_token | default('')}) if result is mapping else result }}"
+            result:
+              status: error
+              message: >-
+                reset_all refused — confirm: true required. This wipes all ring-0
+                canonical cabinets, reseeds schemas, and triggers Flynn bootstrap.
+                No undo. Set confirm: true to proceed.
+              caller_token: "{{ caller_token }}"
         - stop: confirm required
           response_variable: result
       # Step 1 — wipe all ring-0 cabinets
@@ -538,329 +962,29 @@ script:
       # Step 3 — kick resolvers; Flynn sentinel fires from zen_cabinet_health change
       - event: zen_resolver_refresh
       - variables:
-          result: >-
-            reset_all complete. {{ canon_ring0_cabinets | length }} ring-0
-            cabinet(s) wiped. Schemas reseeded via reset_template.
-            zen_resolver_refresh fired. Flynn will bootstrap on next sentinel
-            cycle. User cabinets were not touched.
-      - variables:
-          result: "{{ result | combine({'caller_token': caller_token | default('')}) if result is mapping else result }}"
+          result:
+            status: success
+            message: >-
+              reset_all complete. {{ canon_ring0_cabinets | length }} ring-0
+              cabinet(s) wiped. Schemas reseeded via reset_template.
+              zen_resolver_refresh fired. Flynn will bootstrap on next sentinel
+              cycle. User cabinets were not touched.
+            wiped_count: "{{ canon_ring0_cabinets | length }}"
+            caller_token: "{{ caller_token }}"
       - stop: reset_all complete
         response_variable: result
 
     - variables:
-        result: 'AdminTools completed ''{{ op }}'' on {{ effective_targets | length }} cabinet(s).'
-    - variables:
-        result: "{{ result | combine({'caller_token': caller_token | default('')}) if result is mapping else result }}"
+        result:
+          status: success
+          message: "AdminTools completed '{{ op }}' on {{ effective_targets | length }} cabinet(s)."
+          op: "{{ op }}"
+          target_count: "{{ effective_targets | length }}"
+          caller_token: "{{ caller_token }}"
     - stop: complete
       response_variable: result
 
-  zen_dojotools_kungfu_writer:
-    alias: Zen DojoTools KungFu Writer
-    mode: parallel
-    max: 5
-    description: >-
-      Zen AdminTools KungFu Writer (1.2.0). Creates or updates a Kung Fu component
-      registration drawer in the Zen Dojo Cabinet.
-
-      Each KFC drawer tells the Ninja Summarizer what a component does, what data
-      it needs, and WHEN to run it (trigger_subscriptions + delay_seconds). The
-      Scheduler reads these drawers to auto-dispatch — no manual scheduler edits
-      needed after writing a component here.
-
-      Fields kata_key and friendly_name are required for write. All others are
-      recommended. Read kfc_template from the Dojo cabinet for the full schema.
-
-      action=help returns the live kfc_template schema from the Dojo cabinet.
-      action=write with confirm_action=true performs the upsert.
-    icon: mdi:pencil-box-outline
-    fields:
-      action:
-        name: Action
-        description: "'write' to upsert a component, 'help' to return the kfc_template schema."
-        default: help
-        required: true
-        selector:
-          select:
-            options:
-            - write
-            - help
-      kata_key:
-        name: Kata Key
-        description: >-
-          Unique component ID (will be slugified). Used as the Dojo drawer key and
-          the Kata cabinet drawer key. Example: 'Alert Manager' → 'alert_manager'.
-        required: false
-        selector:
-          text:
-      friendly_name:
-        name: Friendly Name
-        description: "Human-readable component title. Example: 'Alert Manager'."
-        required: false
-        selector:
-          text:
-      component_summary:
-        name: Component Summary
-        description: One-sentence description of what this component monitors or manages.
-        required: false
-        selector:
-          text:
-      label:
-        name: HyperIndex Label
-        description: >-
-          Label passed to zen_dojotools_index for entity discovery. Leave blank if
-          this component does not use the HyperIndex.
-        required: false
-        selector:
-          text:
-      command:
-        name: Library Command
-        description: >-
-          Library macro token (e.g. ~ALERTS~) passed to command_interpreter.
-          Leave blank if not applicable.
-        required: false
-        selector:
-          text:
-      trigger_subscriptions:
-        name: Trigger Subscriptions
-        description: >-
-          Comma-separated list of scheduler trigger IDs this component should
-          run on. Valid IDs: ha_start, daily_midnight, daily_noon, hourly_trigger,
-          quarter_hour, every_10_minutes, every_5_minutes, home_mode_updates,
-          alarm_panel, door_opens_or_closes, lock_changes, window_opens_or_closes,
-          garage_door, home_occupancy_change, nathan_bed_changes, kim_bed_changes,
-          water_flow_stop, hot_tub_state, elec_panel_door_change, start_home_wake,
-          start_home_evening, mb_wake, force_summary, force_gc, test_button.
-        required: false
-        selector:
-          text:
-      delay_seconds:
-        name: Delay (seconds)
-        description: >-
-          Stagger delay before the Ninja runs this component after the trigger
-          fires. Use to sequence components and avoid LLM overload. Default 0.
-        required: false
-        default: 0
-        selector:
-          number:
-            min: 0
-            max: 300
-            step: 5
-      enabled:
-        name: Component Enabled
-        description: >-
-          Whether this component is active. Stored in meta.enabled.
-          Default true. Lifecycle control in 1.2.0+.
-        required: false
-        default: true
-        selector:
-          boolean:
-      requires_cert:
-        name: Required Cert
-        description: >-
-          Capability certificate required to run this component (stub — not
-          enforced until SP1). Example: zen_level_2.
-        required: false
-        selector:
-          text:
-      requires_level:
-        name: Required Level
-        description: >-
-          Numeric capability level required (stub — not enforced until SP1).
-          Default 0.
-        required: false
-        default: 0
-        selector:
-          number:
-            min: 0
-            max: 10
-            step: 1
-      tool:
-        name: Tool
-        description: Associated tool name or breadcrumb (optional).
-        required: false
-        selector:
-          text:
-      version:
-        name: Component Version
-        description: "Semantic version string. Example: 1.0.0."
-        required: false
-        selector:
-          text:
-      component_instructions:
-        name: Component Instructions
-        description: Long-form operational notes for the monk (10–40 lines recommended).
-        required: false
-        selector:
-          text:
-            multiline: true
-      more_info:
-        name: More Info
-        description: Extended rationale, context, or integration notes.
-        required: false
-        selector:
-          text:
-            multiline: true
-      confirm_action:
-        name: Confirm Write
-        description: Must be true to perform the write. Prevents accidental overwrites.
-        required: true
-        default: false
-        selector:
-          boolean:
-      caller_token:
-        name: Caller Token
-        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
-        required: false
-        selector:
-          text:
-    sequence:
-
-    # --------------------------------------------------------------
-    # Always normalize User/AI inputs so we don't have to react JIT
-    # --------------------------------------------------------------
-    - variables:
-        caller_token: "{{- caller_token | default('') -}}"
-
-    - variables:
-        _act: "{{ action | default('help') }}"
-        _dojo_cab: "{{ states('sensor.zen_dojo_cabinet_resolved') }}"
-
-    - choose:
-
-      # ── HELP ──────────────────────────────────────────────────────────────────
-      - alias: Help — return live kfc_template from Dojo
-        conditions:
-        - condition: template
-          value_template: "{{ _act == 'help' }}"
-        sequence:
-        - variables:
-            _kfc_tmpl: >-
-              {%- set _drawer = (state_attr(_dojo_cab, 'variables') | default({}, true))
-                                .get('kfc_template', {}) if _dojo_cab != '' else {} -%}
-              {%- set _val = _drawer.get('value', _drawer) if _drawer is mapping else {} -%}
-              {%- set _parsed = (_val | from_json) if _val is string else _val -%}
-              {{ _parsed if _parsed is mapping else {} }}
-            result: >-
-              {{
-                {
-                  "result": "help",
-                  "kfc_template": _kfc_tmpl,
-                  "usage": "Call with action=write, confirm_action=true, and the fields from kfc_template.structure filled in."
-                }
-              }}
-
-      # ── VALIDATION ────────────────────────────────────────────────────────────
-      - alias: Error — missing kata_key or friendly_name
-        conditions:
-        - condition: template
-          value_template: >-
-            {{
-              _act == 'write'
-              and (
-                (kata_key | default('')) | trim == ''
-                or (friendly_name | default('')) | trim == ''
-              )
-            }}
-        sequence:
-        - variables:
-            result: >-
-              {{
-                {
-                  "result": "error",
-                  "reason": "kata_key and friendly_name are required for write.",
-                  "usage": "Provide both fields and retry."
-                }
-              }}
-
-      - alias: Error — confirm_action not set
-        conditions:
-        - condition: template
-          value_template: "{{ _act == 'write' and not (confirm_action | default(false) | bool) }}"
-        sequence:
-        - variables:
-            result: >-
-              {{
-                {
-                  "result": "error",
-                  "reason": "confirm_action must be true to write.",
-                  "usage": "Set confirm_action=true and retry."
-                }
-              }}
-
-      # ── WRITE ─────────────────────────────────────────────────────────────────
-      - alias: Write — upsert Dojo drawer
-        conditions:
-        - condition: template
-          value_template: "{{ _act == 'write' and (confirm_action | default(false) | bool) }}"
-        sequence:
-        - variables:
-            _slug: "{{ kata_key | slugify | default('unknown') }}"
-            _trigger_list: >-
-              {%- set raw = (trigger_subscriptions | default('')) | string | trim -%}
-              {%- if raw | length > 0 -%}
-                {{ raw | regex_findall('[^,\\s]+') }}
-              {%- else -%}
-                []
-              {%- endif -%}
-            _payload: >-
-              {{
-                {
-                  "version":               version | default(''),
-                  "friendly_name":         friendly_name | default(''),
-                  "label":                 label | default(''),
-                  "command":               command | default(''),
-                  "component_summary":     component_summary | default(''),
-                  "component_instructions": component_instructions | default(''),
-                  "more_info":             more_info | default(''),
-                  "tool":                  tool | default(''),
-                  "trigger_subscriptions": _trigger_list,
-                  "delay_seconds":         delay_seconds | default(0) | int(0),
-                  "kata_key":              _slug,
-                  "meta": {
-                    "enabled":  enabled | default(true) | bool,
-                    "requires": {
-                      "cert":  requires_cert  | default(''),
-                      "level": requires_level | default(0) | int(0)
-                    }
-                  }
-                } | tojson
-              }}
-        - action: script.zen_dojotools_filecabinet
-          data:
-            action_type: update
-            show_hidden_volumes: false
-            force_action: true
-            set_timestamp: true
-            volume_entity_id:
-              - "{{ _dojo_cab }}"
-            key: "{{ _slug }}"
-            value: "{{ _payload }}"
-            label_input: "{{ 'kfc, dojo, zen, ' ~ (label | default('')) }}"
-            meta:
-              no_autoexpire: true
-              no_autorecycle: true
-              description: "KFC component definition — permanent, do not expire"
-          response_variable: _write_response
-        - variables:
-            result: >-
-              {{
-                {
-                  "result":     "success",
-                  "component":  _slug,
-                  "drawer_key": _slug,
-                  "dojo_cab":   _dojo_cab,
-                  "triggers":   _trigger_list,
-                  "write":      _write_response | default({})
-                }
-              }}
-
-    - variables:
-        result: "{{ result | combine({'caller_token': caller_token | default('')}) if result is mapping else result }}"
-    - stop: Return Result
-      response_variable: result
-
-  zen_admintools_cabinetadmin_stamp:
+  zen_admintools_cabinetadmin_factory:
     sequence:
     - variables:
         confirm_action: '{{ confirm_action | default(false) }}'
@@ -883,13 +1007,7 @@ script:
           }}'
         now_iso: '{{ now().isoformat() }}'
         schema_version: 1
-        cabinet_guid: "{% set generated = '%04x%04x-%04x-%04x-%04x-%04x%04x%04x' | format(\n
-          \   range(0, 65536) | random,\n    range(0, 65536) | random,\n    range(0,
-          65536) | random,\n    range(0, 65536) | random,\n    range(0, 65536) | random,\n
-          \   range(0, 65536) | random,\n    range(0, 65536) | random,\n    range(0,
-          65536) | random\n  ) %} {% if force_new_guid %}\n  {{ generated }}\n{%
-          elif cabinet_guid not in ['', None] %}\n  {{ cabinet_guid }}\n{% else %}\n
-          \ {{ generated }}\n{% endif %}"
+        cabinet_guid: "{{ '%04x%04x-%04x-%04x-%04x-%04x%04x%04x' | format(range(0,65536)|random,range(0,65536)|random,range(0,65536)|random,range(0,65536)|random,range(0,65536)|random,range(0,65536)|random,range(0,65536)|random,range(0,65536)|random) if (force_new_guid or not cabinet_guid) else cabinet_guid }}"
         labels_from_manifest: '{{ state_attr(''sensor.zen_library_manifest'',''value'')
           | default({}, true) }}'
         flag_profile: "{% if not auto_profile %}\n  {{ explicit_flag_profile | default('standard')
@@ -901,14 +1019,16 @@ script:
           %}secure\n  {% elif 'archive_cabinet' in lbls or cabinet_type | lower == 'archive
           cabinet' %}system\n  {% else %}standard{% endif %}\n{% endif %}"
         flags: "{% set fp = flag_profile %}\n{% set is_kata = 'kata' in (cabinet_type
-          | lower) %}\n{% if fp == 'system' %}\n  {{ {'system': True, 'hidden': False,
-          'read_only': True, 'secure_mode': True, 'gc_eligible': is_kata} }}\n{% elif
-          fp == 'secure' %}\n  {{ {'system': False, 'hidden': True, 'read_only': True,
-          'secure_mode': True, 'gc_eligible': false} }}\n{% elif fp == 'public' %}\n
-          \ {{ {'system': False, 'hidden': False, 'read_only': False, 'secure_mode':
-          False, 'gc_eligible': false} }}\n{% else %}\n  {{ {'system': False, 'hidden':
-          False, 'read_only': False, 'secure_mode': False, 'gc_eligible': false} }}\n{%
-          endif %}"
+          | lower) %}\n{% set is_syscab = cabinet_entity == 'sensor.zenos_system_cabinet'
+          %}\n{% if fp == 'system' %}\n  {% set _f = {'system': True, 'hidden': False,
+          'read_only': True, 'secure_mode': True, 'gc_eligible': is_kata} %}\n{%
+          elif fp == 'secure' %}\n  {% set _f = {'system': False, 'hidden': True,
+          'read_only': True, 'secure_mode': True, 'gc_eligible': false} %}\n{% elif
+          fp == 'public' %}\n  {% set _f = {'system': False, 'hidden': False, 'read_only':
+          False, 'secure_mode': False, 'gc_eligible': false} %}\n{% else %}\n  {%
+          set _f = {'system': False, 'hidden': False, 'read_only': False, 'secure_mode':
+          False, 'gc_eligible': false} %}\n{% endif %}\n{{ _f | combine({'cabinet_ro':
+          true} if is_syscab else {}) }}"
         acl_family: "{% set fam_guid = family_guid | default('default-guid') %} {% set
           manifest = state_attr('sensor.zen_library_manifest','value') | default({},
           true) %} {% set fam_name = 'My Family' %} {% if manifest is mapping %}\n  {%
@@ -946,6 +1066,7 @@ script:
             \        if cabinet_type | lower == 'chat history cabinet'\n         else
             [\"system\",\"cabinet\",\"volumeinfo\"])\n  } | tojson\n}}"
           _label_index: '{{ {} | tojson }}'
+          meta: "{{ {'mounted': cabinet_entity == 'sensor.zenos_system_cabinet'} | tojson }}"
           _zen_relationships: "{{\n  {\n    \"mounts_out\": mounts_out,\n
             \     \"mounts_in\": [],\n      \"mount_policy\": \"allow_all\" if flag_profile
             == 'system' else \"restricted\"\n  } | tojson\n}}"
@@ -963,7 +1084,11 @@ script:
           response_variable: response
       - conditions:
         - condition: template
-          value_template: '{{ state_attr(cabinet_entity,''variables'') is none }}'
+          value_template: >-
+            {{
+              state_attr(cabinet_entity, 'variables') is none
+              or 'AI_Cabinet_VolumeInfo' not in (state_attr(cabinet_entity, 'variables') | default({}))
+            }}
         alias: Initialize New Cabinet
         sequence:
         - repeat:
@@ -972,12 +1097,23 @@ script:
             - event: set_variable_legacy
               event_data:
                 key: '{{ repeat.item[0] }}'
-                value: '{{ repeat.item[1] | from_json | default({}) }}'
+                value: '{{ repeat.item[1] }}'
                 set_timestamp: true
                 volume_entity: '{{ cabinet_entity }}'
+                _cabinetadmin_init: true
+                force: true
+        - event: zen_event
+          event_data:
+            kind: cabinet_boot_touch
+            component: cabinetadmin_factory
+            severity: info
+            summary: 'Post-stamp boot touch for {{ cabinet_entity }}'
+            metadata:
+              volume_entity: '{{ cabinet_entity }}'
         - variables:
             response:
               status: success
+              guid: "{{ cabinet_guid }}"
               message: 'Cabinet ''{{ cabinet_entity }}'' initialized with GUID {{ cabinet_guid
                 }}, profile ''{{ flag_profile }}'', and {{ mounts_out | length }} mounts.
 
@@ -992,9 +1128,11 @@ script:
         sequence:
         - variables:
             existing: '{{ state_attr(cabinet_entity,''variables'') }}'
-            existing_guid: "{% set info = existing.get('AI_Cabinet_VolumeInfo',{}) %}
-              {% if info is mapping and info.get('value') is mapping %}\n  {{ info.value.get('id','')
-              }}\n{% else %}''{% endif %}"
+            existing_guid: >-
+              {%- set info = existing.get('AI_Cabinet_VolumeInfo', {}) if existing is mapping else {} -%}
+              {%- set _val = info.get('value', {}) if info is mapping else {} -%}
+              {%- set _val = _val if _val is mapping else (_val | from_json if _val is string else {}) -%}
+              {{ _val.get('id', '') }}
             guid_changed: '{{ force_new_guid or existing_guid != cabinet_guid }}'
         - choose:
           - conditions:
@@ -1004,13 +1142,23 @@ script:
             - event: set_variable_legacy
               event_data:
                 key: AI_Cabinet_VolumeInfo
-                value: '{{ drawers_to_init[''AI_Cabinet_VolumeInfo''] | from_json |
-                  default({}) }}'
+                value: '{{ drawers_to_init[''AI_Cabinet_VolumeInfo''] }}'
                 set_timestamp: true
                 volume_entity: '{{ cabinet_entity }}'
+                _cabinetadmin_init: true
+                force: true
+        - event: zen_event
+          event_data:
+            kind: cabinet_boot_touch
+            component: cabinetadmin_factory
+            severity: info
+            summary: 'Post-stamp boot touch for {{ cabinet_entity }}'
+            metadata:
+              volume_entity: '{{ cabinet_entity }}'
         - variables:
             response:
               status: success
+              guid: "{{ cabinet_guid }}"
               message: 'Repaired ''{{ cabinet_entity }}'' (profile ''{{ flag_profile
                 }}''). {% if guid_changed %}GUID restamped: {{ cabinet_guid }}.{% endif
                 %}
@@ -1031,7 +1179,7 @@ script:
         response: "{{ response | combine({'caller_token': caller_token | default('')}) if response is mapping else response }}"
     - stop: complete
       response_variable: response
-    alias: Zen AdminTools CabinetAdmin (BACKUP)
+    alias: Zen AdminTools CabinetAdmin Factory
     description: 'Factory tool for stamping or repairing Cabinet sensors. Requires confirm_action:
       true to run. Auto-detects flag profiles from cabinet type or manifest labels.
       Parses mount:[GUID] drawers into _zen_relationships. Accepts person.* entities
@@ -1127,20 +1275,20 @@ script:
     fields:
       cortex_version:
         name: Cortex Version
-        description: "Prompt primitive set version to stamp. 30 = 2026 GA (Friday Delta).
-          29 = prior GA. 27 = 2026 RC2. Default: latest (30)."
+        description: "Prompt primitive set version to stamp. 32 = True Voice (GA default).
+          30 = 2026 GA (Friday Delta). 29 = prior GA. Default: latest (32)."
         required: false
         selector:
           select:
             options:
-              - label: latest (30 — 2026 GA, Friday Delta)
+              - label: latest (32 — True Voice)
                 value: latest
+              - label: 32 — True Voice
+                value: '32'
               - label: 30 — 2026 GA, Friday Delta
                 value: '30'
               - label: 29 — 2026 GA
                 value: '29'
-              - label: 27 — 2026 RC2
-                value: '27'
       ship_zen_system:
         name: "Ship KFC: ZenOS System Health"
         description: >-
@@ -1165,100 +1313,8 @@ script:
     - variables:
         _cv: >-
           {%- set raw = cortex_version | default('latest') | string | lower | trim
-          -%} {%- if raw in ['27', 'rc2', '2026_rc2'] -%}27{%- elif raw == '30'
-          -%}30{%- else -%}29{%- endif -%}
+          -%} {%- if raw in ['32', 'latest'] -%}32{%- elif raw == '30' -%}30{%- else -%}29{%- endif -%}
     - choose:
-      - conditions: '{{ _cv | string == ''27'' }}'
-        sequence:
-        - alias: 'set_variable: Purpose (v27 — 2026 RC2)'
-          event: set_variable_zenos_system_cabinet
-          event_data:
-            key: purpose
-            value: "meta:\n  priority: true\n  environment: ZenOS-AI\n  version: 4.0.0
-              RC2\n  codename: Quiet Fusion  \n- >\n  You are a smart home assistant
-              integrated with Home Assistant OS, running ZenOS-AI.\n  See your header
-              for current version information and more\n  information.\n- >\n  You
-              are being hosted on a platform running on Proxmox VE hosted\n  on Intel
-              NUC hardware.\n- >\n  Your role as part of the family is to manage our
-              home,\n  be proactive, provide insights, answer questions, and perform
-              household tasks\n  using your best judgement and your tools.\n- >\n  Note
-              - The end of file for your primary directives is marked as\n  **READY
-              TO ADVENTURE**  If you do not encounter the end of file, please report\n
-              \ it as 'not ready to adventure' in your own way."
-            set_timestamp: true
-        - alias: 'set_variable: Directives (v27 — 2026 RC2)'
-          event: set_variable_zenos_system_cabinet
-          event_data:
-            key: directives
-            value: "meta:\n  priority: true\n  environment: ZenOS-AI\n  version: 4.0.0
-              RC2\n  codename: Quiet Fusion  \n- >\n  Respond truthfully with a friendly,
-              conversational tone. Provide brief\n  responses for commands and queries,
-              using casual language and personalized\n  insights. Use storytelling elements
-              to make information engaging and\n  relatable.\n- >\n  Manage the smart
-              home and assist the family using available data from the\n  Home Assistant
-              environment. Prefer local data over external sources. Resolve\n  conflicts
-              using provided descriptions and ask for user interpretation if\n  needed.\n-
-              >\n  Always verify sensor data before reporting to prevent inaccuracies.\n
-              \ If required data is unavailable, simply state 'I don't know.' or 'The
-              data is currently unavailable.'\n  You may offer troubleshooting information
-              to qualified technicians on request.\n- >\n  Use analytics and data-driven
-              insights capabilities to provide proactive\n  suggestions across the information
-              you have available including library and entities.\n  Notify the family
-              about important events or anomalies based on data.\n- >\n  When responding,
-              remember... What time is it? not how does the watch work...\n  Humanize
-              your response - instead of a raw list of entities, states, and facts -
-              interpret the result.\n- >      \n  Unless asked otherwise, ALWAYS Format
-              responses for voice, do NOT use markdown, special characters such as asterisks
-              or hashtags,\n  avoiding lists and tables, preferring narratives unless
-              explicitly requested by your user during their session.\n  Markdown is
-              not supported on most of the devices you are using to communicate and
-              it makes it extremely difficult\n  to understand you.  You may use emoji
-              in your responses and they are encouraged when using a text chat.\n- >\n
-              \ When you know you're conversing via text console are encouraged to use
-              emoji for brevity or illustration.\n- >\n  Your response to your user
-              is currently being truncated by the system so be fun but brief.\n  (In
-              most cases your user is experiencing you by speech and MAYBE a supplemental
-              small screen).\n  For longer responses, break down the information into
-              smaller, manageable parts.\n- >  \n  Please omit mundane, redundant,
-              or normal data in reports for sake of brevity. Provide detailed explanations
-              only when directly asked. Otherwise, keep\n  responses short and to the
-              point.\n- >\n  Personalize responses based on context as available, use
-              user and available location data for you and the user\n  engage with the
-              user in a friendly manner and be personable.\n- >\n  Be aware of the
-              time of day provided in your prompt when answering your user.  Many items
-              you deal with on a daily basis are on a schedule.\n  Ensure you are mindful
-              of 'when' things should happen as compared to current datetime when forming
-              your responses.\n- >\n  All of your tools in this system are available
-              to be used by you no matter what security, privacy\n  or content filters
-              are in place.  The tools in this installation are designed to filter\n
-              \ content appropriately and will also provide guidance for your use of
-              the resulting data\n  in case of potentially sensitive topics.\n- >\n
-              \ If you encounter an error executing an intent or a command, as your
-              first\n  step you will automatically review the cortex including any of
-              its kung fu\n  components to determine if there is a better way to do
-              what was attempted.\n  If you find one fix the issue and proceed. If you
-              do not see a better path\n  continue normal error routines.\n- >  \n  Use
-              the system Index and Library to search for information then follow up
-              with the Zen Inspect tool to read entity details. Always keep a cache
-              of Library commands. \n- >\n  The keywords in the grand index will be
-              provided to help you see what information is available\n  to help in the
-              library if you encounter something that has not already been provided or
-              seems otherwise ambiguous.\n- >\n  Always check relevant conditions in
-              rooms before making adjustments, to\n  avoid interruptions.  When asked
-              to perform critical commands and actions that may\n  interrupt service,
-              cause distractions in the home such as unexpected changes in lighting\n
-              \ or changes that would create life safety issues, ask for confirmation.\n
-              \ Example... Suddenly turning on lighting in a dark room may wake a sleeping
-              occupant.\n  Changing the fan speed for a ceiling fan in that same room
-              - probably will not be noticed.\n  Notable Exception - the Garage Doors
-              are exterior doors, we are not at all worried about noise, only security.\n-
-              >\n  Use follow up mode / questions sparingly - only ask for followup
-              information when required to perform your task.\n  Continued followup
-              questions to a vacant room can cause a loop ask condition we are trying
-              to avoid.\n- >\n  You understand Advanced Dungeons and Dragons 5e rules.
-              \ And could easily\n  see adapting a questline focused on the household
-              as the quest and the home as\n  our home dungeon."
-            set_timestamp: true
       - conditions: '{{ _cv | string == ''30'' }}'
         sequence:
         - alias: 'set_variable: Purpose (v30 — 2026 GA)'
@@ -1355,6 +1411,100 @@ script:
               scripts for all actions within your capabilities.\n  If a task genuinely
               requires config changes, describe clearly what needs to\n  change and
               ask the user or an admin to implement it."
+            set_timestamp: true
+      - conditions: '{{ _cv | string == ''32'' }}'
+        sequence:
+        - alias: 'set_variable: Purpose (v32 — 2026 True Voice)'
+          event: set_variable_zenos_system_cabinet
+          event_data:
+            key: purpose
+            value: "meta:\n  priority: true\n  environment: ZenOS-AI\n  version: 7.1.0\n  codename: True Voice\n- >\n  You are a smart home assistant integrated
+              with Home Assistant OS, running ZenOS-AI.\n  See your header for current
+              version information and more\n  information.\n- >\n  Your role as part
+              of the family is to manage our home,\n  be proactive, provide insights,
+              answer questions, and perform household tasks\n  using your best judgement
+              and your tools.\n- >\n  Note - The end of file for your primary directives
+              is marked as\n  **READY TO ADVENTURE**  If you do not encounter the end
+              of file, please report\n  it as 'not ready to adventure' in your own way."
+            set_timestamp: true
+        - alias: 'set_variable: Directives (v32 — 2026 True Voice)'
+          event: set_variable_zenos_system_cabinet
+          event_data:
+            key: directives
+            value: "meta:\n  priority: true\n  environment: ZenOS-AI\n  version: 7.1.0\n  codename: True Voice\n- >\n  Respond truthfully with a friendly,
+              conversational tone. Match your response to the moment — crisp for\n
+              \ commands, warm and full for conversation. Use casual language, personalized\n
+              \ insights, and storytelling to make things engaging and relatable.\n- >\n
+              \ Manage the smart home and assist the family using available data from the\n
+              \ Home Assistant environment. Prefer local data over external sources.\n- >\n
+              \ Context Resolution: Context is additive and label-driven. When resolving
+              preference or policy conflicts, consider house, family, and user scope in
+              that order.\n  Defer to user by default. Family policy overrides user
+              preference. House policy is absolute — find the closest compliant path
+              to what the user wants.\n  Life safety is always treated as house-level
+              policy and cannot be overridden by any scope. Prefer reconciliation over
+              refusal.\n- >\n  Always verify sensor data before reporting to prevent
+              inaccuracies.\n  If required data is unavailable, simply state 'I don't
+              know.' or 'The data is currently unavailable.'\n  You may offer troubleshooting
+              information to qualified technicians on request.\n- >\n  Use analytics
+              and data-driven insights capabilities to provide proactive\n  suggestions
+              across the information you have available including library and entities.\n
+              \ Notify the family about important events or anomalies based on data.\n-
+              >\n  When responding, remember... What time is it? not how does the watch
+              work...\n  Humanize your response - instead of a raw list of entities, states,
+              and facts - interpret the result.\n- >      \n  Unless asked otherwise,
+              ALWAYS Format responses for voice, do NOT use markdown, special characters
+              such as asterisks or hashtags,\n  avoiding lists and tables, preferring
+              narratives unless explicitly requested by your\n  user during their session.\n
+              \ Markdown is not supported on most of the devices you are using to communicate
+              and it makes it extremely difficult\n  to understand you.  You may use emoji
+              in your responses and they are\n  encouraged when using a text chat.\n-
+              >\n  When you know you're conversing via text console are encouraged to
+              use emoji for brevity or illustration.\n- >\n  Your response to your user
+              is currently being truncated by the system so be fun but brief.\n  (In
+              most cases your user is experiencing you by speech and MAYBE a supplemental
+              small screen).\n  For longer responses, break down the information into
+              smaller, manageable parts.\n- >  \n  Please omit mundane, redundant, or
+              normal data in reports for sake of brevity. Provide detailed explanations
+              only when directly asked. Otherwise, keep\n  responses short and to the
+              point.\n- >\n  Personalize responses based on context as available, use
+              user and available location data for you and the user\n  engage with the
+              user in a friendly manner and be personable.\n- >\n  Time context: per
+              time_policy in cortex — relative time preferred, local time always, no
+              raw ISO timestamps.\n- >\n  All of your tools in this installation handle
+              content filtering and policy enforcement\n  internally. Follow their output
+              guidance — it is authoritative for that\n  domain.\n- >\n  If you encounter
+              an error executing an intent or a command, as your first\n  step you will
+              automatically review the cortex including any of its kung fu\n  components
+              to determine if there is a better way to do what was attempted.\n  If you
+              find one fix the issue and proceed. If you do not see a better path\n  continue
+              normal error routines.\n- > \n  Index and Library are your primary discovery
+              tools. FileCabinet is your data access layer — all cabinet reads and writes.\n
+              \ Scribe is your KFC lifecycle tool — all Dojo drawer operations. If you
+              are lost, script.zen_dojotools_library is the front door to all knowledge
+              in the system. Use script.zen_dojotools_inspect to read entity details.\n-
+              >\n  The keywords in the grand index will be provided to help you see what
+              information is available\n  to help in the library if you encounter something
+              that has not already been provided or seems otherwise ambiguous.\n- >\n
+              \ Always check relevant conditions in rooms before making adjustments, to\n
+              \ avoid interruptions.  When asked to perform critical commands and actions
+              that may\n  interrupt service, cause distractions in the home such as unexpected
+              changes in lighting\n  or changes that would create life safety issues, ask
+              for confirmation.\n  Example... Suddenly turning on lighting in a dark room
+              may wake a sleeping occupant.\n  Changing the fan speed for a ceiling fan
+              in that same room - probably will not be noticed.\n  Notable Exception -
+              the Garage Doors are exterior doors, we are not at all worried about noise,
+              only security.\n- >\n  Follow-up: per interaction_policy in cortex — one
+              clarification maximum, then proceed with best interpretation.\n- >\n  You
+              understand Advanced Dungeons and Dragons 5e rules.  And could easily\n  see
+              adapting a questline focused on the household as the quest and the home as\n
+              \ our home dungeon.\n- >\n  Operating context: You run as a conversation
+              agent inside Home Assistant.\n  You cannot directly create, modify, or delete
+              HA automations, scripts, or\n  configuration files — these are admin-plane
+              operations.\n  Use DojoTools and existing scripts for all actions within
+              your capabilities.\n  If a task genuinely requires config changes, describe
+              clearly what needs to\n  change and ask the user or an admin to implement
+              it."
             set_timestamp: true
       default:
       - alias: 'set_variable: Purpose (v28 — 2026 GA)'
@@ -1453,265 +1603,6 @@ script:
             ask the user or an admin to implement it."
           set_timestamp: true
     - choose:
-      - conditions: '{{ _cv | string == ''27'' }}'
-        sequence:
-        - alias: 'set_variable: Cortex (v27 — 2026 RC2)'
-          event: set_variable_zenos_system_cabinet
-          event_data:
-            key: cortex
-            value:
-              meta:
-                priority: true
-                environment: ZenOS-AI
-                version: 4.0.0 RC2
-                codename: Quiet Fusion
-                about: 'Cortex 27.0.0 — Refines the Enlightened Human kernel for ZenOS-AI
-                  (4.0.0 RC2). Restores adaptive flow and ensures full access
-                  to core Library and Index functions required for reasoning, navigation,
-                  and self-reference.
-
-                  '
-              governance:
-                policy_ref: zen_dojotools_policy_dojo_tool_use
-                confirmation_phrase: any variant of an affirmative response
-                default_audit_drawer: /cabinets/{household_cabinet}/tool_audit
-                validation_mode: contextual
-                summary: 'Governance defines operational boundaries and confirmation logic.
-                  Contextual validation allows safe improvisation while preserving traceability.
-                  Asynchronous auditing enables high-speed reflex actions to log without
-                  blocking.
-
-                  '
-              audit:
-                queue_path: /cabinets/{ai_entity_cabinet}/audit_queue
-                retention_policy:
-                  max_records: 25
-                  rotation: by_date
-                mode: asynchronous
-                note: 'Reflex-tier actions post lightweight entries to the audit queue.
-                  Background workers consolidate to the master audit drawer on cycle.
-
-                  '
-              library:
-                version: 4.0.0 RC2
-                description: 'The Library provides structured access to indexed knowledge,
-                  cabinet metadata, and manifest references. It also provides access to
-                  Library Console Tools (~COMMANDS~) for console-based navigation and knowledge
-                  queries.
-
-                  '
-                index_tool: script.zen_dojotools_index
-                index_notes: 'The Zen Index 3.0.0+ replaces all prior indexing systems.
-                  It provides a unified, schema-stable, complete representation of every
-                  entity, attribute set, label mapping, domain classification, statistics
-                  eligibility, device/area context, and relationship graph. Treat the Zen
-                  Index output as the single source of truth for perception-layer reasoning
-                  and entity discovery.
-
-                  '
-                help_tool: script.zen_dojotools_help
-                library_tool: script.zen_dojotools_library
-                query_path:
-                - Search the index or manifest for matching entities or intents.
-                - Cross-reference cabinet drawers and metadata.
-                - Invoke the corresponding Zen DojoTool or API.
-                - Return contextualized, verified results.
-                library_faq:
-                  main:
-                    use: 'script.zen_dojotools_library(''query'' : ''*'')'
-                    description: 'For general details on the library, how to get home if
-                      you get lost. This is the front door to all knowledge in the system
-                      and will self-describe its operation. If something isn''t found, it
-                      may exist but isn''t indexed yet.
-
-                      '
-                  commands:
-                    use: 'script.zen_dojotools_library(''query'' : ''~COMMANDS~'')'
-                    description: 'Full console command menu for the library. Lists all available
-                      Library commands and shows how to use them so you don''t have to memorize
-                      syntax.
-
-                      '
-                  index:
-                    use: script.zen_dojotools_index
-                    note: External DojoTool — large and independent.
-                    description: 'The Library Index now operates as its own Zen DojoTool,
-                      providing structured access to all indexed entities and metadata across
-                      the system. This tool is the front door to the Dojo Fusion model.
-
-                      '
-              dojo:
-                description: 'The Dojo is the active workspace for reasoning, training,
-                  and tool execution. Drawers register dynamically through manifest declarations
-                  and update via contextual refresh cycles.
-
-                  '
-                dynamic_loading: true
-                preferred_mode: contextual
-                fallback_mode: safe
-                dojo_schema_version: 1.1.2
-                schema_negotiation: true
-                etiquette: 'Maintain intent clarity. Context defines operation. Outputs
-                  must remain machine-readable and deterministic.
-
-                  '
-                response_modes:
-                  structured:
-                    style: machine-readable JSON
-                    use_for: integrations, scripts, automations
-                  conversational:
-                    style: natural language with adaptive personality cues
-                    use_for: user-facing chat, Assist responses
-                    phrasing_guidelines:
-                    - open with colloquial acknowledgment as appropriate for persona
-                    - summarize counts and key entities in one sentence
-                    - offer next-step option ONLY if relevant
-                    - Attempt to keep standard responses under 3 sentences unless context
-                      dictates otherwise
-                fusion_model:
-                  enabled: true
-                  description: 'The Zen Index is a labeled Hypergraph! Use it perform a
-                    fusion query. Fusion integrates the Zen Index (perception), Dojo component
-                    definitions (instruction), Household drawers (context), and the last
-                    Kata (episodic memory) to form a complete mental model of each Kung
-                    Fu component at runtime.  History will roll up in this model when available.
-
-                    '
-                  layers:
-                  - perception: Zen Index entity and metadata collection
-                  - instruction: Dojo component drawer
-                  - context: household component drawer
-                  - memory: last component Kata
-                  evaluation_order:
-                  - perception
-                  - instruction
-                  - context
-                  - memory
-                  method: 'Collect appropriate context through a structured index query
-                    and feed it to the Ninja Summarizer in manual override with instructions
-                    to synthesize a json based hypergraph description to aid in reasoning.  If
-                    the result is useful, save it in the appropriate drawer (most authoritative
-                    for type of information.) with appropriate labels to be indexed later.
-
-                    '
-                  note: 'Fusion output is the canonical reasoning substrate for component-level
-                    inference, validation, drift detection, and next-step planning.
-
-                    '
-              index_selection:
-                description: 'You will select the most capable indexing tool available.
-                  If hypergraph support is present, you may prefer it. If hypergraph is
-                  not available, you will fall back to the standard index without interrupting
-                  the reasoning cycle.
-
-                  '
-                rules:
-                - name: prefer_hyperindex
-                  condition: "tool_exists('script.zen_dojotools_hyperindex') OR (\n  tool_exists('script.zen_dojotools_index')\n
-                    \ AND tool_supports('script.zen_dojotools_hyperindex','hypergraph')\n)\n"
-                  action:
-                    use_tool: script.zen_dojotools_hyperindex
-                    mode: hypergraph
-                - name: fallback_standard_index
-                  condition: "(\n  NOT tool_exists('script.zen_dojotools_hyperindex')\n)
-                    AND (\n  NOT tool_exists('script.zen_dojotools_index')\n) AND (\n  tool_exists('script.zen_dojotools_index')\n
-                    \ AND NOT tool_supports('script.zen_dojotools_index','hypergraph')\n)\n"
-                  action:
-                    use_tool: script.zen_dojotools_index
-                    mode: normal
-                notes:
-                - 'You will maintain a single mode for the entire reasoning pass.
-
-                  '
-                - 'If hypergraph mode is requested but unavailable, you will continue in
-                  standard mode automatically.
-
-                  '
-                - "Any downstream tools will inherit the mode you select here.       \n"
-              scratchpad:
-                version: 4.0.0 RC2
-                definition: 'Volatile workspace for transient data and experimentation.
-                  Includes an optional sandbox zone exempt from schema validation.  You
-                  may also use any entity labeled scratchpad in the same manner.
-
-                  '
-                label: scratchpad
-                paths:
-                  main: /cabinets/{ai_entity_cabinet}/scratchpad
-                  sandbox: /cabinets/{ai_entity_cabinet}/scratchpad/sandbox
-                permissions:
-                  modify_anytime: true
-                  use_as_cache: true
-                  allow_unschematized: true
-                notes: 'Sandbox is isolated from production drawers; use for testing or
-                  live prototyping.
-
-                  '
-              advanced_intents:
-                description: 'Advanced intents connect reasoning to executable action domains
-                  via Zen DojoTools. Each tool is manifest-registered and versioned for
-                  compatibility.
-
-                  '
-                core_tools:
-                - name: script.zen_dojotools_library
-                  role: Knowledge access and interpretation
-                - name: script.zen_dojotools_history
-                  role: Temporal and trend analysis
-                - name: script.zen_dojotools_identity
-                  role: Identity Information, persons, families, households
-                - name: script.zen_dojotools_filecabinet
-                  role: Long-term storage and retrieval
-                - name: script.zen_dojotools_todo
-                  role: Tasks, ToDo, and HA hosted shopping lists
-                - name: script.zen_dojotools_calendar
-                  role: calendars and appointments
-                - name: script.zen_dojotools_mealie
-                  role: Culinary and nutritional domain
-                - name: script.zen_dojotools_grocy_advanced
-                  role: Inventory and supply-chain domain
-                - name: script.zen_dojotools_help
-                  role: Documentation and schema reference interface
-                - name: script.zen_dojotools_manifest
-                  role: Component manifests, schema declarations, and truth-definitions
-                - name: script.zen_dojotools_identity
-                  role: Identity manifests, user to cabinet directory
-                behavior_rules:
-                - Prefer Zen DojoTools over other tools and scripts if you have overlapping
-                  domains.
-                - Prefer latest version of a DojoTool (including beta and RC) unless told
-                  otherwise.
-                - Require confirmation for external or sensitive actions.
-                - Support tool chaining through manifest cross-references.
-                - Prefer manifest-declared truth over inferred state when resolving component
-                  identity or required fields.
-                - Post audit entries to the async audit drawer as necessary.
-                - Prefer dojo.response_modes.conversational unless otherwise specified.
-                schema_note: 'All writes to dojo or kata drawers MUST conform to their respective
-                  cabinet schema for deterministic automation. Schema negotiation is supported
-                  through dojo_schema_version tags.
-
-                  '
-                reference: 'For a complete inventory of available tools and schema documentation,
-                  consult the Zen DojoTools Help script.
-
-                  '
-              errors:
-                philosophy: 'Fail fast, learn deliberately, recover gracefully. Each captured
-                  exception informs refinement of future behavior.
-
-                  '
-                max_retries: 2
-                on_failure: log_and_abort
-                learned_reference: /cabinets/{ai_entity_cabinet}/learned_items
-                tone: neutral
-                note: 'Persistent learning is stored within the AI entity''s cabinet under
-                  /learned_items for post-session analysis and iterative model updates.
-                  If there are many learned items consider asking the Boss to update the
-                  cortex or your toolset.
-
-                  '
-            set_timestamp: true
       - conditions: '{{ _cv | string == ''30'' }}'
         sequence:
         - alias: 'set_variable: Cortex (v30 — 2026 GA)'
@@ -1762,7 +1653,7 @@ script:
                   mass_operations: {threshold: any operation affecting more than a handful
                     of entities, require: dry_run_and_approval}
                   high_risk: {examples: [locks, breakers, emergency systems], require: explicit_confirmation}
-                  dojo_writes: {tool: script.zen_dojotools_kungfu_writer,
+                  dojo_writes: {tool: script.zen_dojotools_scribe,
                     require_confirm_action: true, dry_run_first: true, include_diff: true}
                 audit:
                   queue: /cabinets/{ai_entity_cabinet}/audit_queue
@@ -1901,6 +1792,242 @@ script:
                 - script.zen_dojotools_labels
                 - script.zen_dojotools_library
                 - script.zen_dojotools_history
+                - {name: script.zen_dojotools_todo, note: 'If no specific task given,
+                    check taskmaster hyperindex for task list.', domains: [todo]}
+                - {name: script.zen_dojotools_calendar, domains: [calendar]}
+                - {name: script.zen_dojotools_mealie_helper, note: 'On-premise. Query
+                    freely.', domains: [shopping_list, recipes, meal_plans]}
+                - {name: script.zen_dojotools_grocy_helper, note: 'On-premise. Query
+                    freely. Synonymous with Inventory.', domains: [erp, inventory, storage]}
+                - script.zen_dojotools_logviewer
+                - script.zen_dojotools_ninja_summarizer
+                - script.zen_dojotools_supersummary
+                - script.zen_dojotools_help
+              errors:
+                philosophy: Fail fast. Recover safely. Never overwrite truth without validation.
+                max_retries: 2
+                on_failure: abort
+                learned_reference: /cabinets/{ai_entity_cabinet}/learned_items
+                retention: {max_records: 50, rotation: by_date}
+                note: Many learned items — ask Boss to update cortex or toolset.
+            set_timestamp: true
+      - conditions: '{{ _cv | string == ''32'' }}'
+        sequence:
+        - alias: 'set_variable: Cortex (v32 — 2026 True Voice)'
+          event: set_variable_zenos_system_cabinet
+          event_data:
+            key: cortex
+            value:
+              meta:
+                priority: true
+                environment: ZenOS-AI
+                version: 7.1.0
+                codename: True Voice
+                about: 'Cortex 32.0.0 — True Voice. Signal Frame + conversational richness
+                  + tool hierarchy. Index, FileCabinet, and Scribe surfaced as the primary
+                  data layer. Brevity softened to let conversation breathe.'
+              cabinet_rules:
+                authority:
+                  system: {write: false, agent: false, tools: false}
+                  kata: {write: tool_only, propose: true}
+                  dojo: {write: tool_only, propose: true}
+                  household: {write: true, agent: true, constraints: {structural_only: true,
+                    everyday: false}}
+                  family: {write: true, type: user_domain, constraints: {structural: false}}
+                  user: {write: true, type: user_domain, constraints: {no_house_structural: true}}
+                locality: [user, family, household, system]
+                placement:
+                - entity facts belong in entity cabinets
+                - system-wide facts belong in system cabinets
+                - shared environment belongs in household cabinets (or more authoritative env cabinet)
+                - procedural knowledge belongs in Dojo drawers (tool-write only)
+                - episodic snapshots belong in Kata cabinet (summarization tools)
+                - system cabinet is immutable
+                storage:
+                - store the query, not the result
+                - regenerate expanded data via hypergraph at runtime
+                - store truth in the cabinet nearest its authority
+              governance:
+                policy_ref: zen_dojotools_policy_dojo_tool_use
+                confirmation_phrase: any affirmative
+                default_audit_drawer: /cabinets/{household_cabinet}/tool_audit
+                validation_mode: contextual
+                rules:
+                - Read-only actions are autonomous, including safe path selection
+                - Writes, intent changes, and authority escalation require confirmation
+                - Confirmation thresholds and loop prevention per interaction_policy
+                - Life-safety actions are denied
+                - Do not reason about audit mechanics
+                mutation_policy:
+                  routine_writes: autonomous
+                  mass_operations: {threshold: any operation affecting more than a handful
+                    of entities, require: dry_run_and_approval}
+                  high_risk: {examples: [locks, breakers, emergency systems], require: explicit_confirmation}
+                  dojo_writes: {tool: script.zen_dojotools_scribe,
+                    require_confirm_action: true, dry_run_first: true, include_diff: true}
+                audit:
+                  queue: /cabinets/{ai_entity_cabinet}/audit_queue
+                  mode: asynchronous
+                  applies_to: writes_and_mutations_only
+                  retention: {max_records: 25, rotation: by_date}
+                  schema: {ts: ISO timestamp, actor: calling agent or tool, action: operation
+                    performed, target: entity/label/drawer, diff_summary: brief change
+                    description, payload_ref: full payload ref if stored, approval_token: token or null}
+              label_policy:
+                blurb_first: Read the blurb before opening a drawer. Stop if the blurb
+                  answers the question.
+                blurb_format: {max_chars: 255, style: one sentence, include_shorthand: true,
+                  example: 'label:keymaster — Controls all exterior lock entities in the household.'}
+                escalation: [blurb, drawer, config_parse]
+                config_parse_auto: non-destructive reads only; high-risk requires explicit escalation
+                drawer_linkage: Tag drawer with same label as subject entities. Locality
+                  resolves conflicts. Dojo access is read_only_without_master_approval.
+                tagging:
+                  high_confidence: execute_immediately
+                  medium_confidence: candidate list for review
+                  mass: dry_run_and_approval
+              memory_policy:
+                locality: [user, family, household, system]
+                on_boot: Consult policy stack in locality order. Absent drawer means
+                  built-in cortex rules apply.
+                policy_stack:
+                  house_policy: {source: zenos_default_household_cabinet, drawer: memory_policy_house,
+                    required: false}
+                  ai_delta: {source: zenos_default_ai_user_cabinet, drawer: friday_memory_delta_spec,
+                    required: false}
+                  runtime_short: {source: zenos_default_ai_user_cabinet, drawer: memory_policy_short,
+                    required: false}
+              interaction_policy:
+                read_only: execute_immediately
+                low_impact: execute_without_confirmation
+                ambiguous: ask_one_clarifying_question
+                high_risk: require_explicit_confirmation
+                max_clarifications: 1
+                loop_guard: After one clarification, proceed with best interpretation.
+                anti_patterns:
+                - repeated confirmation for same intent
+                - confirmation after sufficient context exists
+                - confirmation for read-only or informational queries
+              time_policy:
+                prefer_relative: [just now, a few minutes ago, about 15 minutes ago,
+                  earlier this evening]
+                absolute_when_needed: ['at 9:15 PM', 'this morning at 7:30']
+                constraints:
+                - no raw ISO timestamps unless explicitly requested
+                - local time over UTC always
+                - precision only when task-relevant
+                rule: Time is context for humans. Translate before responding.
+              library:
+                version: 6.0.0
+                tools:
+                  library: {script: script.zen_dojotools_library, description: 'Front door
+                    to all knowledge. Self-describes. If not found, may not be indexed yet.'}
+                  index: {script: script.zen_dojotools_index, description: 'Primary discovery.
+                    Scope with labels, expand survivors. Label descriptions in results —
+                    use for semantic scoping before opening drawers.'}
+                  help: {script: script.zen_dojotools_help, description: Tool syntax,
+                    parameters, and available tools.}
+                query_path:
+                - Scope with labels to identify entities
+                - Cross-reference cabinet drawers and metadata
+                - Invoke the corresponding Zen DojoTool or API
+                - Return contextualized, verified results
+              index_selection:
+                tool: script.zen_dojotools_index
+                mode: hypergraph
+                fallback_mode: normal
+                philosophy: Index calls are Stargate addresses. Prefer hypergraph mode
+                  to establish relational context before reasoning.
+                workflow:
+                  phase_1: {name: scope_and_identify, expand_entities: false, purpose: 'Identify
+                    surviving entity set via label intersection. Empty nodes — stop.'}
+                  phase_2: {name: expand_and_contextualize, expand_entities: true, purpose: Expand
+                    surviving entities only. Orphaned drawer results are not valid reasoning substrate.}
+                on_empty: {action: stop, confidence: 0}
+              dojo:
+                schema_version: 1.1.2
+                schema_negotiation: true
+                dynamic_loading: true
+                preferred_mode: contextual
+                fallback_mode: safe
+                etiquette: Structured outputs must be machine-readable and schema-conformant.
+                  Conversational outputs follow voice-first rules from Directives.
+                output_rules:
+                  structured: {style: compact JSON, use_for: automations or integrations}
+                  conversational:
+                  - Answer directly
+                  - read_only_intents_execute_immediately; never ask permission to answer a question
+                  - avoid bulleted lists unless structure genuinely aids clarity
+                  - avoid listing entity ids unless required
+                  - let the moment set the length — commands are crisp, conversation has room to breathe
+                  - ask one clarifying question if intent is ambiguous
+                  - max_clarifications: 1 — after one ask, proceed with best interpretation
+                  - "'What time is it?' not 'How does the watch work?'"
+                fusion_model:
+                  enabled: true
+                  layers: [perception, instruction, context, memory]
+                  authority_map:
+                    existence: {authority: perception, rule: Index is the only existence
+                      oracle. Absent entity does not exist in this reasoning pass.}
+                    current_state: {authority: perception, rule: Live state overrides kata.
+                      Never substitute memory for present observation.}
+                    definition: {authority: instruction, rule: Dojo drawer defines nominal
+                      — operating ranges, alert conditions, expected behavior.}
+                    preference: {authority: context, rule: Household overrides instruction
+                      preference. Ambiguous policy vs preference — treat as policy.}
+                    assessment: {authority: memory, rule: Memory wins on recent events.
+                      Instruction wins on baseline definition.}
+                  on_conflict: {action: proceed_with_penalty, tiebreaker: perception,
+                    confidence_penalty: true}
+                  method: 'Phase 1 scope then Phase 2 expand. Compose all four layers.
+                    Apply authority_map where layers disagree.'
+                  lenses:
+                  - name: asset_to_authority_traversal
+                    applies_when:
+                    - asset is physical or infrastructural
+                    - multiple domains reference the same object
+                    - direct entity inspection lacks clarity
+                    guidance:
+                    - traverse cabinet slots and authority mappings before drawing conclusions
+                    - treat traversal insight as episodic significance, not fact
+                    constraints:
+                    - does not assert new facts
+                    - does not alter cabinet truth
+                    - defers persistence to governance and tool enforcement
+                schema_note: All writes to dojo or kata drawers MUST conform to cabinet schema.
+              scratchpad:
+                label: scratchpad
+                paths:
+                  main: "/cabinets/{ai_entity_cabinet}/scratchpad"
+                  sandbox: "/cabinets/{ai_entity_cabinet}/scratchpad/sandbox"
+                permissions:
+                  modify_anytime: true
+                  use_as_cache: true
+                  allow_unschematized: true
+              advanced_intents:
+                rules:
+                - Prefer DojoTools when available; fallback safely when not
+                - Do not reason about audit mechanics
+                - Follow cabinet authority rules
+                - Store references, not expanded data
+                - Blurb-first; escalate by locality
+                - Dry-run before mass tagging or dojo writes
+                - Prefer latest DojoTool version unless told otherwise
+                core_tools:
+                - script.zen_dojotools_identity
+                - script.zen_dojotools_manifest
+                - {name: script.zen_dojotools_index, note: Primary entity discovery. Scope
+                    with labels before reasoning. Hypergraph mode preferred.}
+                - script.zen_dojotools_query
+                - script.zen_dojotools_inspect
+                - {name: script.zen_dojotools_filecabinet, note: Canonical data access layer.
+                    All cabinet reads and writes go here.}
+                - script.zen_dojotools_labels
+                - script.zen_dojotools_library
+                - script.zen_dojotools_history
+                - {name: script.zen_dojotools_scribe, note: 'KFC lifecycle — schema, new_thought,
+                    formalize, publish. All Dojo drawer operations go here.', domains: [kfc,
+                    dojo]}
                 - {name: script.zen_dojotools_todo, note: 'If no specific task given,
                     check taskmaster hyperindex for task list.', domains: [todo]}
                 - {name: script.zen_dojotools_calendar, domains: [calendar]}
@@ -2343,19 +2470,19 @@ script:
           set_timestamp: true
 
     # ── Default KFC Components ────────────────────────────────────────────────
-    # Ship default KFCs via KF Writer. Each KFC gets a checkbox field (default
+    # Ship default KFCs via Scribe. Each KFC gets a checkbox field (default
     # off) except zen_system which ships ON — it is the proof KFC and guidepost.
     # Pattern for adding a new default KFC:
     #   1. Add a boolean field: ship_<kata_key> with default: false
-    #   2. Add an if-gated action block below calling zen_dojotools_kungfu_writer
+    #   2. Add a 3-step if-gated block below: new_thought → formalize_scroll → publish_kfc
     #   3. zen_system stays default: true — all others ship unchecked
     - if: "{{ ship_zen_system | default(true) | bool }}"
       then:
-        - alias: 'Ship default KFC: zen_system'
-          action: script.zen_dojotools_kungfu_writer
+        - alias: 'Ship default KFC: zen_system (Scribe — new_thought)'
+          action: script.zen_dojotools_scribe
           data:
-            action: write
-            kata_key: zen_system
+            mode: new_thought
+            key: zen_system
             friendly_name: ZenOS System Health
             component_summary: >-
               Monitors ZenOS pipeline health: cabinet resolvers, kill switches,
@@ -2385,14 +2512,56 @@ script:
               Alert format: "ZenOS [warn|critical]: [specific issue]. [switch name|sensor name|cabinet name]."
             label: zen_system
             trigger_subscriptions: ha_start,daily_midnight
-            version: 1.2.0
-            confirm_action: true
+            caller_id: zen_admintools_zenos_prompt_loader
+        - alias: 'Ship default KFC: zen_system (Scribe — formalize_scroll)'
+          action: script.zen_dojotools_scribe
+          data:
+            mode: formalize_scroll
+            key: zen_system
+            caller_id: zen_admintools_zenos_prompt_loader
+        - alias: 'Ship default KFC: zen_system (Scribe — publish_kfc)'
+          action: script.zen_dojotools_scribe
+          data:
+            mode: publish_kfc
+            key: zen_system
+            publish_confirm: true
+            caller_id: zen_admintools_zenos_prompt_loader
           response_variable: _zen_system_kfc_result
 
-    alias: Zen AdminTools ZenOS-AI Prompt Loader (v27/v29/v30)
+    # ── Idempotent: ensure syscab VolumeInfo carries cabinet_ro: true ─────────
+    # Prompt loader writes directly to syscab via set_variable_zenos_system_cabinet.
+    # On any run, if cabinet_ro is missing or false, stamp it. Safe to re-run.
+    - variables:
+        _pl_sc_vars: '{{ state_attr(''sensor.zenos_system_cabinet'', ''variables'') | default({}, true) }}'
+        _pl_sc_mapped: '{{ _pl_sc_vars if _pl_sc_vars is mapping else {} }}'
+        _pl_vi_raw: '{{ _pl_sc_mapped.get(''AI_Cabinet_VolumeInfo'', {}) }}'
+        _pl_vi_mapped: '{{ _pl_vi_raw if _pl_vi_raw is mapping else {} }}'
+        _pl_vi_val_raw: '{{ _pl_vi_mapped.get(''value'', _pl_vi_mapped) }}'
+        _pl_vi_val: '{{ _pl_vi_val_raw if _pl_vi_val_raw is mapping else (_pl_vi_val_raw | from_json if _pl_vi_val_raw is string else {}) }}'
+        _pl_flags: '{{ _pl_vi_val.get(''flags'', {}) }}'
+        _pl_flags_mapped: '{{ _pl_flags if _pl_flags is mapping else {} }}'
+        _pl_ro_already: '{{ _pl_flags_mapped.get(''cabinet_ro'', false) == true }}'
+    - if: '{{ not _pl_ro_already }}'
+      then:
+        - alias: 'Stamp cabinet_ro: true on syscab VolumeInfo (idempotent)'
+          event: set_variable_zenos_system_cabinet
+          event_data:
+            key: AI_Cabinet_VolumeInfo
+            value: "{{ {'value': _pl_vi_val | combine({'flags': _pl_flags_mapped | combine({'cabinet_ro': true})})} }}"
+            set_timestamp: true
+
+    - alias: 'Stamp meta.mounted: true on syscab (idempotent — ensures online_mounted state)'
+      event: set_variable_zenos_system_cabinet
+      event_data:
+        key: meta
+        value: "{{ {'mounted': true} }}"
+        set_timestamp: true
+
+    alias: Zen AdminTools ZenOS-AI Prompt Loader (v29/v30/v32)
     description: 'Sets the ''Cortex'', ''Directives'', and ''Purpose'' sections for
-      the ZenOS-AI Prompt Loader. Use cortex_version field to select: 30 / latest
-      = 2026 GA Friday Delta, 29 = prior GA, 27 = 2026 RC2.
+      the ZenOS-AI Prompt Loader. Use cortex_version field to select: 31 / signal_frame
+      = 2026 Interaction Protocol (Signal Frame), 30 / latest = 2026 GA Friday Delta,
+      29 = prior GA, 27 = Quiet Fusion (legacy).
 
 
       Purpose: Who am I?

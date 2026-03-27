@@ -39,7 +39,7 @@ These three pieces form the **Index Stack**, bridging synchronous macros and asy
 
 > ⚙️ **Implementation Note:**
 > In this release, the **Library Index Core** exists as a **stand-alone Jinja template**, separate from the `zen_os_1` core.
-> Future ZenOS releases will merge it into the **Command Interpreter layer**—making label parsing and index logic native to the system’s instruction processor.
+> The Command Interpreter (`~COMMANDS~` dispatch layer) is retiring at GA — individual commands are migrating to index-supported constructs. The Index layer is the target, not the source.
 
 ---
 
@@ -211,8 +211,7 @@ This forms the backbone of multi-pass, event-safe recursion across entities, dra
 **Dependencies:** Home Assistant Jinja helpers
 
 > 🔸 *Note:*
-> The Library Index Core currently runs as an independent module during system 1.x.
-> In ZenOS 2.0, it will be embedded within the system’s **Command Interpreter**, making label logic a first-class instruction type at the OS level.
+> The Library Index Core runs as an independent module. The Command Interpreter (`~COMMANDS~` dispatch) is retiring at GA — commands are migrating to index-supported constructs. Index is the forward architecture.
 
 ---
 
@@ -341,6 +340,6 @@ At that point, the Indexer will serve as the unified resolver across **entities,
 | **Version**      | 1.4 (Recursive Core Spec)                                                                                  |
 | **License**      | MIT                                                                                                        |
 | **Last Updated** | 2025-11-11                                                                                                 |
-| **Notes**        | Library Index Core is modular in 1.x; merges into ZenOS Command Interpreter in 2.0 for native label logic. |
+| **Notes**        | Library Index Core is the forward architecture. Command Interpreter (`~COMMANDS~` dispatch) retiring at GA — commands migrating to index-supported constructs. |
 
 ---

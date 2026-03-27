@@ -2,7 +2,7 @@
 
 ### *Universal HyperGraph Index for Labels, Entities, Drawers & Metadata*
 
-**Version:** 4.5.0 'Meridian'
+**Version:** 4.5.5 'Ready Player Two'
 **Category:** DojoTools / Indexing
 **Icon:** `mdi:graphql`
 
@@ -398,14 +398,14 @@ Unknown fields are silently ignored.
 
 # 🧩 ZQ-1 Filter Schema (What HyperIndex Accepts)
 
-This is the **true schema** implemented in `zenos_ai/zen_query.jinja`, current as of 4.5.0 'Meridian'.
+This is the **true schema** implemented in `zenos_ai/zen_query.jinja`, current as of 4.5.5 'Ready Player Two'.
 
 ### 🧪 **Every field below is optional.**
 
 All filters apply with **logical AND**.
 
 ```yaml
-# ZQ-1 Filter Schema (4.5.0 'Meridian')
+# ZQ-1 Filter Schema (4.5.5 'Ready Player Two')
 # All fields optional. Unknown fields ignored.
 
 domain:               # string — also used for auto-build if target_entities empty

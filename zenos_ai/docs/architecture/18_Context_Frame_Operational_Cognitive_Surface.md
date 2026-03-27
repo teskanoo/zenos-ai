@@ -26,7 +26,7 @@ The Context Frame is assembled through a deterministic process:
 
 The prompt loader folds these into a single, hierarchically structured Context Frame. Every reasoning step Friday performs is grounded in this composite object.
 
-> **GA Implementation Note — 4.5.0 'Meridian'**
+> **GA Implementation Note — 4.5.5 'Ready Player Two'**
 >
 > The prompt loader is implemented in `custom_templates/zenos_ai/zen_os_1.jinja`. The single
 > entry point is `render_prompt(ai_entity)`, which runs the full five-source assembly described
@@ -116,7 +116,7 @@ The Identity Capsule is injected into the Context Frame as both:
 
 This ensures that every reasoning step is bound to a specific, authenticated human and a specific assistant persona, under explicit access policies.
 
-> **GA Implementation Note — 4.5.0 'Meridian'**
+> **GA Implementation Note — 4.5.5 'Ready Player Two'**
 >
 > The Identity Capsule is assembled from three sources:
 > `identity_resolve_source()` (live resolution from essence and cabinets),

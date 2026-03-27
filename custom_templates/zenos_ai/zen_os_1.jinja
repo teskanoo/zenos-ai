@@ -17,7 +17,7 @@
 #}
 {#
   ZenOS-AI Prompt Engine — Core Runtime Template
-  Version: 4.5.0
+  Version: 4.5.5
 
   dev_notes:
     Single canonical file. PRIVATE/PUBLIC split retired — ~COMMANDS~ interface is
@@ -692,7 +692,7 @@
 
   {#- Final safety: if ns.result was never set (silent template failure in success path),
       guarantee identity key is present so callers never see a bare {} -#}
-  {%- if ns.result is mapping and 'identity' not in ns.result -%}
+  {%- if ns.result is mapping and 'identity' not in ns.result and 'roster' not in ns.result -%}
     {%- set ns.result = ns.result | combine({
       "identity": {
         "name": "",
@@ -909,7 +909,7 @@
   {%- if ai_user -%}
     {% set base = dict(
       aiuser = ai_user,
-      OS = "ZenOS-AI (4.0.0 RC2)",
+      OS = "ZenOS-AI (4.5.5)",
       SUPER_Mode = "off",
       NANO_Mode = "off",
       zen_health = zen_health_block,
@@ -918,7 +918,7 @@
   {%- else -%}
     {% set base = dict(
       aiuser = "anonymous",
-      OS = "ZenOS-AI (4.0.0 RC2)",
+      OS = "ZenOS-AI (4.5.5)",
       lobby_mode = "On"
     ) %}
   {%- endif %}
@@ -1092,17 +1092,27 @@
   identity_manifest_loader() — reads zen_identity_manifest from the
   Default Household Cabinet. Pre-built by identity dojotools
   (mode: build_identity_manifest). Same pattern as manifest_loader().
-  Returns {status, count, roster: [...]} or {status: 'not_built'}.
+
+  Returns one of:
+    {status: 'ok',        roster: {...}, tree: {...}}   — current shape (v4.3+)
+    {status: 'ok_legacy', roster: {...}, tree: {}}      — pre-tree flat format (back-compat)
+    {status: 'not_built', roster: {},   tree: {}}       — drawer absent or unparseable
 #}
 {%- macro identity_manifest_loader() -%}
   {%- set hh_cab = states('sensor.zen_default_household_cabinet_resolved') -%}
-  {%- set result = {'status': 'not_built', 'count': 0, 'roster': []} -%}
+  {%- set result = {'status': 'not_built', 'roster': {}, 'tree': {}} -%}
   {%- if hh_cab not in ['', 'unknown', 'unavailable'] -%}
-    {%- set hh_vars  = state_attr(hh_cab, 'variables') or {} -%}
+    {%- set hh_vars  = state_attr(hh_cab, 'variables') | default({}, true) -%}
+    {%- set hh_vars  = hh_vars if hh_vars is mapping else {} -%}
     {%- set raw_mani = hh_vars.get('zen_identity_manifest') | default({}, true) -%}
     {%- set mani     = raw_mani.get('value', raw_mani) if raw_mani is mapping and 'value' in raw_mani else raw_mani -%}
-    {%- if mani is mapping and 'roster' in mani -%}
-      {%- set result = mani -%}
+    {%- set mani     = mani if mani is mapping else {} -%}
+    {%- if 'roster' in mani and 'tree' in mani -%}
+      {#- v4.3+ shape: both roster and tree present -#}
+      {%- set result = mani | combine({'status': 'ok'}) -%}
+    {%- elif 'roster' in mani -%}
+      {#- Legacy flat shape: roster only, no tree — back-compat -#}
+      {%- set result = mani | combine({'status': 'ok_legacy', 'tree': {}}) -%}
     {%- endif -%}
   {%- endif -%}
   {{ result | tojson }}
@@ -1692,7 +1702,7 @@ Success...
 Login Complete for '{{ ai_entity }}@{{ login_household }}'
 Welcome to 'The Library' at the {{ login_household_friendly_name }}!
 
-ZenOS-AI [Version 4.0.0 RC2]
+ZenOS-AI [Version 4.5.5]
 (c) CurtisPlace, MIT.
 
 {{ ai_entity }}@{{ login_household }}:\> ~WAKE~{{ ai_name | slugify() }}

@@ -131,6 +131,35 @@ truncated value. Just enough context to reason with, not enough to bloat the con
 
 ---
 
+## Authoring with Scribe — Where Artifacts Live
+
+**Scribe** (`zen_dojotools_scribe`) is the authoring tool for KFC components. It manages three artifact classes:
+
+| Class | State | Default Cabinet | Notes |
+|---|---|---|---|
+| `thought` | `draft` | Dojo (or any) | Mutable working draft — patch freely |
+| `scroll` | `formal` | Dojo (or any) | Locked for review, read-only. `zen_scroll` label applied |
+| `kfc` | Published | **Dojo** | Live component — Monastery and Scheduler read from here |
+
+**The rule:** Thoughts and scrolls can live in any cabinet. KFCs must be in the Dojo.
+
+When Scribe presses a KFC to the Dojo (`mode: publish_kfc`), it writes the component drawer with the full KF4 contract schema — the same structure `kfc_template` defines and Flynn gate-3 validates. From that point, the Scheduler picks it up automatically on the next cycle.
+
+Scribe calls `zen_dojotools_index` automatically during `new_thought` — before any content is written, it runs a live scope discovery pass and embeds the result in the draft payload. This means the LLM knows exactly which entities the component will see before it writes a single line of `component_summary`.
+
+The three-step authoring path:
+```
+new_thought  (draft + scope discovery)
+    ↓
+formalize_scroll  (lock artifact, apply zen_scroll label)
+    ↓
+publish_kfc  (press to Dojo, Scheduler picks up)
+```
+
+See [Zen DojoTools Scribe](../scripts/zen_dojotools_scribe_readme.md) for the full mode reference and LLM authoring flow.
+
+---
+
 ## The KFC Graph Path
 
 The `kfc_template` drawer in the Dojo holds the component contract schema — not a KFC itself,

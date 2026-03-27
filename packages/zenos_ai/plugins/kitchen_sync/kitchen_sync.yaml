@@ -60,7 +60,7 @@ script:
     sequence:
     - variables:
         tool_name: Zen DojoTools Food Sync Orchestrator
-        tool_version: 4.0.0 RC2
+        tool_version: 4.5.x
         direction_norm: '{{ direction }}'
         mode_norm: '{{ mode }}'
         limit_in: '{{ limit | int }}'

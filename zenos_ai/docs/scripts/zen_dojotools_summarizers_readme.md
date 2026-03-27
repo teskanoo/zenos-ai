@@ -1,4 +1,4 @@
-# Zen DojoTools Summarizers — 4.5.0 'Meridian'
+# Zen DojoTools Summarizers — 4.5.5 'Ready Player Two'
 
 *Ninja Summarizer + SuperSummary — the cognition pipeline*
 

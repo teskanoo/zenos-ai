@@ -1,12 +1,13 @@
 ###############################################################################
-# ZENOS-AI DOJOTOOL: PROFILE EDITOR (v4.0.0 RC2)
+# ZENOS-AI DOJOTOOL: PROFILE EDITOR (v4.5.5)
 #
 # Script: zen_dojotools_profile_editor
 #   Universal read/write for ZenOS identity cabinets.
 #   Targets: ai_user | household | user | family
 #   Defaults to zen_default_{type}_cabinet when no target given.
 #   mode: read  — returns flattened current profile fields
-#   mode: write — leaf-level patch, non-destructive by default (force to overwrite)
+#   mode: write — leaf-level patch, non-destructive by default (force to overwrite).
+#                 Self-heals missing/corrupt zenai_essence — call with no fields to reseed.
 #   mode: help  — returns full field reference with samples
 #
 # Leaf merge strategy (ai_user / essence):
@@ -38,19 +39,20 @@ script:
 
       target_type:
         name: Target Type
-        description: "ai_user | secondary_ai_user | household | user | secondary_user | tertiary_user | quaternary_user | family. Defaults to ai_user."
+        description: "ai_user | household | user | family | expansion_1-5. Defaults to ai_user. Expansion slots are type-agnostic — pass ai_user or user with target: sensor.zenos_expansion_x_cabinet."
         default: ai_user
         selector:
           select:
             options:
               - ai_user
-              - secondary_ai_user
               - household
               - user
-              - secondary_user
-              - tertiary_user
-              - quaternary_user
               - family
+              - expansion_1
+              - expansion_2
+              - expansion_3
+              - expansion_4
+              - expansion_5
 
       target:
         name: Target Entity
@@ -404,7 +406,7 @@ script:
                     {{
                       {
                         "tool": "zen_dojotools_profile_editor",
-                        "version": "4.0.0 RC2",
+                        "version": "4.5.x",
                         "overview": "Read or write identity profiles for any ZenOS cabinet type. Leaf-level patch — non-destructive by default. Set force: true to overwrite existing values.",
                         "modes": {"read": "Return flattened current profile fields.", "write": "Patch one or more fields. Skips fields already set unless force: true.", "help": "Return this reference."},
                         "target_types": {
@@ -434,20 +436,12 @@ script:
           _default_target: >-
             {%- if _type == 'ai_user' -%}
               {{ states('sensor.zen_default_ai_user_cabinet_resolved') }}
-            {%- elif _type == 'secondary_ai_user' -%}
-              {{ states('sensor.zen_secondary_ai_user_cabinet_resolved') }}
             {%- elif _type == 'household' -%}
               {{ states('sensor.zen_default_household_cabinet_resolved') }}
             {%- elif _type == 'family' -%}
               {{ states('sensor.zen_default_family_cabinet_resolved') }}
             {%- elif _type == 'user' -%}
               {{ states('sensor.zen_default_user_cabinet_resolved') }}
-            {%- elif _type == 'secondary_user' -%}
-              {{ states('sensor.zen_secondary_user_cabinet_resolved') }}
-            {%- elif _type == 'tertiary_user' -%}
-              {{ states('sensor.zen_tertiary_user_cabinet_resolved') }}
-            {%- elif _type == 'quaternary_user' -%}
-              {{ states('sensor.zen_quaternary_user_cabinet_resolved') }}
             {%- else -%}
             {%- endif -%}
           _target: "{{ _explicit if _explicit != '' else _default_target }}"
@@ -474,9 +468,10 @@ script:
             sequence:
               - variables:
                   _r_profile: >-
-                    {%- if _type in ['ai_user', 'secondary_ai_user'] -%}
-                      {%- set raw = _cab_vars.get('zenai_essence', {}) -%}
-                      {%- set ev  = raw.get('value', raw) if raw is mapping else {} -%}
+                    {%- if _type in ['ai_user'] -%}
+                      {%- set raw    = _cab_vars.get('zenai_essence', {}) -%}
+                      {%- set ev_raw = raw.get('value', {}) if raw is mapping else {} -%}
+                      {%- set ev     = ev_raw if ev_raw is mapping else (ev_raw | from_json if ev_raw is string else {}) -%}
                       {%- set _is_new = ev.get('core') is mapping and ev.get('jacket') is mapping -%}
                       {%- if _is_new -%}
                         {%- set _co  = ev.get('core', {}) -%}
@@ -554,8 +549,9 @@ script:
                         } }}
                       {%- endif -%}
                     {%- elif _type == 'household' -%}
-                      {%- set raw = _cab_vars.get('_household_profile', {}) -%}
-                      {%- set pv  = raw.get('value', raw) if raw is mapping else {} -%}
+                      {%- set raw    = _cab_vars.get('_household_profile', {}) -%}
+                      {%- set pv_raw = raw.get('value', {}) if raw is mapping else {} -%}
+                      {%- set pv     = pv_raw if pv_raw is mapping else (pv_raw | from_json if pv_raw is string else {}) -%}
                       {{ {
                         'household_name': pv.get('household_name', ''),
                         'address':        pv.get('address', ''),
@@ -568,8 +564,10 @@ script:
                       } }}
                     {%- else -%}
                       {%- set key = '_family_profile' if _type == 'family' else '_user_profile' -%}
-                      {%- set raw = _cab_vars.get(key, {}) -%}
-                      {%- set pv  = raw.get('value', raw) if raw is mapping else {} -%}
+                      {%- set key_legacy = 'family_profile' if _type == 'family' else 'user_profile' -%}
+                      {%- set raw    = _cab_vars.get(key, _cab_vars.get(key_legacy, {})) -%}
+                      {%- set pv_raw = raw.get('value', {}) if raw is mapping else {} -%}
+                      {%- set pv     = pv_raw if pv_raw is mapping else (pv_raw | from_json if pv_raw is string else {}) -%}
                       {{ {
                         'name':           pv.get('name', ''),
                         'first_name':     pv.get('first_name', ''),
@@ -616,14 +614,15 @@ script:
       #   Step C — assemble final essence + write
       ###########################################################################
       - choose:
-          - conditions: "{{ _mode == 'write' and _type in ['ai_user', 'secondary_ai_user'] }}"
+          - conditions: "{{ _mode == 'write' and _type in ['ai_user'] }}"
             sequence:
 
               # Step A — current state + inputs
               - variables:
                   _cur_raw: "{{ _cab_vars.get('zenai_essence', {}) }}"
                   _cur_ev:  >-
-                    {{ _cur_raw.get('value', _cur_raw) if _cur_raw is mapping else {} }}
+                    {%- set _ev_raw = _cur_raw.get('value', {}) if _cur_raw is mapping else {} -%}
+                    {{ _ev_raw if _ev_raw is mapping else (_ev_raw | from_json if _ev_raw is string else {}) }}
                   _in_pname:  "{{ persona_name  | default('') | trim }}"
                   _in_puser:  "{{ primary_user  | default('') | trim }}"
                   _in_pron:   "{{ pronouns      | default('') | trim }}"
@@ -835,9 +834,9 @@ script:
                     value_template: "{{ autosign | default(false) | bool }}"
                 then:
                   - variables:
-                      _as_raw: "{{ state_attr(_target, 'variables') | default({}, true) }}"
-                      _as_ess: "{{ _as_raw.get('zenai_essence', {}) }}"
-                      _as_val: "{{ _as_ess.get('value', _as_ess) if _as_ess is mapping else {} }}"
+                      _as_val: >-
+                        {%- set _av = _assembled | from_json if _assembled is string else _assembled -%}
+                        {{ _av if _av is mapping else {} }}
                       _as_core: "{{ _as_val.get('core', {}) if _as_val is mapping else {} }}"
                       _as_jack: "{{ _as_val.get('jacket', {}) if _as_val is mapping else {} }}"
                       _as_comp: "{{ _as_val.get('companion', {}) if _as_val is mapping else {} }}"
@@ -983,7 +982,7 @@ script:
       # 5 — WRITE: user / family  (_user_profile or _family_profile key)
       ###########################################################################
       - choose:
-          - conditions: "{{ _mode == 'write' and _type in ['user', 'family', 'secondary_user', 'tertiary_user', 'quaternary_user'] }}"
+          - conditions: "{{ _mode == 'write' and _type in ['user', 'family'] }}"
             sequence:
               - variables:
                   _u_key: "{{ '_family_profile' if _type == 'family' else '_user_profile' }}"
@@ -1039,6 +1038,26 @@ script:
                   key: "{{ _u_key }}"
                   value: "{{ _u_new }}"
                   caller_token: '{{ caller_token }}'
+                response_variable: _write_result
+                continue_on_error: true
+
+              - variables:
+                  _write_ok: "{{ _write_result is mapping and _write_result.get('success', false) | bool }}"
+                  _write_err: "{{ _write_result.get('error', _write_result.get('message', 'unknown filecabinet error')) if not _write_ok else '' }}"
+
+              - choose:
+                  - conditions: "{{ not _write_ok }}"
+                    sequence:
+                      - variables:
+                          final_response:
+                            status: error
+                            mode: write
+                            target_type: "{{ _type }}"
+                            target: "{{ _target }}"
+                            message: "Profile write failed — filecabinet rejected the write: {{ _write_err }}"
+                            caller_token: '{{ caller_token }}'
+                      - stop: user/family write failed
+                        response_variable: final_response
 
               - variables:
                   final_response:
@@ -1055,7 +1074,7 @@ script:
       # 6 — CERT_LIST: read zen_ai_certs drawer
       ###########################################################################
       - choose:
-          - conditions: "{{ _mode == 'cert_list' and _type in ['ai_user', 'secondary_ai_user'] }}"
+          - conditions: "{{ _mode == 'cert_list' and _type in ['ai_user'] }}"
             sequence:
               - variables:
                   _craw: "{{ _cab_vars.get('zen_ai_certs', {}) }}"
@@ -1078,7 +1097,7 @@ script:
       # Links back to the signed jacket via jacket_id (jacket.id from zenai_essence).
       ###########################################################################
       - choose:
-          - conditions: "{{ _mode == 'cert_grant' and _type in ['ai_user', 'secondary_ai_user'] }}"
+          - conditions: "{{ _mode == 'cert_grant' and _type in ['ai_user'] }}"
             sequence:
               - variables:
                   _comp:       "{{ cert_component | default('') | trim | lower }}"
@@ -1168,7 +1187,7 @@ script:
       # 8 — CERT_REVOKE: remove one KFC cert from zen_ai_certs
       ###########################################################################
       - choose:
-          - conditions: "{{ _mode == 'cert_revoke' and _type in ['ai_user', 'secondary_ai_user'] }}"
+          - conditions: "{{ _mode == 'cert_revoke' and _type in ['ai_user'] }}"
             sequence:
               - variables:
                   _comp: "{{ cert_component | default('') | trim | lower }}"
@@ -1237,11 +1256,13 @@ script:
       # Upgrade path: swap md5 for OIDC-backed sig in SP1 — schema unchanged.
       ###########################################################################
       - choose:
-          - conditions: "{{ _mode == 'sign' and _type in ['ai_user', 'secondary_ai_user'] }}"
+          - conditions: "{{ _mode == 'sign' and _type in ['ai_user'] }}"
             sequence:
               - variables:
                   _ess_raw: "{{ _cab_vars.get('zenai_essence', {}) }}"
-                  _ess_val: "{{ _ess_raw.get('value', _ess_raw) if _ess_raw is mapping else {} }}"
+                  _ess_val: >-
+                    {%- set _ev_r = _ess_raw.get('value', {}) if _ess_raw is mapping else {} -%}
+                    {{ _ev_r if _ev_r is mapping else (_ev_r | from_json if _ev_r is string else {}) }}
                   _s_core:  "{{ _ess_val.get('core', {}) if _ess_val is mapping else {} }}"
                   _s_jack:  "{{ _ess_val.get('jacket', {}) if _ess_val is mapping else {} }}"
                   _s_comp:  "{{ _ess_val.get('companion', {}) if _ess_val is mapping else {} }}"
@@ -1344,7 +1365,7 @@ script:
       # the last known good reference until the next write creates a new one.
       ###########################################################################
       - choose:
-          - conditions: "{{ _mode == 'restore' and _type in ['ai_user', 'secondary_ai_user'] }}"
+          - conditions: "{{ _mode == 'restore' and _type in ['ai_user'] }}"
             sequence:
               - variables:
                   _prev_drawer: "{{ _cab_vars.get('zenai_essence_prev', {}) }}"

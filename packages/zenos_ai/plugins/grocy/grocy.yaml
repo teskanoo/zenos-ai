@@ -743,7 +743,7 @@ script:
     - variables:
         show_trace: '{{ show_trace | default(false) }}'
         tool_name: Zen DojoTools Grocy Helper
-        tool_version: 4.0.0 RC2
+        tool_version: 4.5.x
     - variables:
         grocy_response: {}
         mode_norm: '{{ (mode | default(''help'')) | string | lower }}'

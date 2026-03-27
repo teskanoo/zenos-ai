@@ -1,4 +1,4 @@
-# Flynn — Stepgate Sentinel & Bootstrap Engine — 4.5.0 'Meridian'
+# Flynn — Stepgate Sentinel & Bootstrap Engine — 4.5.5 'Ready Player Two'
 
 *ZenOS-AI's boot guard, initializer, and onboarding driver*
 
@@ -28,6 +28,16 @@ Flynn re-runs any time these sensors change state:
 
 States that re-engage Flynn: `critical`, `error`, `warn`, `ok`
 
+Flynn also re-runs on these events:
+
+| Event | When |
+|---|---|
+| `zen_event kind: warmup_expired` | 5 min after `ha_start` — warmup window closed, re-evaluate all gates |
+| `zen_event kind: cabinet_mounted` | Cabinet mounted — gate 2.5 may now clear |
+| `zen_event kind: cabinet_dismounted` | Cabinet dismounted — gate 2.5 may re-engage |
+
+The `warmup_expired` event is fired by `automation.zen_warmup_timer` (also in `flynn.yaml`). It guarantees the warmup gate-down is a real signal, not a side-effect of monastery settling. If monastery never settles (real problem), Flynn will catch it at the 5-min mark rather than leaving sensors stuck at `warmup` indefinitely.
+
 ---
 
 ## Early Exit
@@ -35,7 +45,7 @@ States that re-engage Flynn: `critical`, `error`, `warn`, `ok`
 Flynn skips all gates and exits immediately if **all** of the following are true:
 
 - `binary_sensor.flynn_system_ready` is `on`
-- All health sensors are `ok` (monastery may be `warn` — degraded but functional)
+- All health sensors are `ok` (monastery and cabinet may be `warn` — both are non-blocking)
 - OOBE is not pending
 - Both `kfc_template` (Dojo) and `zen_template` (Kata) are already seeded
 
@@ -75,20 +85,34 @@ Once complete, Flynn stops and waits for `zen_label_health` to update.
 
 ### Gate 2 — Cabinet Initialization
 
-**Trigger:** `sensor.zen_cabinet_health != ok`
+**Trigger:** `sensor.zen_cabinet_health` is not `ok`
 
-One or more required cabinet entities are uninitialized. Flynn reads the `missing_cabinets` list from the health sensor, maps each slot to its cabinet type, and calls `zen_admintools_cabinetadmin` with `mode: initialize` for each one.
+Gate 2 behavior depends on the severity of the cabinet health state. Three cases:
 
-Cabinet types initialized on demand:
+**Case A — `error` or `critical` (hard stop)**
+
+One or more required cabinet entities are uninitialized or unavailable. Flynn fires a persistent notification ("Cabinet Check Needed") and stops. Operator action required.
+
+**What to do:** Open a conversation and say "initialize my cabinets", or run `script.zen_admintools_cabinetadmin` with `mode: initialize` directly. Check `sensor.zen_cabinet_health` → `missing_cabinets` to see which slots are affected.
+
+**Case B — `warn`, outside warmup window, not `ha_start` (notify + continue)**
+
+Legacy schema detected — one or more cabinets are on the pre-4.5 schema (state: `Variables`). The system is **fully operational**. Flynn fires a non-urgent notification ("Cabinet Upgrade Available") and continues — no stop.
+
+**What to do:** When convenient, open a conversation and say "upgrade my cabinets". No urgency — nothing is broken.
+
+**Case C — `warn`, inside warmup window OR triggered by `ha_start` (log only, continue)**
+
+Same legacy schema condition but detected during the boot warmup window (≤5 min after last boot) or on `ha_start`. Flynn logs it and **continues** — no notification, no stop. The warmup window exists to avoid notification noise on normal restarts.
+
+Cabinet types Flynn can initialize on demand (Case A):
 
 ```
 system, dojo, kata, default_household, default_family,
 default_user, default_ai_user, history, index
 ```
 
-Flynn stops and waits for `zen_cabinet_health` to update.
-
-**Event fired:** `flynn_stepgate_event` (gate: 2, action: cabinets_initialized)
+**Event fired:** `flynn_stepgate_event` (gate: 2, action: cabinets_initialized) — Case A only.
 
 ---
 
@@ -214,7 +238,9 @@ Options resolve dynamically at render time. The persona select only shows person
 |---|---|---|
 | `zen_label_health: critical` | Gate 0 | Create labels, notify, stop |
 | `zen_label_health: warn` | Gate 1 | Assign labels to entities |
-| `zen_cabinet_health: not ok` | Gate 2 | Initialize missing cabinets |
+| `zen_cabinet_health: error/critical` | Gate 2 (hard stop) | Initialize missing cabinets — operator action required |
+| `zen_cabinet_health: warn` (outside warmup) | Gate 2 (non-blocking) | Schema upgrade notification — system continues |
+| `zen_cabinet_health: warn` (warmup/ha_start) | Gate 2 (log only) | Logged, system continues — no notification |
 | `zen_monastery_health: critical` | Gate 3 | Full content bootstrap |
 | `zen_monastery_health: warn` | Gate 3 (partial) | Schema seed only |
 | All green + OOBE complete | Gate 4 | System ready notification |
@@ -241,13 +267,23 @@ Options resolve dynamically at render time. The persona select only shows person
 
 ---
 
-### Stuck at Gate 2
+### Stuck at Gate 2 — Cabinet Check Needed
 
-`zen_cabinet_health: not ok` — one or more cabinets uninitialized.
+`zen_cabinet_health: error or critical` — one or more cabinets uninitialized or unavailable.
 
 **Check:** `sensor.zen_cabinet_health` attributes → `missing_cabinets` list.
 
 **Manual fix:** Run `script.zen_admintools_cabinetadmin` with `mode: initialize` and the specific cabinet entity.
+
+---
+
+### Gate 2 — Cabinet Upgrade Available notification
+
+`zen_cabinet_health: warn` — this is **not a stuck gate**. The system is fully operational. One or more cabinets are on legacy schema (state: `Variables`).
+
+**What to do:** Open a conversation and say "upgrade my cabinets" when convenient. Or dismiss the notification and proceed — nothing will break.
+
+If you keep seeing this notification on every non-warmup restart, it means the cabinet hasn't been touched since the upgrade notification first appeared. The upgrade is one-way and non-destructive — data is intact.
 
 ---
 
