@@ -1155,6 +1155,19 @@ script:
       # Seed home mode schedule timers — only on first build, per timer (bare = never set).
       # initial: was removed from input_datetime definitions to prevent boot-time resets.
       # Each timer is guarded independently so partial restores are respected.
+      # @todo - set default_times then iterate over using foreach
+      - variables:
+          default_times:
+            zen_am_start: "06:00:00"
+            zen_morning_start: "08:00:00"
+            zen_daytime_start: "10:00:00"
+            zen_evening_start: "17:00:00"
+            zen_late_night_start: "21:00:00"
+            zen_night_start: "23:00:00"
+            zen_quiet_hours_start: "23:00:00"
+            zen_quiet_hours_end: "06:00:00"
+            zen_work_hours_start: "09:00:00"
+            zen_work_hours_end: "17:00:00"
       - if: "{{ states('input_datetime.zen_am_start') in ['', 'unknown', 'unavailable'] }}"
         then:
           - action: input_datetime.set_datetime
