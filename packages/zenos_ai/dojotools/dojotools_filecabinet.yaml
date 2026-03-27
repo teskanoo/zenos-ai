@@ -2168,18 +2168,41 @@ script:
       - stop: Invalid parameters
         response_variable: final_response
     alias: Zen DojoTools FileCabinet
-    description: "Zen DojoTools FileCabinet (v4.5.x+) 100% More Health, No Bad JSON!
+    description: >-
+      Zen DojoTools FileCabinet (v4.5.x+) 100% More Health, No Bad JSON!
       No more ghost Writes, output mapping, Parser engages on Create / Update to validate
-      input.\nCabinetVolumes are The Library's storage. To use ALWAYS pull a Volume
-      Manifest 'Manifest' (list of all volumes with rich metadata) FIRST if you do not
-      already have it loaded to see what's available. calling the manifest by issuing
-      a READ - with None, '', or '*' for 'volume_entity' A directory of a single volume
-      (with labels) can be obtained by sending \n  read - valid 'volume_entity' and
-      'drawer' with None, '', or '*'\nSUPERPOWER! Combine with The Index - Read by label_targets
-      (yes, a list) to scan drawers for subjects. STRONG recommendation to HELP() and
-      pull a manifest - READ() immediately.\nIMPORTANT: Read By Label is currently limited
-      to ONE cabinet at a time.\nMOUNT OPS: set_mount links a drawer in this volume to another cabinet by GUID (requires key +
-      target_guid). remove_mount unlinks it. Both verify the write and return previous_guid for undo.\nCABINET MOUNT/DISMOUNT: mount_cabinet / dismount_cabinet flip meta.mounted (state: online_mounted / online_unmounted). dismount_cabinet blocked if cabinet holds a zen_default_* label — transfer first. Both fire zen_event on completion.\nRO DRAWERS: Include 'zen_scroll' in label_input to make a drawer read-only (one-way — removing the label later does NOT revert ro). ro drawers block all create/update/delete — no force bypass. Use CabinetAdmin set_ro_flag to clear.\nCLONE: clone copies all cabinet drawers to destination_cabinet. Default: destination gets a new GUID (source untouched). With transfer_guid+force_action: GUID travels to destination, source is cleared and marked needs_restamp (Highlander mode — one cabinet owns a GUID).\n\u26a0\ufe0f SYSTEM CABINET (sensor.zenos_system_cabinet) IS HARD READ-ONLY to FileCabinet. It holds the AI prompt substrate (Purpose, Directives, Cortex). All writes are blocked — no force_action bypass. Use zen_admintools_zenos_prompt_loader to update prompt primitives, or zen_admintools_cabinetadmin_factory for VolumeInfo repair. This is wire-level lockout — the tool cannot write there."
+      input.
+      
+      CabinetVolumes are The Library's storage. 
+      
+      To use ALWAYS pull a Volume Manifest 'Manifest' (list of all volumes with rich metadata) FIRST if you do not
+      already have it loaded to see what's available. 
+      
+      Call the manifest by issuing a READ - with None, '', or '*' for 'volume_entity' 
+      A directory of a single volume (with labels) can be obtained by sending read - valid 'volume_entity' and 'drawer' with None, '', or '*'
+      
+      SUPERPOWER! Combine with The Index 
+      - Read by label_targets (yes, a list) to scan drawers for subjects. 
+      
+      STRONG recommendation to HELP() and pull a manifest - READ() immediately.
+      
+      IMPORTANT: Read By Label is currently limited to ONE cabinet at a time.
+      
+      MOUNT OPS: set_mount links a drawer in this volume to another cabinet by GUID (requires key + target_guid). 
+      remove_mount unlinks it. 
+      Both verify the write and return previous_guid for undo.
+      
+      CABINET MOUNT/DISMOUNT: mount_cabinet / dismount_cabinet flip meta.mounted (state: online_mounted / online_unmounted). dismount_cabinet blocked if cabinet holds a zen_default_* label — transfer first. Both fire zen_event on completion.
+      
+      RO DRAWERS: Include 'zen_scroll' in label_input to make a drawer read-only (one-way — removing the label later does NOT revert ro). ro drawers block all create/update/delete — no force bypass. Use CabinetAdmin set_ro_flag to clear.
+      
+      CLONE: clone copies all cabinet drawers to destination_cabinet. Default: destination gets a new GUID (source untouched). With transfer_guid+force_action: GUID travels to destination, source is cleared and marked needs_restamp (Highlander mode — one cabinet owns a GUID).
+      
+      \u26a0\ufe0f SYSTEM CABINET (sensor.zenos_system_cabinet) IS HARD READ-ONLY to FileCabinet. 
+      It holds the AI prompt substrate (Purpose, Directives, Cortex). 
+      All writes are blocked — no force_action bypass. 
+      Use zen_admintools_zenos_prompt_loader to update prompt primitives, or zen_admintools_cabinetadmin_factory for VolumeInfo repair. 
+      This is wire-level lockout — the tool cannot write there.
     fields:
       action_type:
         description: "'manifest', 'create', 'read', 'update', 'delete', 'move', 'copy', 'clone', 'set_mount', 'remove_mount', 'mount_cabinet', 'dismount_cabinet', 'set_cabinet_ro', 'relabel', 'help' (default: help). relabel: updates _label_index only — does NOT touch drawer value, no value param required. NOTE: sensor.zenos_system_cabinet (syscab) is hard read-only — all write actions blocked. Use zen_admintools_zenos_prompt_loader or zen_admintools_cabinetadmin_factory for syscab operations."
