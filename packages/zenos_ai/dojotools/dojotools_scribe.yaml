@@ -178,7 +178,7 @@ script:
         selector:
           text:
 
-      label_description:
+      label_description_generic:
         name: Label Description
         description: generic collection description
         required: false
@@ -278,7 +278,8 @@ script:
         required: false
         selector:
           entity:
-            domain: person
+            filter:
+              domain: person
 
       what_it_does:
         name: What It Does
@@ -519,7 +520,7 @@ script:
       # -------------------------------------------------------------------
       - variables:
           _label_desc: >-
-            {% set d = label_description | default('', true) | string | trim %}
+            {% set d = label_description_generic | default('', true) | string | trim %}
             {% if d != '' %}
               {{ d }}
             {% elif _base_label != '' %}
@@ -856,6 +857,7 @@ script:
                       action_type: create
                       label_list:
                         - "{{ _base_label }}"
+                      #new_description: "{{ _label_desc }}"
                       new_description: "{{ _label_desc }}"
                       confirm: true
                       caller_token: "{{ caller_token }}"
