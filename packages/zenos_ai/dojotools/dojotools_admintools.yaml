@@ -1011,6 +1011,7 @@ script:
     sequence:
     - variables:
         confirm_action: '{{ confirm_action | default(false) }}'
+        caller_token: "{{- caller_token | default('') -}}"
     - choose:
       - conditions:
         - condition: template

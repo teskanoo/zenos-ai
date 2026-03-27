@@ -80,6 +80,8 @@ script:
         is_delete: "{{ action_type == 'delete' }}"
         is_help: "{{ action_type == 'help' }}"
         is_clone: "{{ action_type == 'clone' }}"
+        is_relabel: "{{ action_type == 'relabel' }}"
+        is_write_action: "{{ action_type in ['create','update','delete','move','copy','mount_cabinet','dismount_cabinet','relabel']}}"
         initial_volume_raw: "{{ state_attr(volume_entity, 'variables') | default({}, true) }}"
         initial_volume: >
           {% if initial_volume_raw is mapping %}
@@ -433,8 +435,6 @@ script:
         is_force_create_over_existing: "{{ action_type == 'create' and key != '' and key_exists_initial and force_action}}"
         is_create_path: "{{ is_create_new or is_force_update_new or is_force_create_over_existing}}"
         is_update_path: "{{ is_update and key_exists_initial}}"
-        is_write_action: "{{ action_type in ['create','update','delete','move','copy','mount_cabinet','dismount_cabinet','relabel']}}"
-        is_relabel: "{{ action_type == 'relabel' }}"
         json_parse_failed: >
           {{ (parsed_value is string and parsed_value.startswith('Write failed')) 
               or (parsed_value is mapping and (parsed_value.get('error','') | string).startswith('Write failed'))

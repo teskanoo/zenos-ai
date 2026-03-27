@@ -403,7 +403,7 @@ script:
                 "monk":                 monk_response | default({}),
                 "post":                 post_to_kata_cabinet | default(false),
                 "filecabinet_write":    filecabinet_response | default({}),
-                "caller_token":         caller_token | default(''),
+                "caller_token":         caller_token,
                 "duration_seconds":     duration_seconds | default(0),
                 "run_started_at":       started_at | default('')
               }
@@ -751,7 +751,7 @@ script:
                 "post":              post_to_kata_cabinet | default(false),
                 "dojo_drawer":       dojo_drawer | default(''),
                 "filecabinet_write": filecabinet_response | default({}),
-                "caller_token":      caller_token | default(''),
+                "caller_token":      caller_token,
                 "duration_seconds":  duration_seconds | default(0),
                 "run_started_at":    started_at | default('')
               }

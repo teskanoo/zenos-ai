@@ -120,9 +120,10 @@ script:
         out: "{{\n  {\n    \"number_1\": n1,\n    \"number_2\": n2,\n    \"operator\":
           op,\n    \"result\": result\n  } | tojson\n}}\n"
     - variables:
-        out: "{{ (out | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
+        out: "{{ (out | from_json) | combine({'caller_token': caller_token}) | tojson }}"
     - stop: Calculator done
       response_variable: out
+
   zen_dojotools_dice_roller:
     alias: Zen DojoTools Dice Roller
     mode: parallel
@@ -206,12 +207,18 @@ script:
   
           '
     - variables:
-        out: "{{ out | combine({'caller_token': caller_token | default('')}) if out is mapping else out }}"
+        out: "{{ out | combine({'caller_token': caller_token}) if out is mapping else out }}"
     - stop: Dice/Random complete
       response_variable: out
     icon: mdi:dice-d20-outline
+
   zen_dojotools_announce:
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
     - variables:
         results: []
         tts_entity: tts.openai_gpt_4o_mini_tts_2
@@ -253,7 +260,7 @@ script:
     - variables:
         final_response: "{{\n  {\n    \"results\": results\n  } | tojson\n}}"
     - variables:
-        final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token | default('')}) | tojson }}"
+        final_response: "{{ (final_response | from_json) | combine({'caller_token': caller_token}) | tojson }}"
     - stop: Pass Variable
       response_variable: final_response
     fields:
@@ -285,6 +292,7 @@ script:
       to send to - let the tool figure out the rest...\nWill handle identifying the
       correct endpoint, volume etc. for the time and report results.  Happy Notifying...
       \ Don't overuse."
+
   zen_dojotools_music_search:
     sequence:
     # --------------------------------------------------------------
@@ -365,6 +373,7 @@ script:
       media type (multi-select allowed) \nReturns media names and uri for term: 'query'\nUse
       * for all\nDefaults to 50 items, modify number of responses by specifying 'number'"
     icon: mdi:music
+
   zen_dojotools_help:
     alias: Zen DojoTools Help
     description: >-
@@ -498,7 +507,7 @@ script:
             }
           }}
     - variables:
-        about_response: "{{ about_response | combine({'caller_token': caller_token | default('')}) if about_response is mapping else about_response }}"
+        about_response: "{{ about_response | combine({'caller_token': caller_token}) if about_response is mapping else about_response }}"
     - stop: Return About Response
       response_variable: about_response
 
@@ -971,6 +980,6 @@ script:
           none %} {% set ns.d = ns.d | combine({''data'': data}) %} {% endif %} {{ ns.d
           }}'
     - variables:
-        result: "{{ result | combine({'caller_token': caller_token | default('')}) if result is mapping else result }}"
+        result: "{{ result | combine({'caller_token': caller_token}) if result is mapping else result }}"
     - stop: Pass Variables
       response_variable: result
