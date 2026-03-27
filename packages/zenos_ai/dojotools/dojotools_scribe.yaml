@@ -346,7 +346,7 @@ script:
         selector:
           boolean:
 
-      version:
+      version_semantic:
         name: Version
         description: semantic version string
         required: false
@@ -857,7 +857,6 @@ script:
                       action_type: create
                       label_list:
                         - "{{ _base_label }}"
-                      #new_description: "{{ _label_desc }}"
                       new_description: "{{ _label_desc }}"
                       confirm: true
                       caller_token: "{{ caller_token }}"
@@ -886,7 +885,7 @@ script:
                         "artifact_class": "thought",
                         "artifact_state": "draft",
                         "schema_version": "1.0.0",
-                        "version": version | default('1.0.0'),
+                        "version": version_semantic | default('1.0.0'),
                         "friendly_name": friendly_name | default(_slug),
                         "key": _primary_index_key,
                         "primary_index_key": _primary_index_key,
@@ -1391,7 +1390,7 @@ script:
                     {% set base = _k2 if _k2 is mapping else {} %}
                     {{
                       {
-                        "version": base.get('version', version | default('1.0.0')),
+                        "version": base.get('version', version_semantic | default('1.0.0')),
                         "friendly_name": base.get('friendly_name', friendly_name | default(_slug)),
                         "label": base.get('label', _base_label),
                         "primary_index_key": base.get('primary_index_key', _primary_index_key),
