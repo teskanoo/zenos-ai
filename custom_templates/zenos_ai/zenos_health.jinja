@@ -301,7 +301,10 @@ Provides mapping of slots to default entities
     {%- elif ns.unhealthy_opt | count > 0 -%}
         Optional cabinet sensor(s) unavailable: {{ ns.unhealthy_opt | join(', ') }} — check entity configuration.
     {%- elif ns2.legacy_schema | count > 0 -%}
-        Schema update available: {{ ns2.legacy_schema | count }} cabinet(s) on pre-RC2 schema (state: Variables). Data intact — touch to migrate to RP2 state machine (one-way). Not a gate condition.
+        Schema update available: {{ ns2.legacy_schema | count }} cabinet(s) on pre-RC2 schema (state: Variables).
+        Data intact — touch to migrate to RP2 state machine (one-way).
+        Not a gate condition.
+        - {{ ns2.legacy_schema | join("\n- ") }}
     {%- else -%}
         All required cabinet slots filled and healthy.
     {%- endif -%}
