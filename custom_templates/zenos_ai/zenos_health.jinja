@@ -284,9 +284,15 @@ Provides mapping of slots to default entities
             {%- if bad | count > 0 -%}{%- set ns.unhealthy_opt = ns.unhealthy_opt + [slot] -%}{%- endif -%}
         {%- endif -%}
     {%- endfor -%}
-    {%- set ns2 = namespace(legacy_schema=[]) -%}
+    {%- set ns2 = namespace(legacy_schema=[], slotted=[]) -%}
+    {%- for slot in required + optional -%}
+        {%- set sl = slot_to_label[slot] | slugify -%}
+        {%- for eid in (intersect(all_cabs, label_entities(sl) or []) | list) -%}
+            {%- if eid not in ns2.slotted -%}{%- set ns2.slotted = ns2.slotted + [eid] -%}{%- endif -%}
+        {%- endfor -%}
+    {%- endfor -%}
     {%- for eid in all_cabs -%}
-        {%- if states(eid) == 'Variables' -%}
+        {%- if states(eid) == 'Variables' and eid in ns2.slotted -%}
             {%- set ns2.legacy_schema = ns2.legacy_schema + [eid] -%}
         {%- endif -%}
     {%- endfor -%}
@@ -402,9 +408,17 @@ Provides mapping of slots to default entities
         {%- endif -%}
     {%- endfor -%}
 
-    {# LEGACY SCHEMA: cabinets with pre-RC2 state 'Variables' — non-blocking, update available #}
+    {# LEGACY SCHEMA: slot-assigned cabinets with pre-RC2 state 'Variables'. #}
+    {# Unslotted cabs (parent label only, slot label pulled) are retired stubs — excluded from warn. #}
+    {%- set ns_sl = namespace(slotted=[]) -%}
+    {%- for slot in required + optional -%}
+        {%- set sl = slot_to_label[slot] | slugify -%}
+        {%- for eid in (intersect(all_cabs, label_entities(sl) or []) | list) -%}
+            {%- if eid not in ns_sl.slotted -%}{%- set ns_sl.slotted = ns_sl.slotted + [eid] -%}{%- endif -%}
+        {%- endfor -%}
+    {%- endfor -%}
     {%- for eid in all_cabs -%}
-        {%- if states(eid) == 'Variables' -%}
+        {%- if states(eid) == 'Variables' and eid in ns_sl.slotted -%}
             {%- set ns.legacy_schema = ns.legacy_schema + [eid] -%}
         {%- endif -%}
     {%- endfor -%}

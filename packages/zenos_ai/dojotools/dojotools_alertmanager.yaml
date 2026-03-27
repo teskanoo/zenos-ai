@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI Alert Manager
-# Version: 1.0.0
+# Version: 1.0.1
 #
 # Fire-once alert deduplication. Suppresses repeat notifications for the same
 # condition. Clears when the condition resolves so the alert can fire again
@@ -154,7 +154,8 @@ automation:
 
               - action: script.zen_dojotools_filecabinet
                 data:
-                  action_type: write
+                  action_type: create
+                  force_action: true
                   volume_entity_id: "{{ _household }}"
                   key: _zen_active_alerts
                   value: "{{ _updated }}"
@@ -183,7 +184,8 @@ automation:
 
               - action: script.zen_dojotools_filecabinet
                 data:
-                  action_type: write
+                  action_type: create
+                  force_action: true
                   volume_entity_id: "{{ _household }}"
                   key: _zen_active_alerts
                   value: "{{ _updated }}"

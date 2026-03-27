@@ -1,4 +1,4 @@
-# Zen DojoTools Identity — 4.5.5 'Ready Player Two'
+# Zen DojoTools Identity — 4.5.6
 
 *Identity resolution and household/family group management for ZenOS-AI*
 
@@ -299,6 +299,8 @@ zen_dojotools_identity:
 
 **Event fired:** `zen_event kind: partner_unlinked`
 
+> **4.5.6 fix:** Prior to 4.5.6 the ACL removal was a silent no-op — the mode computed `_a_vi_updated`/`_b_vi_updated` but the write events referenced undefined variable names. Both writes now correctly persist the updated VolumeInfo.
+
 ---
 
 ### `set_default_family`
@@ -372,7 +374,9 @@ When provisioning a fresh system, the recommended identity wiring sequence:
 7. Link user and AI — `link_partners` (bidirectional delegation link)
 8. Optionally invite AI into family — explicit `family_add_member`; fires join event
 
-Flynn bootstrap (`flynn_bootstrap_content`) runs steps 4–7 automatically on first boot.
+Flynn bootstrap (`flynn_bootstrap_content`) runs steps 4–7 automatically on first boot. As of 4.5.6, Flynn also calls `household_add_family` and `family_add_member` during bootstrap to wire the default family into the household graph — closing a gap where cold builds left the family cabinet as an orphan.
+
+> **Name resolution (4.5.6):** The identity tree builder and manifest now use a three-step fallback chain: `friendly_name → name → entity_id`. Pre-RP2 VolumeInfo entries that stored the display name in a `name` field (not `friendly_name`) now resolve correctly in the membership tree and manifest output.
 
 ---
 

@@ -10,12 +10,12 @@ Let's automate everything that isn't nailed down.
 
 And a few things that are.
 
-**Current version: 4.5.0 'Meridian'**
+**Current version: 4.5.6**
 
-HALMark pre-GA footgun sweep completed 2026-03-22 — clean against all Ratified and Candidate FGs.
-Full review: [Release Notes — Meridian](zenos_ai/docs/releases/meridian.md#halmark-pre-ga-review)
+4.5.5 'Ready Player Two' shipped 2026-03-26 — identity and lifecycle release, 21/21 UAT green on live H:\ install.
+Patch 4.5.6 in UAT — identity graph wiring, home mode timer seeding, alertmanager persistence, name resolution fix.
 
-UAT passed 2026-03-22 — identity roster, manifest, prompt health, prompt render, Flynn override, health report, supersummary, and scheduler all green on live H:\ install. 16 active KFCs, 15 cabinets ready.
+Full notes: [Ready Player Two](zenos_ai/docs/releases/ready_player_two.md) | [Patch 4.5.6](zenos_ai/docs/releases/patch_4_5_6.md)
 
 ---
 
@@ -289,6 +289,9 @@ packages/zenos_ai/
     dojotools_systemtools.yaml — System tools and event emitter
     dojotools_utilities.yaml   — General utilities
     dojotools_office.yaml      — Office integrations (Teams, mail, todo, calendar)
+
+  maint/
+    maint_4_5_6.yaml             — One-time repair scripts (not AI-accessible, run manually)
 
   sensors/
     zenos_agent_health.yaml

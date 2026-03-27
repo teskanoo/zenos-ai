@@ -1,12 +1,13 @@
 ###############################################################################
 # ZenOS-AI DojoTools: AdminTools
-# Version: 4.5.5
+# Version: 4.5.6
 #
 # Scripts:
 #   zen_admintools_reset_template        — Kata + Dojo template press (v1.1.0)
 #   zen_admintools_cabinetadmin          — Cabinet inspect/restore/reset/hammer (v4.5.x)
 #   zen_admintools_cabinetadmin_factory   — Cabinet factory stamper/repairer (v1.x)
 #   zen_admintools_zenos_prompt_loader   — Cortex/Directives/Purpose loader
+#   zen_admintools_run_repair            — Human-confirmed passthrough to maint/ scripts (v4.5.6)
 #
 # NOTE: zen_dojotools_kungfu_writer removed 2026-03-25 — superseded by zen_dojotools_scribe
 #
@@ -2599,3 +2600,91 @@ script:
       NOT exposing this to your LLM/Assist.'
     icon: mdi:brain
 
+
+  zen_admintools_run_repair:
+    sequence:
+    - if: "{{ not confirm_action }}"
+      then:
+        - variables:
+            response:
+              status: blocked
+              message: "confirm_action: true required. These repairs are destructive — confirm explicitly."
+        - stop: Confirmation required
+          response_variable: response
+    - variables:
+        _repair: "{{ repair_action | default('') | trim }}"
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ _repair == 'identity_family_repair_4_5_6' }}"
+          sequence:
+            - action: script.zen_maint_4_5_6_identity_family_repair
+              response_variable: _repair_result
+            - variables:
+                response: "{{ _repair_result | default({'status': 'error', 'message': 'Repair script returned no result.'}) }}"
+        - conditions:
+            - condition: template
+              value_template: "{{ _repair == 'stamp_cab_guid_4_5_6' }}"
+          sequence:
+            - action: script.zen_maint_4_5_6_stamp_cab_guid
+              data:
+                cabinet_entity: "{{ entity_id | default('') | trim }}"
+              response_variable: _repair_result
+            - variables:
+                response: "{{ _repair_result | default({'status': 'error', 'message': 'Repair script returned no result.'}) }}"
+        - conditions:
+            - condition: template
+              value_template: "{{ _repair == 'roster_guid_repair_4_5_6' }}"
+          sequence:
+            - action: script.zen_maint_4_5_6_roster_guid_repair
+              response_variable: _repair_result
+            - variables:
+                response: "{{ _repair_result | default({'status': 'error', 'message': 'Repair script returned no result.'}) }}"
+      default:
+        - variables:
+            response:
+              status: error
+              repair_action: "{{ _repair }}"
+              message: "Unknown repair_action '{{ _repair }}'. Valid: identity_family_repair_4_5_6, stamp_cab_guid_4_5_6, roster_guid_repair_4_5_6."
+    - stop: return
+      response_variable: response
+    alias: Zen AdminTools Run Repair
+    description: >-
+      Human-confirmed passthrough to versioned maint/ repair scripts.
+      Requires confirm_action: true — will not run without explicit confirmation.
+      DO NOT expose to unattended LLM pipelines. For operator use only.
+      Repairs: identity_family_repair_4_5_6, stamp_cab_guid_4_5_6, roster_guid_repair_4_5_6.
+    fields:
+      repair_action:
+        name: Repair Action
+        description: >-
+          One-time maintenance repair to run.
+          identity_family_repair_4_5_6 — wire default family cab into household graph.
+          stamp_cab_guid_4_5_6 — stamp GUID on a single cabinet (requires entity_id).
+          roster_guid_repair_4_5_6 — stamp GUIDs + re-wire all default cab roster entries.
+        required: true
+        selector:
+          select:
+            options:
+            - identity_family_repair_4_5_6
+            - stamp_cab_guid_4_5_6
+            - roster_guid_repair_4_5_6
+      entity_id:
+        name: Cabinet Entity ID
+        description: Required for stamp_cab_guid_4_5_6. Entity ID of cabinet to stamp.
+        required: false
+        selector:
+          text:
+      confirm_action:
+        name: Confirm Destructive Action
+        description: Must be true. These scripts mutate cabinet state. Confirm explicitly.
+        required: true
+        selector:
+          boolean:
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through for correlation.
+        required: false
+        selector:
+          text:
+    icon: mdi:wrench-clock

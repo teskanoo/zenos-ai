@@ -8,6 +8,21 @@ ZenOS-AI is a cabinet-centric AI framework for deterministic, inspectable househ
 
 ## Current Status
 
+**4.5.6 — Shipped (2026-03-27)**
+
+Identity graph, alertmanager, and GUID correctness batch. `unlink_partners` variable name fix (ACL
+removal now persists). Cold bootstrap wires default family into household graph. Identity tree
+name resolution extended (friendly_name → name → entity_id). GUID id-preference fix (23 sites —
+`id` over legacy `guid`). Household root profile-first name resolution. Home mode `input_datetime`
+helpers ship without `initial:`; Flynn seeds defaults on first boot. AlertManager deduplication
+fixed. `run_repair` moved from SystemTools to AdminTools behind confirm gate; two new maint scripts
+(`stamp_cab_guid`, `roster_guid_repair`) for pre-provisioner installs. Family cabinet VolumeInfo
+rogue key repair script added (`maint/repair_fam_cab_volumeinfo.yaml`).
+
+See: [Patch 4.5.6 Release Notes](releases/patch_4_5_6.md)
+
+---
+
 **4.5.5 'Ready Player Two' — Shipped (2026-03-26)**
 
 Identity and lifecycle release. Cabinet provisioning system (mount-aware state machine,
@@ -372,10 +387,13 @@ Flynn gate-3 bootstrap validation, Monastery dispatch guard.
 
 # Immediate Next Focus
 
-The RC2 baseline is done. The system deploys, runs, and maintains itself.
+GA is shipped. The system deploys, bootstraps, and maintains itself cleanly through RP2 and the 4.5.6 patch.
 
-The GA focus is proving the full path from **zero to live** and from **legacy to canonical** — cleanly, deterministically, and repeatably.
+The next major work stream is **Prompt Finalization**:
 
-`fresh install → canonical state → first live agent → legacy import → regenerated derived state`
+1. **Template structure pass + rename** — `zen_os_1rc.jinja` → `zenos.jinja`, ref sweep, finalize `custom_templates/zenos_ai/` layout
+2. **Prompt instrumentation + collapse** — sensor per major prompt section → validate → collapse behind `zen.prompt('ai_user')`. Persona-aware, data-layer driven.
+3. **Flynn shunt** — pre-boot/degraded state routes to Flynn-only context. Wire last.
+4. **Stuffiness gauge** — token pressure per section as observable metric.
 
-That is the real GA line.
+Sequence: instrument → Nyx validates sensors → collapse → shunt.

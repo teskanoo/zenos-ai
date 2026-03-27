@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI — Cabinet Health
-# Version: 4.5.5
+# Version: 4.5.6
 #
 # sensor.zen_cabinet_health
 #   Validates the presence and health of all Zen cabinets against defaults

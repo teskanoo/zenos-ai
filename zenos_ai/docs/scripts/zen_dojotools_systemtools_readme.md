@@ -1,4 +1,4 @@
-# Zen DojoTools SystemTools — 4.5.5 'Ready Player Two'
+# Zen DojoTools SystemTools — 4.5.6
 
 *HA lifecycle management, log reading, event emission, and home mode*
 
@@ -111,6 +111,27 @@ confirm_action: true
 #### `ha_update_skip` / `ha_update_clear_skipped`
 
 Skip or un-skip a pending update. Both require `confirm_action: true` and `entity_id`.
+
+---
+
+#### `run_repair`
+
+Dispatches a versioned one-time repair script by name. Used to apply maintenance patches on existing installs without manual Developer Tools surgery.
+
+```yaml
+tool: run_repair
+repair_action: identity_family_repair_4_5_6
+```
+
+**`repair_action` values:**
+
+| Value | What it does |
+|---|---|
+| `identity_family_repair_4_5_6` | Wires default family into household graph for installs bootstrapped before 4.5.6. Idempotent — safe to re-run. |
+
+Repair scripts live in `packages/zenos_ai/maint/` and are not AI-accessible. Run via SystemTools or directly from Developer Tools → Services if preferred. Each script is idempotent and includes a version declaration.
+
+**Response:** Passes through the repair script's response directly — includes `status`, `message`, and script-specific fields (e.g., `family_cabinet`, `timestamp`).
 
 ---
 

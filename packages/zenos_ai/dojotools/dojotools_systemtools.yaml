@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI DojoTools: SystemTools Package
-# Version: 4.5.5
+# Version: 4.5.6
 #
 # Consolidated from: dojotools_ha_api.yaml + dojotools_system.yaml
 # Contains: zen_log_* shell_commands, ha_api rest_commands,
@@ -747,6 +747,15 @@ script:
                 {{ ((now() - as_datetime(_sched_ts)).total_seconds() / 60) | round(1) }}
               {%- else -%}none{%- endif -%}
         - variables:
+            _legacy_cabinets: >-
+              {%- set r = state_attr('sensor.zen_cabinet_health', 'cabinet_states') | default({}, true) -%}
+              {%- set cs = r if r is mapping else (r | from_json if r is string else {}) -%}
+              {%- set ns = namespace(l=[]) -%}
+              {%- for slot, st in cs.items() if st == 'Variables' -%}
+                {%- set ns.l = ns.l + [slot] -%}
+              {%- endfor -%}
+              {{ ns.l | join(', ') if ns.l else '' }}
+        - variables:
             _diagnosis: >-
               {%- set _ns = namespace(issues=[]) -%}
               {%- if _dojo in ['unknown','unavailable','none',''] -%}
@@ -838,6 +847,9 @@ script:
                 {%- set _notes = _roster | map(attribute='note') | list | join(', ') if _roster is iterable else '' -%}
                 {%- set _ns.issues = _ns.issues + ['Agent health ' ~ _agent_st ~ ' — Flynn blocking: ' ~ _flynn_blocking ~ (' | agents: ' ~ _notes if _notes else '')] -%}
               {%- endif -%}
+              {%- if _legacy_cabinets != '' -%}
+                {%- set _ns.issues = _ns.issues + ['Cabinet schema upgrade available: ' ~ _legacy_cabinets ~ ' — say "upgrade my cabinets"'] -%}
+              {%- endif -%}
               {%- if _ns.issues | count == 0 -%}
                 All gates nominal.
               {%- else -%}
@@ -861,6 +873,7 @@ script:
                 ninja_summarizer: "{{ states('sensor.zen_summarizer_health') }}"
                 supersummary: "{{ states('sensor.zen_supersummary_health') }}"
                 cabinet: "{{ states('sensor.zen_cabinet_health') }}"
+                legacy_schema_cabinets: "{{ _legacy_cabinets }}"
                 agents: "{{ states('sensor.zen_agent_health') }}"
               reasons:
                 monastery: "{{ state_attr('sensor.zen_monastery_health', 'reason') | default('') }}"

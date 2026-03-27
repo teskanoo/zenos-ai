@@ -1,5 +1,5 @@
 ###############################################################################
-# FLYNN — UNIFIED ENGINE (v4.5.5)
+# FLYNN — UNIFIED ENGINE (v4.5.6)
 # Canon-safe, no nested Jinja in service calls, fully HA-legal.
 #
 # Includes:
@@ -1056,6 +1056,7 @@ script:
           _b3_hh_cab: "{{ states('sensor.zen_default_household_cabinet_resolved') }}"
           _b3_user_cab: "{{ states('sensor.zen_default_user_cabinet_resolved') }}"
           _b3_ai_cab: "{{ states('sensor.zen_default_ai_user_cabinet_resolved') }}"
+          _b3_fam_cab: "{{ states('sensor.zen_default_family_cabinet_resolved') }}"
       - if: "{{ _b3_user_cab not in ['', 'unknown', 'unavailable'] }}"
         then:
           - action: script.zen_dojotools_identity
@@ -1079,6 +1080,33 @@ script:
               mode: link_partners
               member_entity: "{{ _b3_user_cab }}"
               ai_entity: "{{ _b3_ai_cab }}"
+      # Wire default family into household graph — idempotent, skips if already wired.
+      - if: "{{ _b3_fam_cab not in ['', 'unknown', 'unavailable'] }}"
+        then:
+          - action: script.zen_dojotools_identity
+            data:
+              mode: household_add_family
+              family_entity: "{{ _b3_fam_cab }}"
+      - if: >-
+          {{ _b3_user_cab not in ['', 'unknown', 'unavailable']
+             and _b3_fam_cab not in ['', 'unknown', 'unavailable'] }}
+        then:
+          - action: script.zen_dojotools_identity
+            data:
+              mode: family_add_member
+              family_entity: "{{ _b3_fam_cab }}"
+              member_entity: "{{ _b3_user_cab }}"
+              member_type: user
+      - if: >-
+          {{ _b3_ai_cab not in ['', 'unknown', 'unavailable']
+             and _b3_fam_cab not in ['', 'unknown', 'unavailable'] }}
+        then:
+          - action: script.zen_dojotools_identity
+            data:
+              mode: family_add_member
+              family_entity: "{{ _b3_fam_cab }}"
+              member_entity: "{{ _b3_ai_cab }}"
+              member_type: ai_user
       - action: script.zen_dojotools_identity
         data:
           mode: build_identity_manifest
@@ -1123,6 +1151,80 @@ script:
             - "{{ states('sensor.zen_kata_cabinet_resolved') }}"
           key: AI_Cabinet_VolumeInfo
           value: '{"flags": {"gc_eligible": true}}'
+
+      # Seed home mode schedule timers — only on first build, per timer (bare = never set).
+      # initial: was removed from input_datetime definitions to prevent boot-time resets.
+      # Each timer is guarded independently so partial restores are respected.
+      - if: "{{ states('input_datetime.zen_am_start') in ['', 'unknown', 'unavailable'] }}"
+        then:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.zen_am_start
+            data:
+              time: "06:00:00"
+      - if: "{{ states('input_datetime.zen_morning_start') in ['', 'unknown', 'unavailable'] }}"
+        then:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.zen_morning_start
+            data:
+              time: "08:00:00"
+      - if: "{{ states('input_datetime.zen_daytime_start') in ['', 'unknown', 'unavailable'] }}"
+        then:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.zen_daytime_start
+            data:
+              time: "10:00:00"
+      - if: "{{ states('input_datetime.zen_evening_start') in ['', 'unknown', 'unavailable'] }}"
+        then:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.zen_evening_start
+            data:
+              time: "17:00:00"
+      - if: "{{ states('input_datetime.zen_night_start') in ['', 'unknown', 'unavailable'] }}"
+        then:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.zen_night_start
+            data:
+              time: "21:00:00"
+      - if: "{{ states('input_datetime.zen_late_night_start') in ['', 'unknown', 'unavailable'] }}"
+        then:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.zen_late_night_start
+            data:
+              time: "23:00:00"
+      - if: "{{ states('input_datetime.zen_quiet_hours_start') in ['', 'unknown', 'unavailable'] }}"
+        then:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.zen_quiet_hours_start
+            data:
+              time: "23:00:00"
+      - if: "{{ states('input_datetime.zen_quiet_hours_end') in ['', 'unknown', 'unavailable'] }}"
+        then:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.zen_quiet_hours_end
+            data:
+              time: "06:00:00"
+      - if: "{{ states('input_datetime.zen_work_hours_start') in ['', 'unknown', 'unavailable'] }}"
+        then:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.zen_work_hours_start
+            data:
+              time: "09:00:00"
+      - if: "{{ states('input_datetime.zen_work_hours_end') in ['', 'unknown', 'unavailable'] }}"
+        then:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.zen_work_hours_end
+            data:
+              time: "17:00:00"
 
       # Write _onboarding flag
       - action: script.flynn_unified_engine

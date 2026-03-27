@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI — Home Mode
-# Version 4.5.x
+# Version 4.5.6
 #
 # Defines the home mode state machine and all dependent constructs.
 # Replaces externally-defined legacy helpers on migration.
@@ -77,42 +77,36 @@ input_datetime:
     icon: mdi:weather-sunset-up
     has_time: true
     has_date: false
-    initial: "06:00:00"
 
   zen_morning_start:
     name: "Zen Morning Start"
     icon: mdi:coffee-outline
     has_time: true
     has_date: false
-    initial: "08:00:00"
 
   zen_daytime_start:
     name: "Zen Daytime Start"
     icon: mdi:weather-sunny
     has_time: true
     has_date: false
-    initial: "10:00:00"
 
   zen_evening_start:
     name: "Zen Evening Start"
     icon: mdi:weather-sunset-down
     has_time: true
     has_date: false
-    initial: "17:00:00"
 
   zen_night_start:
     name: "Zen Night Start"
     icon: mdi:weather-night
     has_time: true
     has_date: false
-    initial: "21:00:00"
 
   zen_late_night_start:
     name: "Zen Night-Late Start"
     icon: mdi:power-sleep
     has_time: true
     has_date: false
-    initial: "23:00:00"
 
   ###########################################################################
   # QUIET / WORK PERIOD BOUNDARIES
@@ -123,28 +117,24 @@ input_datetime:
     icon: mdi:home-clock-outline
     has_time: true
     has_date: false
-    initial: "23:00:00"
 
   zen_quiet_hours_end:
     name: "Zen Quiet Hours End"
     icon: mdi:home-clock-outline
     has_time: true
     has_date: false
-    initial: "06:00:00"
 
   zen_work_hours_start:
     name: "Zen Work Hours Start"
     icon: mdi:briefcase
     has_time: true
     has_date: false
-    initial: "09:00:00"
 
   zen_work_hours_end:
     name: "Zen Work Hours End"
     icon: mdi:briefcase
     has_time: true
     has_date: false
-    initial: "17:00:00"
 
 
 ###############################################################################

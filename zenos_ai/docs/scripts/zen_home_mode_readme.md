@@ -1,4 +1,4 @@
-# Zen Home Mode — 4.5.5 'Ready Player Two'
+# Zen Home Mode — 4.5.6
 
 *Eight-state home presence and time-of-day state machine*
 
@@ -68,6 +68,8 @@ Six `input_datetime` helpers control when mode transitions fire. All are time-on
 | `input_datetime.zen_late_night_start` | 23:00 | → `Night-Late` |
 
 Change any anchor in Settings → Helpers → the automation fires on the new time immediately with no restart needed.
+
+> **Timer seeding (4.5.6):** The `input_datetime` helpers ship with **no `initial:` value** — HA's `initial:` resets user-configured times on every restart, which was incorrect behavior. On first boot, Flynn seeds each timer individually to the defaults shown above (only if the helper is still bare — `''`, `unknown`, or `unavailable`). After that, your changes are permanent across restarts.
 
 ---
 
@@ -152,3 +154,4 @@ Apply the `zen_vacation_mode` label to your calendar entity. The system resolves
 | Presence return not releasing Away | Check `zen_hm_presence_return` automation — it only fires when mode is exactly `Away` |
 | Quiet hours wrong | Verify `zen_quiet_hours_start` and `zen_quiet_hours_end` — if `end < start` the window wraps midnight (correct behavior) |
 | Work hours always off | Check both `zen_work_hours_start` and `zen_work_hours_end` are set and not `unknown` |
+| Timers reset on restart | This was a pre-4.5.6 issue caused by `initial:` in the helper definition. 4.5.6 removed `initial:` — Flynn now seeds defaults on first boot only. Upgrade to 4.5.6 and run `zen_maint_4_5_6_identity_family_repair` is not needed for this; timers will stabilize on the next restart after upgrading. |

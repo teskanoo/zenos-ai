@@ -1,4 +1,4 @@
-# Flynn — Stepgate Sentinel & Bootstrap Engine — 4.5.5 'Ready Player Two'
+# Flynn — Stepgate Sentinel & Bootstrap Engine — 4.5.6
 
 *ZenOS-AI's boot guard, initializer, and onboarding driver*
 
@@ -160,7 +160,9 @@ If `zen_monastery_health == critical`, Flynn calls `script.flynn_bootstrap_conte
 5. **Seeds AI persona essence** — writes default legacy-schema essence with `identity.name = 'your AI'` as placeholder (non-destructive — skips if drawer already exists). Three-layer cabinets already have a real name stamped at mint; this step is a no-op for them.
 6. **Seeds schema templates** — calls `reset_template` if either template drawer is missing.
 7. **Loads prompt substrate** — calls `zen_admintools_zenos_prompt_loader` (Cortex, Directives, Purpose).
-8. **Flags completion** — calls `flynn_unified_engine` with `action_type: flag_complete`.
+8. **Wires default family graph** *(4.5.6)* — calls `household_add_family` for the default family cabinet, then `family_add_member` for the default user and AI user. All three calls are guarded (skips if cabinet unavailable) and idempotent (no-op if already wired). Closes a gap where cold builds left the default family as an orphan in the identity graph.
+9. **Seeds home mode timers** *(4.5.6)* — each `input_datetime` schedule anchor and quiet/work bounds helper is individually checked and seeded to its default time if still bare (`''`, `unknown`, or `unavailable`). Each timer has its own guard — partially-configured installs are safe.
+10. **Flags completion** — calls `flynn_unified_engine` with `action_type: flag_complete`.
 
 **Event fired:** `flynn_stepgate_event` (gate: 3, action: bootstrap_complete)
 
