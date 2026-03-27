@@ -355,17 +355,40 @@ script:
         selector:
           select:
             options:
-            - help
-            - inspect
-            - init
-            - hammer
-            - restore
-            - reset
-            - mount_status
-            - repair_mount
-            - repair_dismount
-            - reset_all
-            - flip_schema_version
+
+            - label: Help
+              value: help
+
+            - label: Inspect Cabinet
+              value: inspect
+
+            - label: Initialize Cabinet
+              value: init
+
+            - label: Hammer Cabinet
+              value: hammer
+
+            - label: Restore Cabinet
+              value: restore
+
+            - label: Reset Cabinet
+              value: reset
+
+            - label: Mount Status
+              value: mount_status
+
+            - label: Repair Mount
+              value: repair_mount
+
+            - label: Repair Dismount
+              value: repair_dismount
+
+            - label: Reset All Cabinets
+              value: reset_all
+
+            - label: Flip Schema Version
+              value: flip_schema_version
+
         default: help
       target_cabinet:
         name: Target Cabinet
