@@ -25,7 +25,32 @@ script:
     # Always normalize User/AI inputs so we don't have to react JIT
     # --------------------------------------------------------------
     - variables:
+        action_type: "{{ action_type | default('help') }}"
+        #volume_entity_id: "{{ volume_entity_id | default('') }}"
+        #key: "{{ key | default('') | trim }}"
+        #value: "{{ value | default('') }}"
+        set_timestamp: "{{ set_timestamp | default(false) }}"
+        label_input: "{{ label_input | default('') }}"
+        expires_after: "{{ expires_after | default('') | trim }}"
+        no_autoexpire: "{{ no_autoexpire | default(false) }}"
+        no_autorecycle: "{{ no_autorecycle | default(false) }}"
+        acl: "{{ acl | default('') }}"
+        description: "{{ description | default('') | truncate(255, True, '', 0) | trim }}"
+        label_targets: "{{ label_targets | default('') }}"
+        show_hidden_volumes: "{{ show_hidden_volumes | default(false) }}"
+        show_stacks:  "{{ show_stacks | default(false) }}"
+        #start:
+        #end:
+        #filter_domain:
+        #filter_state_operand:
+        #filter_op:
+        force_action: "{{ force_action | default(false) }}"
+        destination_cabinet: "{{ destination_cabinet | default('') }}"
+        destination_drawer: "{{ destination_drawer | default('') | slugify }}"
+        transfer_guid: "{{ transfer_guid | default(false) }}"
+        target_guid: "{{ target_guid | default('') | trim }}"
         caller_token: "{{- caller_token | default('') -}}"
+        create_label: "{{ create_label | default(false) }}"
 
     - variables:
         routing_status: init
@@ -34,9 +59,6 @@ script:
         resolved_label_entities: "{{ [] }}"
         label_input_list: "{{ [] }}"
         read_volume: "{{ {} }}"
-        force_action: "{{ force_action | default(false) }}"
-        create_label: "{{ create_label | default(false) }}"
-        action_type: "{{ action_type | default('help') }}"
         volume_entity: >
           {% set _veid = volume_entity_id | default('') %}
           {% if _veid is string %}
@@ -55,15 +77,8 @@ script:
             {{ _rk | slugify }}
           {%- endif -%}
         raw_value: "{{ value | default('') }}"
-        label_input: "{{ label_input | default('') }}"
-        label_targets: "{{ label_targets | default('') }}"
-        set_timestamp: "{{ set_timestamp | default(false) }}"
         protect_write: "{{ protect_write | default(true) }}"
         now_iso: "{{ now().isoformat() }}"
-        expires_after: "{{ expires_after | default('') | trim }}"
-        no_autoexpire: "{{ no_autoexpire | default(false) }}"
-        no_autorecycle: "{{ no_autorecycle | default(false) }}"
-        target_guid: "{{ target_guid | default('') | trim }}"
         drawer_acl: >
           {% set _acl = acl | default('') %}
           {% if _acl is mapping %}
@@ -73,7 +88,6 @@ script:
           {% else %}
             {}
           {% endif %}
-        description: "{{ description | default('') | truncate(255, True, '', 0) | trim }}"
         is_create: "{{ action_type == 'create' }}"
         is_update: "{{ action_type == 'update' }}"
         is_read: "{{ action_type == 'read' }}"
@@ -1082,7 +1096,7 @@ script:
           metadata: {}
           data:
             show_hidden_volumes: "{{ show_hidden_volumes }}"
-            show_stacks: "{{ show_stacks | default(false) }}"
+            show_stacks: "{{ show_stacks }}"
           response_variable: final_response
         - stop: Manifest read complete
           response_variable: final_response
@@ -1382,8 +1396,8 @@ script:
           alias: Move/Copy Drawer
         sequence:
         - variables:
-            dest_cabinet: "{{ destination_cabinet | default('') }}"
-            dest_drawer: "{{ destination_drawer | default('') | slugify }}"
+            dest_cabinet: "{{ destination_cabinet }}"
+            dest_drawer: "{{ destination_drawer }}"
             dest_volume: "{{ state_attr(dest_cabinet, 'variables') | default({}, true) }}"
             src_drawer_data: '{{ initial_volume.get(key, {}) }}'
             src_drawer_value: >-
@@ -1583,10 +1597,10 @@ script:
           alias: Clone Cabinet (Highlander mode)
         sequence:
         - variables:
-            dest_cabinet: "{{ destination_cabinet | default('') }}"
-            transfer_guid: "{{ transfer_guid | default(false) }}"
+            dest_cabinet: "{{ destination_cabinet }}"
+            transfer_guid: "{{ transfer_guid }}"
             src_health: "{{ state_attr(volume_entity, 'health') or {} }}"
-            dest_health: "{{ state_attr(destination_cabinet | default(''), 'health') or {} }}"
+            dest_health: "{{ state_attr(destination_cabinet, 'health') or {} }}"
             src_health_ok: >-
               {{- src_health.get('status', '') != 'error'
                   and not src_health.get('guid_mismatch', false) -}}
@@ -2327,29 +2341,29 @@ script:
         description: Include online_unmounted (stacks) cabinets in manifest results.
         required: false
         default: false
-      start:
-        description: Start time in ISO 8601. Used when searching for entities updated
-          or changed after... Defaults to no end date [Experimental - currently unused]
-        required: false
-        selector:
-          text:
-      end:
-        description: End time in ISO 8601. Used when searching for entities updated
-          or changed before... Defaults to no end date [Experimental - currently unused]
-        required: false
-        selector:
-          text:
-      filter_domain:
-        description: Filter result list for entities in this domain Defaults to no end
-          date [Experimental - currently unused]
-        selector:
-          text:
-      filter_state_operand:
-        description: Filter result list for entities with this operand (must use filter_op)  [Experimental
-          - currently unused]
-        selector:
-          text:
-        name: Filter Operand
+      #start:
+      #  description: Start time in ISO 8601. Used when searching for entities updated
+      #    or changed after... Defaults to no end date [Experimental - currently unused]
+      #  required: false
+      #  selector:
+      #    text:
+      #end:
+      #  description: End time in ISO 8601. Used when searching for entities updated
+      #    or changed before... Defaults to no end date [Experimental - currently unused]
+      #  required: false
+      #  selector:
+      #    text:
+      #filter_domain:
+      #  description: Filter result list for entities in this domain Defaults to no end
+      #    date [Experimental - currently unused]
+      #  selector:
+      #    text:
+      #filter_state_operand:
+      #  description: Filter result list for entities with this operand (must use filter_op)  [Experimental
+      #    - currently unused]
+      #  selector:
+      #    text:
+      #  name: Filter Operand
       filter_op:
         description: Filter entity by entity matching state using this operation with
           filter operand to obtain a filtered result [Experimental - currently unused]
