@@ -179,4 +179,104 @@ Output: A JSON-formatted string of the variables dictionary (or an empty JSON ob
     {{- cabinet_variables(entity_id) -}}
 {%- endmacro -%}
 
+
+{#- </editor-fold> -#}
+
+{#- <editor-fold desc="Cabinet Drawer Helpers" defaultstate="collapsed"> -#}
+
+
+{#-
+@macro: cabinet_drawer_exists
+@desc: Checks if a drawer key exists in a cabinet's variables.
+@param: entity_id (string) - Cabinet sensor entity ID.
+@param: drawer_key (string) - Drawer key to check.
+@returns: JSON String - Boolean ("true" or "false").
+@usage: {% if (cabinet_drawer_exists('sensor.ai_cabinet', 'essence') | from_json) %}
+-#}
+{%- macro cabinet_drawer_exists(entity_id, drawer_key) -%}
+    {%- set vars = cabinet_variables(entity_id) | from_json -%}
+    {{- (drawer_key in vars) | tojson -}}
+{%- endmacro -%}
+
+{#-
+@macro: cabinet_drawer_value
+@desc: Safely extracts a nested drawer value from cabinet variables.
+@param: entity_id (string) - Cabinet sensor entity ID.
+@param: drawer_key (string) - Key within the variables dict.
+@param: property_path (list|string) - Path to the value (e.g., 'value' or ['value', 'nested_key']).
+@returns: JSON String - The value as JSON, or null if path doesn't exist.
+@note: If property_path is a string, it's treated as a single key. If a list, each element is a step.
+@usage: {{ cabinet_drawer_value('sensor.ai_cabinet', 'essence', 'value') | from_json }}
+        {{ cabinet_drawer_value('sensor.ai_cabinet', 'essence', ['value', 'identity', 'name']) | from_json }}
+-#}
+{%- macro cabinet_drawer_value(entity_id, drawer_key, property_path='value', fallback=none) -%}
+    {%- set vars = cabinet_variables(entity_id) | from_json -%}
+    {%- set drawer = vars.get(drawer_key, {}) -%}
+
+    {%- if drawer is mapping -%}
+        {%- set path_list = property_path if property_path is iterable and property_path is not string else [property_path] -%}
+        {%- set current = drawer -%}
+
+        {%- for key in path_list -%}
+            {%- if current is mapping -%}
+                {%- set current = current.get(key, none) -%}
+            {%- else -%}
+                {%- set current = none -%}
+                {%- break -%}
+            {%- endif -%}
+        {%- endfor -%}
+
+        {%- set result = current if current is not none else fallback -%}
+    {%- else -%}
+        {%- set result = fallback -%}
+    {%- endif -%}
+
+    {{- result | tojson -}}
+{%- endmacro -%}
+
+{#- </editor-fold> -#}
+
+{#- <editor-fold desc="UTILITIES" defaultstate="collapsed"> -#}
+
+{#-
+@macro: safe_parse_json_string
+@desc: Safely parses a string that may contain JSON.
+@param: raw (string) - Raw input that might be JSON.
+@param: fallback (any) - Value if parsing fails.
+@returns: Parsed object or fallback.
+@usage: {% set data = safe_parse_json_string(my_string, {}) %}
+-#}
+{%- macro safe_parse_json_string(raw, fallback={}) -%}
+    {%- if raw is string -%}
+        {{- raw | from_json(default=fallback) | tojson -}}
+        {%- elif raw is mapping -%}
+        {{- raw | tojson -}}
+    {%- else -%}
+        {{- fallback | tojson -}}
+    {%- endif -%}
+{%- endmacro -%}
+
+{#-
+@macro: safe_get_nested
+@desc: Safely traverses a nested dict/object structure.
+@param: obj (any) - Starting object (dict, JSON string, or other).
+@param: keys (list) - Path of keys to traverse.
+@param: fallback (any) - Value if path doesn't exist.
+@returns: JSON String - Value at path, or fallback.
+@usage: {{ safe_get_nested(state_attr('sensor.x', 'variables'), ['drawer', 'value', 'ts'], '') | from_json }}
+-#}
+{%- macro safe_get_nested(obj, keys, fallback='') -%}
+    {%- set current = obj -%}
+
+    {%- if current is string -%}
+        {%- set current = current | from_json(default={}) -%}
+    {%- endif -%}
+
+    {%- for key in keys if current is mapping -%}
+        {%- set current = current.get(key) -%}
+    {%- endfor -%}
+
+    {{- (current if current is not none else fallback) | tojson -}}
+{%- endmacro -%}
+
 {#- </editor-fold> -#}
