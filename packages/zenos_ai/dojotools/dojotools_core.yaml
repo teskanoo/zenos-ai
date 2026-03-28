@@ -162,7 +162,9 @@ script:
             - zen_summary
             - kata_template
             - kata_structure
-          all_drawers: "{{ state_attr(kata_entity, 'variables') | default({}, true) }}"
+          all_drawers: >
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{ CAB.cabinet_variables(kata_entity) | from_json() }}
 
       # ── 2. Single-drawer actions: recycle / hide / unhide ─────────────────
       - alias: Recycle — hide drawer and set expires_after to now+24h
@@ -299,7 +301,8 @@ script:
                 - variables:
                     current_cab: "{{ repeat.item }}"
                     cab_drawers: >-
-                      {{ state_attr(current_cab, 'variables') | default({}, true) }}
+                      {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                      {{ CAB.cabinet_variables(current_cab) | from_json() }}
                     explicit_lc: "{{ protected_explicit | map('lower') | list }}"
                     to_hide: >-
                       {%- set ns = namespace(out=[]) -%}
@@ -365,9 +368,9 @@ script:
                       {%- endif -%}
                       {{ ns.stale }}
                     _vol_info_raw: >-
-                      {%- set _vi = cab_drawers.get('AI_Cabinet_VolumeInfo', {}) -%}
-                      {%- set _v1 = _vi.get('value', _vi) if _vi is mapping else {} -%}
-                      {{ _v1 if _v1 is mapping else (_v1 | from_json if _v1 is string else {}) }}
+                      {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                      {%- set _vi = cabinet_drawer_value(current_cab, 'AI_Cabinet_VolumeInfo', {}) | from_json() -%}
+                      {{ _v1 }}
                     _cab_flags: >-
                       {{ _vol_info_raw.get('flags', {}) if _vol_info_raw is mapping else {} }}
                     gc_flag_present: >-

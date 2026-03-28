@@ -717,8 +717,8 @@ script:
             _user: "{{ states('sensor.zen_default_user_cabinet_resolved') }}"
         - variables:
             _kata_vars: >-
-              {{ state_attr(_kata, 'variables') or {}
-                 if _kata not in ['unknown','unavailable','none',''] else {} }}
+              {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+              {{ (CAB.cabinet_variables(_kata) | from_json()) if _kata not in ['unknown','unavailable','none',''] else {} }}
         - variables:
             _ts: "{{ _kata_vars.get('zen_summary', {}).get('timestamp', '') }}"
             _sched_ts: "{{ _kata_vars.get('zen_scheduler', {}).get('timestamp', '') }}"

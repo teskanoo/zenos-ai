@@ -303,6 +303,7 @@ template:
           # Optional gates (informational): system_cortex, manifest
           ##################################################################
           roster: >-
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
             {%- set label_st = states('sensor.zen_label_health') %}
             {%- set cab_st   = states('sensor.zen_cabinet_health') %}
             {%- set mon_st   = states('sensor.zen_monastery_health') %}
@@ -320,7 +321,7 @@ template:
             {#--- system cabinet prompt drawers ---#}
             {%- set sys_cab = states('sensor.zen_system_cabinet_resolved') %}
             {%- set sys_cab_ok = sys_cab not in ['unknown','unavailable','none',''] %}
-            {%- set sys_vars = state_attr(sys_cab, 'variables') | default({}, true) if sys_cab_ok else {} %}
+            {%- set sys_vars = (CAB.cabinet_variables(sys_cab) | from_json()) if sys_cab_ok else {} %}
             {%- macro has_drawer(d, key) %}
               {%- set raw = d.get(key, {}) %}
               {%- set val = raw.get('value', raw) if raw is mapping else raw %}
@@ -333,21 +334,21 @@ template:
             {#--- dojo cabinet: needs kung_fu key ---#}
             {%- set dojo_cab = states('sensor.zen_dojo_cabinet_resolved') %}
             {%- set dojo_ok = dojo_cab not in ['unknown','unavailable','none',''] %}
-            {%- set dojo_vars = state_attr(dojo_cab, 'variables') | default({}, true) if dojo_ok else {} %}
+            {%- set dojo_vars = (CAB.cabinet_variables(dojo_cab) | from_json()) if dojo_ok else {} %}
             {%- set dojo_loaded = dojo_ok and dojo_vars.get('kfc_template') is not none
                                   and dojo_vars.get('kfc_template') | string | trim != '' %}
 
             {#--- kata cabinet: needs zen_summary key ---#}
             {%- set kata_cab = states('sensor.zen_kata_cabinet_resolved') %}
             {%- set kata_ok = kata_cab not in ['unknown','unavailable','none',''] %}
-            {%- set kata_vars = state_attr(kata_cab, 'variables') | default({}, true) if kata_ok else {} %}
+            {%- set kata_vars = (CAB.cabinet_variables(kata_cab) | from_json()) if kata_ok else {} %}
             {%- set kata_summary = kata_ok and kata_vars.get('zen_summary') is not none
                                    and kata_vars.get('zen_summary') != {} %}
 
             {#--- household cabinet: zen_library_manifest (optional) ---#}
             {%- set hh_cab = states('sensor.zen_default_household_cabinet_resolved') %}
             {%- set hh_ok = hh_cab != '' and states(hh_cab) not in ['unknown','unavailable'] %}
-            {%- set hh_vars = state_attr(hh_cab, 'variables') | default({}, true) if hh_ok else {} %}
+            {%- set hh_vars = (CAB.cabinet_variables(hh_cab) | from_json()) if hh_ok else {} %}
             {%- set manifest_ok = hh_ok and hh_vars.get('zen_library_manifest') is not none
                                   and hh_vars.get('zen_library_manifest') | string | trim != '' %}
 

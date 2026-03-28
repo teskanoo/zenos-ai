@@ -494,7 +494,7 @@ script:
               %}\n        {% endif %}\n      {% endfor %}\n    {% endif %}\n\n    {{
               ns.out }}\n  {% endif %}\n{% endif %}"
             drawer_result: "{% if is_cabinet_sensor and drawer_key_input | length > 0
-              %}\n  {%- set _vars = state_attr(current_entity, 'variables') or {} %}\n
+              %}\n  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}{%- set _vars = CAB.cabinet_variables(current_entity) | from_json() %}\n
               \ {%- set ns = namespace(out={}) %}\n  {%- for dk in drawer_key_input %}\n
               \   {%- set _d = _vars.get(dk) %}\n    {%- if _d is not mapping %}\n      {%-
               set ns.out = ns.out | combine({dk: {\"error\": \"Drawer not found.\"}})
@@ -800,7 +800,9 @@ script:
           response_variable: help_json
     - variables:
         zen_household_cab: "{{ states('sensor.zen_default_household_cabinet_resolved') }}"
-        _ci_vars: '{{ state_attr(zen_household_cab, ''variables'') or {} }}'
+        _ci_vars: >
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {{ CAB.cabinet_variables(zen_household_cab) | from_json() }}
         _ci_entry: "{% set e = _ci_vars.get('_compact_index') if _ci_vars is mapping
           else none %} {{ e if e is mapping else {} }}"
         _ci_val: "{% set v = _ci_entry.get('value') if _ci_entry is mapping else none

@@ -119,7 +119,7 @@ script:
           \     {%- set ns.by_cat = ns.by_cat | combine({ category: merged }) %}\n    {%-
           endif %}\n  {%- endfor %}\n\n  {{ ns.by_cat | tojson }}\n{% endmacro %}\n\n{%-
           set result = namespace(data={}) %}\n\n{%- for ent in states.sensor | map(attribute='entity_id')
-          | list %}\n  {%- set vars = state_attr(ent, 'variables') %}\n\n  {%- if vars
+          | list %}\n  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}{%- set vars = CAB.cabinet_variables(ent) | from_json() %}\n\n  {%- if vars
           is mapping and (vars.get('AI_Cabinet_VolumeInfo') is not none) and (states(ent) in ['online_mounted', 'Variables'] or (read_stacks and states(ent) == 'online_unmounted')) %}\n    {%-
           set _vi_raw = vars.AI_Cabinet_VolumeInfo -%}\n    {%- set _vi_norm = (_vi_raw
           | from_json) if _vi_raw is string else _vi_raw -%}\n    {%- set _vi_val = _vi_norm.get('value', {}) if _vi_norm is mapping else {} -%}\n    {%- set info = _vi_val if _vi_val is mapping else (_vi_val | from_json if _vi_val is string else {}) %}\n    {%- set st = states[ent]
@@ -167,11 +167,9 @@ script:
   system_tools_stamp_default_family_cabinet:
     sequence:
     - variables:
-        new_guid: "{{ '%04x%04x-%04x-%04x-%04x-%04x%04x%04x' | format(\n    range(0,
-          65536) | random,\n    range(0, 65536) | random,\n    range(0, 65536) | random,\n
-          \   range(0, 65536) | random,\n    range(0, 65536) | random,\n    range(0,
-          65536) | random,\n    range(0, 65536) | random,\n    range(0, 65536) | random\n
-          \ ) }}"
+        new_guid: >
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {{ CAB.cabinet_guid_new() }}
     - alias: Stamp AI_Cabinet_VolumeInfo
       event: set_variable_zenos_default_family_cabinet
       event_data:

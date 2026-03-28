@@ -590,14 +590,9 @@ script:
             value_template: "{{ _target_household != '' }}"
         then:
           - variables:
-              _th_vars: >-
-                {%- set v = state_attr(_target_household, 'variables') | default(none, true) -%}
-                {{ v if v is mapping else {} }}
-              _th_vi_raw: "{{ _th_vars.get('AI_Cabinet_VolumeInfo', {}) if _th_vars is mapping else {} }}"
-              _th_vi_val: >-
-                {%- set r = _th_vi_raw.get('value', {}) if _th_vi_raw is mapping else {} -%}
-                {{ r if r is mapping else (r | from_json if r is string else {}) }}
-              _household_guid: "{{ _th_vi_val.get('id', _target_household) | string | trim }}"
+              _household_guid: >
+                {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                {{ CAB.cabinet_guid(_target_household, _target_household) }}
         else:
           - variables:
               _household_guid: "{{ _target_household }}"
@@ -607,14 +602,9 @@ script:
             value_template: "{{ _target_family != '' }}"
         then:
           - variables:
-              _tf_vars: >-
-                {%- set v = state_attr(_target_family, 'variables') | default(none, true) -%}
-                {{ v if v is mapping else {} }}
-              _tf_vi_raw: "{{ _tf_vars.get('AI_Cabinet_VolumeInfo', {}) if _tf_vars is mapping else {} }}"
-              _tf_vi_val: >-
-                {%- set r = _tf_vi_raw.get('value', {}) if _tf_vi_raw is mapping else {} -%}
-                {{ r if r is mapping else (r | from_json if r is string else {}) }}
-              _family_guid: "{{ _tf_vi_val.get('id', _target_family) | string | trim }}"
+              _family_guid: >
+                {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                {{ CAB.cabinet_guid(_target_family, _target_family) }}
         else:
           - variables:
               _family_guid: "{{ _target_family }}"

@@ -375,74 +375,48 @@ script:
             # — build household tree to depth 2 alongside flat roster —
             - variables:
                 _hh_vi_raw: >-
-                  {%- set _v = state_attr(_hh_cab, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _vi = _v.get('AI_Cabinet_VolumeInfo', _v) -%}
-                  {%- set _vi = _vi.get('value', _vi) if _vi is mapping else {} -%}
-                  {%- set _vi = _vi | from_json if _vi is string else _vi -%}
-                  {{ _vi | tojson }}
-                _hh_members_raw: >-
-                  {%- set _v = state_attr(_hh_cab, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _m = _v.get('members', {}) -%}
-                  {%- set _m = _m if _m is mapping else (_m | from_json if _m is string else {}) -%}
-                  {%- set _m = _m.get('value', _m) if _m is mapping else {} -%}
-                  {{ _m | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_volume_info(_hh_cab) | from_json() | to_json() }}
                 _hh_profile_raw: >-
-                  {%- set _v = state_attr(_hh_cab, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _p = _v.get('_household_profile', _v.get('household_profile', {})) -%}
-                  {%- set _p = _p.get('value', _p) if _p is mapping else {} -%}
-                  {%- set _p = _p | from_json if _p is string else _p -%}
-                  {{ _p | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_drawer_value(_hh_cab, '_household_profile') | from_json() | to_json() }}
             - variables:
                 _hh_tree: >-
-                  {%- set _vi = _hh_vi_raw | from_json if _hh_vi_raw is string else _hh_vi_raw -%}
-                  {%- set _vi = _vi if _vi is mapping else {} -%}
-                  {%- set _m = _hh_members_raw | from_json if _hh_members_raw is string else _hh_members_raw -%}
-                  {%- set _m = _m if _m is mapping else {} -%}
-                  {%- set _hp = _hh_profile_raw | from_json if _hh_profile_raw is string else _hh_profile_raw -%}
-                  {%- set _hp = _hp if _hp is mapping else {} -%}
-                  {%- set _acls = _vi.get('acls', {}) -%}
-                  {%- set _acls = _acls if _acls is mapping else {} -%}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {%- set _vi = CAB.cabinet_volume_info(_hh_cab) | from_json() -%}
+                  {%- set _m = CAB.cabinet_members(_hh_cab) | from_json() -%}
+                  {%- set _hp = CAB.cabinet_drawer_value(_hh_cab, '_household_profile') | from_json() -%}
+                  {%- set _acls = CAB.cabinet_acls(_hh_cab) | from_json() -%}
                   {%- set _owners = _acls.get('owner', []) -%}
                   {%- set _partners = _acls.get('partner', []) -%}
                   {%- set _prime = _partners | selectattr('role', 'defined') | selectattr('role', 'equalto', 'prime') | list -%}
                   {%- set _ns = namespace(fams=[]) -%}{# FG-25: namespace required for list mutation inside for-loop #}
                   {%- for fam in _m.get('families', []) -%}
-                    {%- set _fv = state_attr(fam.get('entity_id', ''), 'variables') | default({}, true) -%}
-                    {%- set _fv = _fv if _fv is mapping else {} -%}
-                    {%- set _fvi_raw = _fv.get('AI_Cabinet_VolumeInfo', {}) if _fv is mapping else {} -%}
-                    {%- set _fvi = _fvi_raw.get('value', {}) if _fvi_raw is mapping else {} -%}
-                    {%- set _fvi = _fvi if _fvi is mapping else (_fvi | from_json if _fvi is string else {}) -%}
-                    {%- set _fm = _fv.get('members', {}) -%}
-                    {%- set _fm = _fm if _fm is mapping else (_fm | from_json if _fm is string else {}) -%}
-                    {%- set _fm = _fm.get('value', _fm) if _fm is mapping else {} -%}
-                    {%- set _facls = _fvi.get('acls', {}) | default({}, true) -%}
-                    {%- set _facls = _facls if _facls is mapping else {} -%}
+                    {%- set _f_entity_id = fam.get('entity_id', '') -%}
+                    {%- set _fvi = CAB.cabinet_volume_info(_f_entity_id) | from_json() -%}
+                    {%- set _fm = CAB.cabinet_members(_f_entity_id) | from_json() -%}
+                    {%- set _facls = CAB.cabinet_acls(_f_entity_id) | from_json() -%}
+                    
+                  
                     {%- set _fowners = _facls.get('owner', []) -%}
                     {%- set _fpartners = _facls.get('partner', []) -%}
                     {%- set _fprime = _fpartners | selectattr('role', 'defined') | selectattr('role', 'equalto', 'prime') | list -%}
                     {%- set _nsf = namespace(subfams=[]) -%}{# FG-25: namespace required for list mutation inside for-loop #}
                     {%- for sf in _fm.get('families', []) -%}
-                      {%- set _sfv = state_attr(sf.get('entity_id', ''), 'variables') | default({}, true) -%}
-                      {%- set _sfv = _sfv if _sfv is mapping else {} -%}
-                      {%- set _sfvi_raw = _sfv.get('AI_Cabinet_VolumeInfo', {}) if _sfv is mapping else {} -%}
-                      {%- set _sfvi = _sfvi_raw.get('value', {}) if _sfvi_raw is mapping else {} -%}
-                      {%- set _sfvi = _sfvi if _sfvi is mapping else (_sfvi | from_json if _sfvi is string else {}) -%}
-                      {%- set _sfm = _sfv.get('members', {}) -%}
-                      {%- set _sfm = _sfm if _sfm is mapping else (_sfm | from_json if _sfm is string else {}) -%}
-                      {%- set _sfm = _sfm.get('value', _sfm) if _sfm is mapping else {} -%}
+                      {%- set _sf_entity_id = sf.get('entity_id', '') -%}
+                      {%- set _sfvi = CAB.cabinet_volume_info(_sf_entity_id) | from_json() -%}
+                      {%- set _sfm = CAB.cabinet_members(_sf_entity_id) | from_json() -%}
+
                       {%- set _nsf.subfams = _nsf.subfams + [{
-                        'entity_id': sf.get('entity_id', ''),
+                        'entity_id': _sf_entity_id,
                         'guid': _sfvi.get('id', _sfvi.get('guid', '')),
-                        'name': sf.get('name', _sfvi.get('friendly_name', _sfvi.get('name', sf.get('entity_id', '')))),
+                        'name': sf.get('name', _sfvi.get('friendly_name', _sfvi.get('name', _sf_entity_id))),
                         'depth': 2,
                         'members': {'users': _sfm.get('users', []), 'ai_users': _sfm.get('ai_users', [])}
                       }] -%}
                     {%- endfor -%}
                     {%- set _ns.fams = _ns.fams + [{
-                      'entity_id': fam.get('entity_id', ''),
+                      'entity_id': _f_entity_id,
                       'guid': _fvi.get('id', _fvi.get('guid', '')),
                       'name': fam.get('name', _fvi.get('friendly_name', _fvi.get('name', fam.get('entity_id', '')))),
                       'depth': fam.get('depth', 1),
@@ -511,47 +485,32 @@ script:
                   response_variable: response
             - variables:
                 _fam_vi_raw: >-
-                  {%- set _v = state_attr(family_entity, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _vi = _v.get('AI_Cabinet_VolumeInfo', _v) -%}
-                  {%- set _vi = _vi.get('value', _vi) if _vi is mapping else {} -%}
-                  {%- set _vi = _vi | from_json if _vi is string else _vi -%}
-                  {{ _vi | tojson }}
-                _hh_members_raw: >-
-                  {%- set _v = state_attr(_hh_cab, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _m = _v.get('members', {}) -%}
-                  {%- set _m = _m if _m is mapping else (_m | from_json if _m is string else {}) -%}
-                  {%- set _m = _m.get('value', _m) if _m is mapping else {} -%}
-                  {{ _m | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_volume_info(_hh_cab) | from_json() }}
             - variables:
                 _fam_vi: "{{ _fam_vi_raw | from_json if _fam_vi_raw is string else _fam_vi_raw }}"
                 _fam_guid: >-
-                  {%- set _vi = _fam_vi_raw | from_json if _fam_vi_raw is string else _fam_vi_raw -%}
-                  {%- set _vi = _vi if _vi is mapping else {} -%}
-                  {%- set _existing = _vi.get('id', _vi.get('guid', '')) | string | trim -%}
-                  {%- if _existing != '' -%}{{ _existing }}{%- else -%}
-                  {{ '%04x%04x-%04x-%04x-%04x-%04x%04x%04x' | format(
-                      range(0, 65536) | random, range(0, 65536) | random,
-                      range(0, 65536) | random, range(0, 65536) | random,
-                      range(0, 65536) | random, range(0, 65536) | random,
-                      range(0, 65536) | random, range(0, 65536) | random) }}
-                  {%- endif -%}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_guid(_hh_cab) }}
+
                 _fam_guid_is_new: >-
-                  {%- set _vi = _fam_vi_raw | from_json if _fam_vi_raw is string else _fam_vi_raw -%}
-                  {%- set _vi = _vi if _vi is mapping else {} -%}
-                  {{ _vi.get('id', _vi.get('guid', '')) | string | trim == '' }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {%- set _existing = CAB.cabinet_guid(_hh_cab) -%}
+                  {{ _existing == '' }}
                 _fam_name: >-
-                  {%- set _fv = state_attr(family_entity, 'variables') | default({}, true) -%}
-                  {%- set _fv = _fv if _fv is mapping else {} -%}
-                  {%- set _fp_r = _fv.get('_family_profile', _fv.get('family_profile', {})) -%}
-                  {%- set _fp = _fp_r.get('value', _fp_r) if _fp_r is mapping else {} -%}
-                  {%- set _fp = _fp | from_json if _fp is string else _fp -%}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {%- set _fv = CAB.cabinet_variables(family_entity) | from_json() -%}
+                  {%- set _fp = CAB.cabinet_drawer_value(
+                    family_entity,
+                    '_family_profile',
+                    CAB.cabinet_drawer_value(_hh_cab, 'family_profile')
+                  ) 
+                  | from_json() 
+                  -%}
                   {%- set _d = _fp.get('display_name', _fp.get('friendly_name', _fp.get('name', ''))) | trim -%}
                   {%- set _vi = _fam_vi_raw | from_json if _fam_vi_raw is string else _fam_vi_raw -%}
                   {%- set _vi = _vi if _vi is mapping else {} -%}
                   {{ _d if _d != '' else _vi.get('friendly_name', family_entity) }}
-                _hh_members: "{{ _hh_members_raw | from_json if _hh_members_raw is string else _hh_members_raw }}"
             - if: "{{ _fam_guid_is_new | bool }}"
               then:
                 - variables:
@@ -567,8 +526,8 @@ script:
                     set_timestamp: true
             - variables:
                 _existing_fams: >-
-                  {%- set _m = _hh_members_raw | from_json if _hh_members_raw is string else _hh_members_raw -%}
-                  {%- set _m = _m if _m is mapping else {} -%}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {%- set _m = CAB.cabinet_members(_hh_cab) | from_json() -%}
                   {{ _m.get('families', []) | tojson }}
                 _new_fam_entry: >-
                   {{
@@ -600,8 +559,8 @@ script:
                   response_variable: response
             - variables:
                 _updated_members: >-
-                  {%- set _m = _hh_members_raw | from_json if _hh_members_raw is string else _hh_members_raw -%}
-                  {%- set _m = _m if _m is mapping else {} -%}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {%- set _m = CAB.cabinet_members(_hh_cab) | from_json() -%}
                   {%- set _fams = _m.get('families', []) -%}
                   {%- set _fams = _fams if _fams is iterable and _fams is not string else [] -%}
                   {%- set _entry = _new_fam_entry | from_json if _new_fam_entry is string else _new_fam_entry -%}
@@ -659,17 +618,9 @@ script:
                 - stop: Missing required fields
                   response_variable: response
             - variables:
-                _hh_members_raw: >-
-                  {%- set _v = state_attr(_hh_cab, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _m = _v.get('members', {}) -%}
-                  {%- set _m = _m if _m is mapping else (_m | from_json if _m is string else {}) -%}
-                  {%- set _m = _m.get('value', _m) if _m is mapping else {} -%}
-                  {{ _m | tojson }}
-            - variables:
                 _updated_members: >-
-                  {%- set _m = _hh_members_raw | from_json if _hh_members_raw is string else _hh_members_raw -%}
-                  {%- set _m = _m if _m is mapping else {} -%}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {%- set _m = CAB.cabinet_members(_hh_cab) | from_json() -%}
                   {%- set _fams = _m.get('families', []) -%}
                   {%- set _fams = _fams if _fams is iterable and _fams is not string else [] -%}
                   {%- set _filtered = _fams | rejectattr('entity_id', 'equalto', family_entity) | list -%}
@@ -724,51 +675,29 @@ script:
                   response_variable: response
             - variables:
                 _hh_vi_raw: >-
-                  {%- set _v = state_attr(_hh_cab, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _vi = _v.get('AI_Cabinet_VolumeInfo', _v) -%}
-                  {%- set _vi = _vi.get('value', _vi) if _vi is mapping else {} -%}
-                  {%- set _vi = _vi | from_json if _vi is string else _vi -%}
-                  {{ _vi | tojson }}
-                _hh_members_raw: >-
-                  {%- set _v = state_attr(_hh_cab, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _m = _v.get('members', {}) -%}
-                  {%- set _m = _m if _m is mapping else (_m | from_json if _m is string else {}) -%}
-                  {%- set _m = _m.get('value', _m) if _m is mapping else {} -%}
-                  {{ _m | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_volume_info(_hh_cab) | from_json() | to_json() }}
                 _mem_vi_raw: >-
-                  {%- set _v = state_attr(member_entity, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _vi = _v.get('AI_Cabinet_VolumeInfo', _v) -%}
-                  {%- set _vi = _vi.get('value', _vi) if _vi is mapping else {} -%}
-                  {%- set _vi = _vi | from_json if _vi is string else _vi -%}
-                  {{ _vi | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_drawer(member_entity, 'AI_Cabinet_VolumeInfo') | from_json() | to_json() }}
             - variables:
-                _hh_vi: "{{ _hh_vi_raw | from_json if _hh_vi_raw is string else (_hh_vi_raw if _hh_vi_raw is mapping else {}) }}"
-                _mem_vi: "{{ _mem_vi_raw | from_json if _mem_vi_raw is string else (_mem_vi_raw if _mem_vi_raw is mapping else {}) }}"
                 _hh_acls: >-
-                  {%- set _vi = _hh_vi_raw | from_json if _hh_vi_raw is string else _hh_vi_raw -%}
-                  {%- set _vi = _vi if _vi is mapping else {} -%}
-                  {{ _vi.get('acls', {}) | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_acls(_hh_cab) | from_json() | tojson }}
                 _mem_guid: >-
-                  {%- set _vi = _mem_vi_raw | from_json if _mem_vi_raw is string else _mem_vi_raw -%}
-                  {%- set _vi = _vi if _vi is mapping else {} -%}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {%- set _vi = CAB.cabinet_drawer_value(member_entity, 'AI_Cabinet_VolumeInfo') | from_json() -%}
                   {%- set _existing = _vi.get('id', _vi.get('guid', '')) | string | trim -%}
                   {%- if _existing != '' -%}{{ _existing }}{%- else -%}
-                  {{ '%04x%04x-%04x-%04x-%04x-%04x%04x%04x' | format(
-                      range(0, 65536) | random, range(0, 65536) | random,
-                      range(0, 65536) | random, range(0, 65536) | random,
-                      range(0, 65536) | random, range(0, 65536) | random,
-                      range(0, 65536) | random, range(0, 65536) | random) }}
+                  {{ CAB.cabinet_guid_new() }}
                   {%- endif -%}
                 _mem_guid_is_new: >-
-                  {%- set _vi = _mem_vi_raw | from_json if _mem_vi_raw is string else _mem_vi_raw -%}
-                  {%- set _vi = _vi if _vi is mapping else {} -%}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {%- set _vi = CAB.cabinet_drawer_value(member_entity, 'AI_Cabinet_VolumeInfo') | from_json() -%}
                   {{ _vi.get('id', _vi.get('guid', '')) | string | trim == '' }}
                 _mem_name: >-
-                  {%- set _mv = state_attr(member_entity, 'variables') | default({}, true) -%}
-                  {%- set _mv = _mv if _mv is mapping else {} -%}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {%- set _mv = CAB.cabinet_variables(member_entity) | from_json() -%}
                   {%- set _up_r = _mv.get('_user_profile', _mv.get('user_profile', _mv.get('_family_profile', _mv.get('family_profile', {})))) -%}
                   {%- set _up = _up_r.get('value', _up_r) if _up_r is mapping else {} -%}
                   {%- set _up = _up | from_json if _up is string else _up -%}
@@ -824,11 +753,10 @@ script:
                   response_variable: response
             - variables:
                 _list_key: "{{ 'ai_users' if member_type == 'ai_user' else 'users' }}"
-                _hh_members: "{{ _hh_members_raw | from_json if _hh_members_raw is string else _hh_members_raw }}"
             - variables:
                 _existing_list: >-
-                  {%- set _m = _hh_members_raw | from_json if _hh_members_raw is string else _hh_members_raw -%}
-                  {%- set _m = _m if _m is mapping else {} -%}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {%- set _m = CAB.cabinet_members(_hh_cab) | from_json() -%}
                   {{ _m.get(_list_key, []) | tojson }}
             - variables:
                 _already_member: >-
@@ -853,8 +781,8 @@ script:
                 _new_entry: >-
                   {{ {'guid': _mem_guid, 'entity_id': member_entity, 'name': _mem_name} | tojson }}
                 _updated_members: >-
-                  {%- set _m = _hh_members_raw | from_json if _hh_members_raw is string else _hh_members_raw -%}
-                  {%- set _m = _m if _m is mapping else {} -%}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {%- set _m = CAB.cabinet_members(_hh_cab) | from_json() -%}
                   {%- set _lst = _m.get(_list_key, []) -%}
                   {%- set _lst = _lst if _lst is iterable and _lst is not string else [] -%}
                   {%- set _entry = _new_entry | from_json if _new_entry is string else _new_entry -%}
@@ -958,24 +886,13 @@ script:
                   response_variable: response
             - variables:
                 _list_key: "{{ 'ai_users' if member_type == 'ai_user' else 'users' }}"
-                _hh_members_raw: >-
-                  {%- set _v = state_attr(_hh_cab, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _m = _v.get('members', {}) -%}
-                  {%- set _m = _m if _m is mapping else (_m | from_json if _m is string else {}) -%}
-                  {%- set _m = _m.get('value', _m) if _m is mapping else {} -%}
-                  {{ _m | tojson }}
                 _hh_vi_raw: >-
-                  {%- set _v = state_attr(_hh_cab, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _vi = _v.get('AI_Cabinet_VolumeInfo', _v) -%}
-                  {%- set _vi = _vi.get('value', _vi) if _vi is mapping else {} -%}
-                  {%- set _vi = _vi | from_json if _vi is string else _vi -%}
-                  {{ _vi | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_drawer_value(_hh_cab, 'AI_Cabinet_VolumeInfo') | from_json() | to_json() }}
             - variables:
                 _updated_members: >-
-                  {%- set _m = _hh_members_raw | from_json if _hh_members_raw is string else _hh_members_raw -%}
-                  {%- set _m = _m if _m is mapping else {} -%}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {%- set _m = CAB.cabinet_members(_hh_cab) | from_json() -%}
                   {%- set _lst = _m.get(_list_key, []) -%}
                   {%- set _lst = _lst if _lst is iterable and _lst is not string else [] -%}
                   {%- set _filtered = _lst | rejectattr('entity_id', 'equalto', member_entity) | list -%}
@@ -1058,26 +975,18 @@ script:
                   response_variable: response
             - variables:
                 _hh_vi_raw: >-
-                  {%- set _v = state_attr(_target_cab, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _vi = _v.get('AI_Cabinet_VolumeInfo', _v) -%}
-                  {%- set _vi = _vi.get('value', _vi) if _vi is mapping else {} -%}
-                  {%- set _vi = _vi | from_json if _vi is string else _vi -%}
-                  {{ _vi | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_volume_info(_target_cab) | from_json() | to_json() }}
                 _mem_vi_raw: >-
-                  {%- set _v = state_attr(member_entity, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _vi = _v.get('AI_Cabinet_VolumeInfo', _v) -%}
-                  {%- set _vi = _vi.get('value', _vi) if _vi is mapping else {} -%}
-                  {%- set _vi = _vi | from_json if _vi is string else _vi -%}
-                  {{ _vi | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_drawer(member_entity, 'AI_Cabinet_VolumeInfo') | from_json() | to_json() }}
             - variables:
                 _mem_guid: >-
                   {%- set _vi = _mem_vi_raw | from_json if _mem_vi_raw is string else _mem_vi_raw -%}
                   {{ (_vi if _vi is mapping else {}).get('id', (_vi if _vi is mapping else {}).get('guid', '')) }}
                 _mem_name: >-
-                  {%- set _mv = state_attr(member_entity, 'variables') | default({}, true) -%}
-                  {%- set _mv = _mv if _mv is mapping else {} -%}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {%- set _mv = CAB.cabinet_variables(member_entity) | from_json() -%}
                   {%- set _up_r = _mv.get('_user_profile', _mv.get('user_profile', _mv.get('_family_profile', _mv.get('family_profile', {})))) -%}
                   {%- set _up = _up_r.get('value', _up_r) if _up_r is mapping else {} -%}
                   {%- set _up = _up | from_json if _up is string else _up -%}
@@ -1158,41 +1067,30 @@ script:
                   response_variable: response
             - variables:
                 _fam_members_raw: >-
-                  {%- set _v = state_attr(family_entity, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {%- set _v = CAB.cabinet_variables(family_entity) | from_json() -%}
                   {%- set _m = _v.get('members', {}) -%}
                   {%- set _m = _m if _m is mapping else (_m | from_json if _m is string else {}) -%}
                   {%- set _m = _m.get('value', _m) if _m is mapping else {} -%}
                   {{ _m | tojson }}
                 _mem_vi_raw: >-
-                  {%- set _v = state_attr(member_entity, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _vi = _v.get('AI_Cabinet_VolumeInfo', _v) -%}
-                  {%- set _vi = _vi.get('value', _vi) if _vi is mapping else {} -%}
-                  {%- set _vi = _vi | from_json if _vi is string else _vi -%}
-                  {{ _vi | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_drawer(member_entity, 'AI_Cabinet_VolumeInfo') | from_json() | to_json() }}
                 _fam_vi_raw: >-
-                  {%- set _v = state_attr(family_entity, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _vi = _v.get('AI_Cabinet_VolumeInfo', _v) -%}
-                  {%- set _vi = _vi.get('value', _vi) if _vi is mapping else {} -%}
-                  {%- set _vi = _vi | from_json if _vi is string else _vi -%}
-                  {{ _vi | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_volume_info(family_entity) | from_json() | to_json() }}
             - variables:
                 _mem_guid: >-
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
                   {%- set _vi = _mem_vi_raw | from_json if _mem_vi_raw is string else _mem_vi_raw -%}
                   {%- set _vi = _vi if _vi is mapping else {} -%}
                   {%- set _existing = _vi.get('id', _vi.get('guid', '')) | string | trim -%}
                   {%- if _existing != '' -%}{{ _existing }}{%- else -%}
-                  {{ '%04x%04x-%04x-%04x-%04x-%04x%04x%04x' | format(
-                      range(0, 65536) | random, range(0, 65536) | random,
-                      range(0, 65536) | random, range(0, 65536) | random,
-                      range(0, 65536) | random, range(0, 65536) | random,
-                      range(0, 65536) | random, range(0, 65536) | random) }}
+                  {{ CAB.cabinet_guid_new() }}
                   {%- endif -%}
                 _mem_name: >-
-                  {%- set _mv = state_attr(member_entity, 'variables') | default({}, true) -%}
-                  {%- set _mv = _mv if _mv is mapping else {} -%}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {%- set _mv = CAB.cabinet_variables(member_entity) | from_json() -%}
                   {%- set _up_r = _mv.get('_user_profile', _mv.get('user_profile', _mv.get('_family_profile', _mv.get('family_profile', {})))) -%}
                   {%- set _up = _up_r.get('value', _up_r) if _up_r is mapping else {} -%}
                   {%- set _up = _up | from_json if _up is string else _up -%}
@@ -1204,12 +1102,11 @@ script:
                   {%- set _vi = _vi if _vi is mapping else {} -%}
                   {{ _d if _d != '' else _vi.get('friendly_name', member_entity) }}
                 _fam_guid: >-
-                  {%- set _vi = _fam_vi_raw | from_json if _fam_vi_raw is string else _fam_vi_raw -%}
-                  {%- set _vi = _vi if _vi is mapping else {} -%}
-                  {{ _vi.get('id', _vi.get('guid', '')) }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_guid(family_entity) }}
                 _fam_name: >-
-                  {%- set _fv = state_attr(family_entity, 'variables') | default({}, true) -%}
-                  {%- set _fv = _fv if _fv is mapping else {} -%}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {%- set _fv = CAB.cabinet_variables(family_entity) | from_json() -%}
                   {%- set _fp_r = _fv.get('_family_profile', _fv.get('family_profile', {})) -%}
                   {%- set _fp = _fp_r.get('value', _fp_r) if _fp_r is mapping else {} -%}
                   {%- set _fp = _fp | from_json if _fp is string else _fp -%}
@@ -1356,34 +1253,25 @@ script:
                   response_variable: response
             - variables:
                 _fam_members_raw: >-
-                  {%- set _v = state_attr(family_entity, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {%- set _v = CAB.cabinet_variables(family_entity) | from_json() -%}
                   {%- set _m = _v.get('members', {}) -%}
                   {%- set _m = _m if _m is mapping else (_m | from_json if _m is string else {}) -%}
                   {%- set _m = _m.get('value', _m) if _m is mapping else {} -%}
                   {{ _m | tojson }}
                 _mem_vi_raw: >-
-                  {%- set _v = state_attr(member_entity, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _vi = _v.get('AI_Cabinet_VolumeInfo', _v) -%}
-                  {%- set _vi = _vi.get('value', _vi) if _vi is mapping else {} -%}
-                  {%- set _vi = _vi | from_json if _vi is string else _vi -%}
-                  {{ _vi | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_drawer(member_entity, 'AI_Cabinet_VolumeInfo') | from_json() | to_json() }}
                 _fam_vi_raw: >-
-                  {%- set _v = state_attr(family_entity, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _vi = _v.get('AI_Cabinet_VolumeInfo', _v) -%}
-                  {%- set _vi = _vi.get('value', _vi) if _vi is mapping else {} -%}
-                  {%- set _vi = _vi | from_json if _vi is string else _vi -%}
-                  {{ _vi | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_drawer(family_entity, 'AI_Cabinet_VolumeInfo') | from_json() }}
             - variables:
                 _fam_guid: >-
-                  {%- set _vi = _fam_vi_raw | from_json if _fam_vi_raw is string else _fam_vi_raw -%}
-                  {%- set _vi = _vi if _vi is mapping else {} -%}
-                  {{ _vi.get('id', _vi.get('guid', '')) }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_guid(family_entity) }}
                 _fam_name: >-
-                  {%- set _fv = state_attr(family_entity, 'variables') | default({}, true) -%}
-                  {%- set _fv = _fv if _fv is mapping else {} -%}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {%- set _fv = CAB.cabinet_variables(family_entity) | from_json() -%}
                   {%- set _fp_r = _fv.get('_family_profile', _fv.get('family_profile', {})) -%}
                   {%- set _fp = _fp_r.get('value', _fp_r) if _fp_r is mapping else {} -%}
                   {%- set _fp = _fp | from_json if _fp is string else _fp -%}
@@ -1392,12 +1280,11 @@ script:
                   {%- set _vi = _vi if _vi is mapping else {} -%}
                   {{ _d if _d != '' else _vi.get('friendly_name', family_entity) }}
                 _mem_guid: >-
-                  {%- set _vi = _mem_vi_raw | from_json if _mem_vi_raw is string else _mem_vi_raw -%}
-                  {%- set _vi = _vi if _vi is mapping else {} -%}
-                  {{ _vi.get('id', _vi.get('guid', '')) }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_guid_compat(member_entity) }}
                 _mem_name: >-
-                  {%- set _mv = state_attr(member_entity, 'variables') | default({}, true) -%}
-                  {%- set _mv = _mv if _mv is mapping else {} -%}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {%- set _mv = CAB.cabinet_variables(member_entity) | from_json() -%}
                   {%- set _up_r = _mv.get('_user_profile', _mv.get('user_profile', _mv.get('_family_profile', _mv.get('family_profile', {})))) -%}
                   {%- set _up = _up_r.get('value', _up_r) if _up_r is mapping else {} -%}
                   {%- set _up = _up | from_json if _up is string else _up -%}
@@ -1417,12 +1304,8 @@ script:
                   {%- set _vi = _vi if _vi is mapping else {} -%}
                   {{ _vi.get('default_family_guid', '') == _fam_guid }}
                 _fam_vi_raw2: >-
-                  {%- set _v = state_attr(family_entity, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _vi = _v.get('AI_Cabinet_VolumeInfo', _v) -%}
-                  {%- set _vi = _vi.get('value', _vi) if _vi is mapping else {} -%}
-                  {%- set _vi = _vi | from_json if _vi is string else _vi -%}
-                  {{ _vi | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_volume_info(family_entity) | from_json() | to_json() }}
                 _principal_warning: >-
                   {%- set _vi = _fam_vi_raw2 | from_json if _fam_vi_raw2 is string else _fam_vi_raw2 -%}
                   {%- set _vi = _vi if _vi is mapping else {} -%}
@@ -1534,23 +1417,16 @@ script:
                   response_variable: response
             - variables:
                 _a_vi_raw: >-
-                  {%- set _v = state_attr(member_entity, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _vi = _v.get('AI_Cabinet_VolumeInfo', _v) -%}
-                  {%- set _vi = _vi.get('value', _vi) if _vi is mapping else {} -%}
-                  {%- set _vi = _vi | from_json if _vi is string else _vi -%}
-                  {{ _vi | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_volume_info(member_entity) | from_json() }}
                 _b_vi_raw: >-
-                  {%- set _v = state_attr(ai_entity, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _vi = _v.get('AI_Cabinet_VolumeInfo', _v) -%}
-                  {%- set _vi = _vi.get('value', _vi) if _vi is mapping else {} -%}
-                  {%- set _vi = _vi | from_json if _vi is string else _vi -%}
-                  {{ _vi | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_volume_info(ai_entity) | from_json() }}
+
             - variables:
                 _a_guid: >-
-                  {%- set _vi = _a_vi_raw | from_json if _a_vi_raw is string else _a_vi_raw -%}
-                  {{ (_vi if _vi is mapping else {}).get('id', (_vi if _vi is mapping else {}).get('guid', '')) }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_guid(member_entity) }}
                 _a_name: >-
                   {%- set _vi = _a_vi_raw | from_json if _a_vi_raw is string else _a_vi_raw -%}
                   {{ (_vi if _vi is mapping else {}).get('friendly_name', member_entity) }}
@@ -1558,8 +1434,8 @@ script:
                   {%- set _vi = _a_vi_raw | from_json if _a_vi_raw is string else _a_vi_raw -%}
                   {{ (_vi if _vi is mapping else {}).get('cab_type', 'user') }}
                 _b_guid: >-
-                  {%- set _vi = _b_vi_raw | from_json if _b_vi_raw is string else _b_vi_raw -%}
-                  {{ (_vi if _vi is mapping else {}).get('id', (_vi if _vi is mapping else {}).get('guid', '')) }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_guid(ai_entity) }}
                 _b_name: >-
                   {%- set _vi = _b_vi_raw | from_json if _b_vi_raw is string else _b_vi_raw -%}
                   {{ (_vi if _vi is mapping else {}).get('friendly_name', ai_entity) }}
@@ -1657,26 +1533,18 @@ script:
                   response_variable: response
             - variables:
                 _a_vi_raw: >-
-                  {%- set _v = state_attr(member_entity, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _vi = _v.get('AI_Cabinet_VolumeInfo', _v) -%}
-                  {%- set _vi = _vi.get('value', _vi) if _vi is mapping else {} -%}
-                  {%- set _vi = _vi | from_json if _vi is string else _vi -%}
-                  {{ _vi | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_volume_info(member_entity) | from_json() }}
                 _b_vi_raw: >-
-                  {%- set _v = state_attr(ai_entity, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _vi = _v.get('AI_Cabinet_VolumeInfo', _v) -%}
-                  {%- set _vi = _vi.get('value', _vi) if _vi is mapping else {} -%}
-                  {%- set _vi = _vi | from_json if _vi is string else _vi -%}
-                  {{ _vi | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_volume_info(ai_entity) | from_json() }}
             - variables:
                 _a_name: >-
-                  {%- set _vi = _a_vi_raw | from_json if _a_vi_raw is string else _a_vi_raw -%}
-                  {{ (_vi if _vi is mapping else {}).get('friendly_name', member_entity) }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_friendly_name(member_entity, member_entity) }}
                 _b_name: >-
-                  {%- set _vi = _b_vi_raw | from_json if _b_vi_raw is string else _b_vi_raw -%}
-                  {{ (_vi if _vi is mapping else {}).get('friendly_name', ai_entity) }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_friendly_name(ai_entity, ai_entity) }}
                 # — remove B from A's acls.partner —
                 _a_vi_updated: >-
                   {%- set _vi = _a_vi_raw | from_json if _a_vi_raw is string else _a_vi_raw -%}
@@ -1754,23 +1622,15 @@ script:
                   response_variable: response
             - variables:
                 _mem_vi_raw: >-
-                  {%- set _v = state_attr(member_entity, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _vi = _v.get('AI_Cabinet_VolumeInfo', _v) -%}
-                  {%- set _vi = _vi.get('value', _vi) if _vi is mapping else {} -%}
-                  {%- set _vi = _vi | from_json if _vi is string else _vi -%}
-                  {{ _vi | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_drawer(member_entity, 'AI_Cabinet_VolumeInfo') | from_json() | to_json() }}
                 _fam_vi_raw: >-
-                  {%- set _v = state_attr(family_entity, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _vi = _v.get('AI_Cabinet_VolumeInfo', _v) -%}
-                  {%- set _vi = _vi.get('value', _vi) if _vi is mapping else {} -%}
-                  {%- set _vi = _vi | from_json if _vi is string else _vi -%}
-                  {{ _vi | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_drawer(family_entity, 'AI_Cabinet_VolumeInfo') | from_json() | to_json() }}
             - variables:
                 _fam_guid: >-
-                  {%- set _vi = _fam_vi_raw | from_json if _fam_vi_raw is string else _fam_vi_raw -%}
-                  {{ (_vi if _vi is mapping else {}).get('id', (_vi if _vi is mapping else {}).get('guid', '')) }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_guid(family_entity) }}
                 _mem_vi_updated: >-
                   {%- set _vi = _mem_vi_raw | from_json if _mem_vi_raw is string else _mem_vi_raw -%}
                   {%- set _vi = _vi if _vi is mapping else {} -%}
@@ -1818,22 +1678,14 @@ script:
                 _hh_default: "{{ _hh_target }}"
             - variables:
                 _root_vi_raw: >-
-                  {%- set _v = state_attr(_root_entity, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _vi = _v.get('AI_Cabinet_VolumeInfo', _v) -%}
-                  {%- set _vi = _vi.get('value', _vi) if _vi is mapping else {} -%}
-                  {%- set _vi = _vi | from_json if _vi is string else _vi -%}
-                  {{ _vi | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_drawer(_root_entity, 'AI_Cabinet_VolumeInfo') | from_json() | to_json() }}
                 _root_members_raw: >-
-                  {%- set _v = state_attr(_root_entity, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
-                  {%- set _m = _v.get('members', {}) -%}
-                  {%- set _m = _m if _m is mapping else (_m | from_json if _m is string else {}) -%}
-                  {%- set _m = _m.get('value', _m) if _m is mapping else {} -%}
-                  {{ _m | tojson }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_drawer(_root_entity, 'members') | from_json() | to_json() }}
                 _root_profile_raw: >-
-                  {%- set _v = state_attr(_root_entity, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {%- set _v = CAB.cabinet_variables(_root_entity) | from_json() -%}
                   {%- set _p = _v.get('_household_profile', _v.get('household_profile', _v.get('_family_profile', _v.get('family_profile', {})))) -%}
                   {%- set _p = _p.get('value', _p) if _p is mapping else {} -%}
                   {%- set _p = _p | from_json if _p is string else _p -%}
@@ -1846,16 +1698,19 @@ script:
                   {%- set _vi = _vi if _vi is mapping else {} -%}
                   {{ _vi.get('cab_type', '') }}
                 _root_is_container: >-
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
                   {%- set _vi = _root_vi_raw | from_json if _root_vi_raw is string else _root_vi_raw -%}
                   {%- set _vi = _vi if _vi is mapping else {} -%}
                   {%- set _ct = _vi.get('cab_type', '') -%}
-                  {{ _ct in ['household', 'family'] or 'members' in (state_attr(_root_entity, 'variables') | default({}, true)) }}
+                  {{ _ct in ['household', 'family'] 
+                  or 'members' in (CAB.cabinet_variables(_root_entity) | from_json()) }}
             - choose:
                 # ── container tree ────────────────────────────────────────────
                 - conditions: "{{ _root_is_container | bool }}"
                   sequence:
                     - variables:
                         _tree: >-
+                          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
                           {%- set _vi = _root_vi_raw | from_json if _root_vi_raw is string else _root_vi_raw -%}
                           {%- set _vi = _vi if _vi is mapping else {} -%}
                           {%- set _m = _root_members_raw | from_json if _root_members_raw is string else _root_members_raw -%}
@@ -1872,34 +1727,25 @@ script:
                           {# depth-1 families with their members #}
                           {%- set _ns = namespace(fams=[]) -%}{# FG-25: namespace required for list mutation inside for-loop #}
                           {%- for fam in _m.get('families', []) -%}
-                            {%- set _fv = state_attr(fam.get('entity_id', ''), 'variables') | default({}, true) -%}
-                            {%- set _fv = _fv if _fv is mapping else {} -%}
-                            {%- set _fvi_raw = _fv.get('AI_Cabinet_VolumeInfo', {}) if _fv is mapping else {} -%}
-                            {%- set _fvi = _fvi_raw.get('value', {}) if _fvi_raw is mapping else {} -%}
-                            {%- set _fvi = _fvi if _fvi is mapping else (_fvi | from_json if _fvi is string else {}) -%}
-                            {%- set _fm = _fv.get('members', {}) -%}
-                            {%- set _fm = _fm if _fm is mapping else (_fm | from_json if _fm is string else {}) -%}
-                            {%- set _fm = _fm.get('value', _fm) if _fm is mapping else {} -%}
-                            {%- set _facls = _fvi.get('acls', {}) | default({}, true) -%}
-                            {%- set _facls = _facls if _facls is mapping else {} -%}
+                            {%- set _f_entity_id = fam.get('entity_id', '') -%}
+                            {%- set _fvi = CAB.cabinet_volume_info(_f_entity_id) | from_json() -%}
+                            {%- set _fm = CAB.cabinet_members(_f_entity_id) | from_json() -%}
+                            {%- set _facls = CAB.cabinet_acls(_f_entity_id) | from_json() -%}
+
                             {%- set _fowners = _facls.get('owner', []) -%}
                             {%- set _fpartners = _facls.get('partner', []) -%}
                             {%- set _fprime = _fpartners | selectattr('role', 'defined') | selectattr('role', 'equalto', 'prime') | list -%}
                             {# depth-2 sub-families (members only, no further recursion) #}
                             {%- set _nsf = namespace(subfams=[]) -%}{# FG-25: namespace required for list mutation inside for-loop #}
+                            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
                             {%- for sf in _fm.get('families', []) -%}
-                              {%- set _sfv = state_attr(sf.get('entity_id', ''), 'variables') | default({}, true) -%}
-                              {%- set _sfv = _sfv if _sfv is mapping else {} -%}
-                              {%- set _sfvi_raw = _sfv.get('AI_Cabinet_VolumeInfo', {}) if _sfv is mapping else {} -%}
-                              {%- set _sfvi = _sfvi_raw.get('value', {}) if _sfvi_raw is mapping else {} -%}
-                              {%- set _sfvi = _sfvi if _sfvi is mapping else (_sfvi | from_json if _sfvi is string else {}) -%}
-                              {%- set _sfm = _sfv.get('members', {}) -%}
-                              {%- set _sfm = _sfm if _sfm is mapping else (_sfm | from_json if _sfm is string else {}) -%}
-                              {%- set _sfm = _sfm.get('value', _sfm) if _sfm is mapping else {} -%}
+                              {%- set _sf_entity_id = sf.get('entity_id', '') -%}
+                              {%- set _sfvi = CAB.cabinet_volume_info(_sf_entity_id) | from_json() -%}
+                              {%- set _sfm = CAB.cabinet_members(_sf_entity_id) | from_json() -%}
                               {%- set _nsf.subfams = _nsf.subfams + [{
-                                'entity_id': sf.get('entity_id', ''),
+                                'entity_id': _sf_entity_id,
                                 'guid': _sfvi.get('id', _sfvi.get('guid', '')),
-                                'name': sf.get('name', _sfvi.get('friendly_name', _sfvi.get('name', sf.get('entity_id', '')))),
+                                'name': sf.get('name', _sfvi.get('friendly_name', _sfvi.get('name', _sf_entity_id))),
                                 'depth': 2,
                                 'members': {
                                   'users': _sfm.get('users', []),
@@ -1908,9 +1754,9 @@ script:
                               }] -%}
                             {%- endfor -%}
                             {%- set _ns.fams = _ns.fams + [{
-                              'entity_id': fam.get('entity_id', ''),
+                              'entity_id': _f_entity_id,
                               'guid': _fvi.get('id', _fvi.get('guid', '')),
-                              'name': fam.get('name', _fvi.get('friendly_name', _fvi.get('name', fam.get('entity_id', '')))),
+                              'name': fam.get('name', _fvi.get('friendly_name', _fvi.get('name', _f_entity_id))),
                               'depth': fam.get('depth', 1),
                               'principals': {
                                 'hoh': _fowners[0] if _fowners | count > 0 else none,
@@ -1963,21 +1809,14 @@ script:
                         _target_eid: "{{ _root_entity }}"
                     - variables:
                         _hh_vi_raw: >-
-                          {%- set _v = state_attr(_lookup_root, 'variables') | default({}, true) -%}
-                          {%- set _v = _v if _v is mapping else {} -%}
-                          {%- set _vi = _v.get('AI_Cabinet_VolumeInfo', _v) -%}
-                          {%- set _vi = _vi.get('value', _vi) if _vi is mapping else {} -%}
-                          {%- set _vi = _vi | from_json if _vi is string else _vi -%}
-                          {{ _vi | tojson }}
+                          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                          {{ CAB.cabinet_volume_info(_lookup_root) | from_json() | to_json() }}
                         _hh_m_raw: >-
-                          {%- set _v = state_attr(_lookup_root, 'variables') | default({}, true) -%}
-                          {%- set _v = _v if _v is mapping else {} -%}
-                          {%- set _m = _v.get('members', {}) -%}
-                          {%- set _m = _m if _m is mapping else (_m | from_json if _m is string else {}) -%}
-                          {%- set _m = _m.get('value', _m) if _m is mapping else {} -%}
-                          {{ _m | tojson }}
+                          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                          {{ CAB.cabinet_members(_lookup_root) | from_json() | to_json() }}
                     - variables:
                         _memberships: >-
+                          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
                           {%- set _hvi = _hh_vi_raw | from_json if _hh_vi_raw is string else _hh_vi_raw -%}
                           {%- set _hvi = _hvi if _hvi is mapping else {} -%}
                           {%- set _hm = _hh_m_raw | from_json if _hh_m_raw is string else _hh_m_raw -%}
@@ -1999,40 +1838,32 @@ script:
                           {%- endif -%}
                           {# scan depth-1 families #}
                           {%- for fam in _hm.get('families', []) -%}
-                            {%- set _fv = state_attr(fam.get('entity_id', ''), 'variables') | default({}, true) -%}
-                            {%- set _fv = _fv if _fv is mapping else {} -%}
-                            {%- set _fvi_raw = _fv.get('AI_Cabinet_VolumeInfo', {}) if _fv is mapping else {} -%}
-                            {%- set _fvi = _fvi_raw.get('value', {}) if _fvi_raw is mapping else {} -%}
-                            {%- set _fvi = _fvi if _fvi is mapping else (_fvi | from_json if _fvi is string else {}) -%}
-                            {%- set _fm = _fv.get('members', {}) -%}
-                            {%- set _fm = _fm if _fm is mapping else (_fm | from_json if _fm is string else {}) -%}
-                            {%- set _fm = _fm.get('value', _fm) if _fm is mapping else {} -%}
+                            {%- set _f_entity_id = fam.get('entity_id', '') -%}
+                            {%- set _fvi = CAB.cabinet_volume_info(_f_entity_id) | from_json() -%}
+                            {%- set _fm = CAB.cabinet_members(_f_entity_id) | from_json() -%}
+
+
                             {%- set _f_users = _fm.get('users', []) + _fm.get('ai_users', []) -%}
                             {%- set _in_fam = _f_users | selectattr('entity_id', 'equalto', _eid) | list | count > 0 -%}
                             {%- if _in_fam -%}
-                              {%- set _facls = _fvi.get('acls', {}) | default({}, true) -%}
-                              {%- set _facls = _facls if _facls is mapping else {} -%}
+                              {%- set _facls = CAB.cabinet_acls(_f_entity_id) | from_json() -%}
                               {%- set _fown = _facls.get('owner', []) -%}
                               {%- set _fprt = _facls.get('partner', []) -%}
                               {%- set _is_fhoh = _fown | selectattr('entity_id', 'equalto', _eid) | list | count > 0 -%}
                               {%- set _is_fprime = _fprt | selectattr('entity_id', 'equalto', _eid) | selectattr('role', 'defined') | selectattr('role', 'equalto', 'prime') | list | count > 0 -%}
                               {%- set _frole = 'hoh' if _is_fhoh else ('prime' if _is_fprime else 'member') -%}
-                              {%- set _groups = _groups + [{'container': fam.get('entity_id', ''), 'container_type': 'family', 'guid': _fvi.get('id', _fvi.get('guid', '')), 'name': fam.get('name', _fvi.get('friendly_name', _fvi.get('name', fam.get('entity_id', '')))), 'depth': 1, 'role': _frole}] -%}
+                              {%- set _groups = _groups + [{'container': _f_entity_id, 'container_type': 'family', 'guid': _fvi.get('id', _fvi.get('guid', '')), 'name': fam.get('name', _fvi.get('friendly_name', _fvi.get('name', _f_entity_id))), 'depth': 1, 'role': _frole}] -%}
                             {%- endif -%}
                             {# scan depth-2 sub-families #}
+                            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
                             {%- for sf in _fm.get('families', []) -%}
-                              {%- set _sfv = state_attr(sf.get('entity_id', ''), 'variables') | default({}, true) -%}
-                              {%- set _sfv = _sfv if _sfv is mapping else {} -%}
-                              {%- set _sfvi_raw = _sfv.get('AI_Cabinet_VolumeInfo', {}) if _sfv is mapping else {} -%}
-                              {%- set _sfvi = _sfvi_raw.get('value', {}) if _sfvi_raw is mapping else {} -%}
-                              {%- set _sfvi = _sfvi if _sfvi is mapping else (_sfvi | from_json if _sfvi is string else {}) -%}
-                              {%- set _sfm = _sfv.get('members', {}) -%}
-                              {%- set _sfm = _sfm if _sfm is mapping else (_sfm | from_json if _sfm is string else {}) -%}
-                              {%- set _sfm = _sfm.get('value', _sfm) if _sfm is mapping else {} -%}
+                              {%- set _sf_entity_id = sf.get('entity_id', '') -%}
+                              {%- set _sfvi = CAB.cabinet_volume_info(_sf_entity_id) | from_json() -%}
+                              {%- set _sfm = CAB.cabinet_members(_sf_entity_id) | from_json() -%}
                               {%- set _sf_users = _sfm.get('users', []) + _sfm.get('ai_users', []) -%}
                               {%- set _in_sf = _sf_users | selectattr('entity_id', 'equalto', _eid) | list | count > 0 -%}
                               {%- if _in_sf -%}
-                                {%- set _groups = _groups + [{'container': sf.get('entity_id', ''), 'container_type': 'family', 'guid': _sfvi.get('id', _sfvi.get('guid', '')), 'name': sf.get('name', _sfvi.get('friendly_name', _sfvi.get('name', sf.get('entity_id', '')))), 'depth': 2, 'role': 'member'}] -%}
+                                {%- set _groups = _groups + [{'container': _sf_entity_id, 'container_type': 'family', 'guid': _sfvi.get('id', _sfvi.get('guid', '')), 'name': sf.get('name', _sfvi.get('friendly_name', _sfvi.get('name', _sf_entity_id))), 'depth': 2, 'role': 'member'}] -%}
                               {%- endif -%}
                             {%- endfor -%}
                           {%- endfor -%}
@@ -2070,14 +1901,15 @@ script:
                   response_variable: response
             - variables:
                 _container_m_raw: >-
-                  {%- set _v = state_attr(family_entity, 'variables') | default({}, true) -%}
-                  {%- set _v = _v if _v is mapping else {} -%}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {%- set _v = CAB.cabinet_variables(family_entity) | from_json() -%}
                   {%- set _m = _v.get('members', {}) -%}
                   {%- set _m = _m if _m is mapping else (_m | from_json if _m is string else {}) -%}
                   {%- set _m = _m.get('value', _m) if _m is mapping else {} -%}
                   {{ _m | tojson }}
             - variables:
                 _check: >-
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
                   {%- set _m = _container_m_raw | from_json if _container_m_raw is string else _container_m_raw -%}
                   {%- set _m = _m if _m is mapping else {} -%}
                   {%- set _eid = member_entity -%}
@@ -2089,11 +1921,9 @@ script:
                     {%- set _found_d2 = false -%}
                     {%- for fam in _m.get('families', []) -%}
                       {%- if not _found_d2 -%}
-                        {%- set _fv = state_attr(fam.get('entity_id', ''), 'variables') | default({}, true) -%}
-                        {%- set _fv = _fv if _fv is mapping else {} -%}
-                        {%- set _fm = _fv.get('members', {}) -%}
-                        {%- set _fm = _fm if _fm is mapping else (_fm | from_json if _fm is string else {}) -%}
-                        {%- set _fm = _fm.get('value', _fm) if _fm is mapping else {} -%}
+                        {%- set _f_entity_id = fam.get('entity_id', '') -%}
+                        {%- set _fv = CAB.cabinet_variables(_f_entity_id) | from_json() -%}
+                        {%- set _fm = CAB.cabinet_members(_f_entity_id) | from_json() -%}
                         {%- set _d2_all = _fm.get('users', []) + _fm.get('ai_users', []) -%}
                         {%- set _in_d2 = _d2_all | selectattr('entity_id', 'equalto', _eid) | list | count > 0 -%}
                         {%- if _in_d2 -%}

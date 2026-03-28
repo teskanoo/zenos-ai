@@ -64,7 +64,8 @@ script:
         required: false
         selector:
           entity:
-            domain: sensor
+            filter:
+              domain: sensor
     mode: single
     sequence:
 
@@ -103,7 +104,9 @@ script:
 
     # ── Read all three rogue keys ─────────────────────────────────────────────
     - variables:
-        _cab_vars: "{{ state_attr(_target_cab, 'variables') | default({}, true) }}"
+        _cab_vars: >
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {{ CAB.cabinet_variables(_target_cab) | from_json() }}
         _cab_vars_mapped: "{{ _cab_vars if _cab_vars is mapping else {} }}"
 
     # The GOOD key — slugified, flat dict, no {value:} wrapper
@@ -180,10 +183,18 @@ script:
     # Wait for state to settle, then verify
     - delay: "00:00:01"
     - variables:
-        _verify_vars: "{{ state_attr(_target_cab, 'variables') | default({}, true) }}"
-        _verify_vars_mapped: "{{ _verify_vars if _verify_vars is mapping else {} }}"
-        _verify_raw: "{{ _verify_vars_mapped.get('AI_Cabinet_VolumeInfo', {}) }}"
-        _verify_raw_mapped: "{{ _verify_raw if _verify_raw is mapping else (_verify_raw | from_json if _verify_raw is string else {}) }}"
+        _verify_vars: >
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {{ CAB.cabinet_variables(_target_cab) | from_json() }}
+        _verify_vars_mapped: >
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {{ CAB.cabinet_volume_info(_target_cab) | from_json() }}
+        _verify_raw: >
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {{ CAB.cabinet_volume_info(_target_cab) | from_json() }}
+        _verify_raw_mapped:  >
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {{ CAB.cabinet_volume_info(_target_cab) | from_json() }}
         _verify_val_raw: "{{ _verify_raw_mapped.get('value', _verify_raw_mapped) }}"
         _verify_val: "{{ _verify_val_raw if _verify_val_raw is mapping else (_verify_val_raw | from_json if _verify_val_raw is string else {}) }}"
         _verify_id: "{{ _verify_val.get('id', '') | trim }}"

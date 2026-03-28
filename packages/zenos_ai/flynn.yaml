@@ -81,8 +81,9 @@ template:
         options: >-
           {%- set cabs = [states('sensor.zen_default_ai_user_cabinet_resolved')] -%}
           {%- set names = namespace(list=[]) -%}
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
           {%- for cab in cabs -%}
-            {%- set vars = state_attr(cab, 'variables') | default({}, true) -%}
+            {%- set vars = CAB.cabinet_variables(cab) | from_json() -%}
             {%- set essence_raw = vars.get('zenai_essence', {}) if vars is mapping else {} -%}
             {%- set essence = essence_raw.get('value', essence_raw) if essence_raw is mapping else {} -%}
             {%- set name = essence.get('identity', {}).get('name', '') | trim -%}
@@ -250,7 +251,8 @@ automation:
           was_green: "{{ is_state('binary_sensor.flynn_system_ready', 'on') }}"
           _oobe_ai_cab: "{{ states('sensor.zen_default_ai_user_cabinet_resolved') }}"
           _oobe_cab_vars: >-
-            {{ state_attr(_oobe_ai_cab, 'variables') | default({}, true)
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{ CAB.cabinet_variables(_oobe_ai_cab) | from_json()
                if _oobe_ai_cab != '' else {} }}
           _oobe_complete: "{{ '_oobe_complete' in _oobe_cab_vars }}"
           _oobe_essence_raw: "{{ _oobe_cab_vars.get('zenai_essence', {}) }}"
@@ -265,13 +267,14 @@ automation:
       # warn = degraded-but-functional; no bootstrap needed, agent is usable.
       # If oobe is pending we must walk through to Gate 3.5 even on green systems.
       - if: >
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
           {{ was_green
              and is_state('sensor.zen_label_health', 'ok')
              and is_state('sensor.zen_cabinet_health', 'ok')
              and is_state('sensor.zen_monastery_health', ['ok', 'warn'])
              and not _oobe_pending
-             and 'kfc_template' in (state_attr(states('sensor.zen_dojo_cabinet_resolved'), 'variables') or {})
-             and 'zen_template'  in (state_attr(states('sensor.zen_kata_cabinet_resolved'), 'variables') or {}) }}
+             and 'kfc_template' in (CAB.cabinet_variables(states('sensor.zen_dojo_cabinet_resolved')) | from_json())
+             and 'zen_template' in (CAB.cabinet_variables(states('sensor.zen_kata_cabinet_resolved')) | from_json()) }}
         then:
           - stop: "No-op: all gates green, schemas seeded"
       - delay: "00:00:10"
@@ -431,10 +434,12 @@ automation:
       # Mount-aware mode (cab_schema_version >= 1): required defaults must
       # all be online_mounted before bootstrap is useful. Dismounted defaults
       # indicate a broken migration or operator error.
+      # @todo - hard-coded: 'sensor.zenos_system_cabinet'
       #####################################################################
       - variables:
           _cab_schema_v: >-
-            {%- set _sv = state_attr('sensor.zenos_system_cabinet', 'variables') | default({}, true) -%}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {%- set _sv = CAB.cabinet_variables('sensor.zenos_system_cabinet') | from_json() -%}
             {%- set _sv = _sv if _sv is mapping else {} -%}
             {%- set _se = _sv.get('cab_schema_version', {}) -%}
             {%- set _se = _se if _se is mapping else {} -%}
@@ -497,8 +502,9 @@ automation:
       # bootstrap_content's internal check will skip if already pressed.
       - variables:
           _schema_ok: >-
-            {{ 'kfc_template' in (state_attr(_resolver_dojo, 'variables') or {})
-               and 'zen_template' in (state_attr(_resolver_kata, 'variables') or {}) }}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{ 'kfc_template' in (CAB.cabinet_variables(_resolver_dojo) | from_json())
+               and 'zen_template' in (CAB.cabinet_variables(_resolver_kata) | from_json()) }}
       - if: "{{ not _schema_ok }}"
         then:
           - alias: "Flynn: Seed schema templates"
@@ -526,7 +532,8 @@ automation:
       - variables:
           _g35_ai_cab: "{{ states('sensor.zen_default_ai_user_cabinet_resolved') }}"
           _g35_cab_vars: >-
-            {{ state_attr(_g35_ai_cab, 'variables') | default({}, true)
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{ CAB.cabinet_variables(_g35_ai_cab) | from_json()
                if _g35_ai_cab != '' else {} }}
           _g35_complete: "{{ '_oobe_complete' in _g35_cab_vars }}"
           _g35_name: >-
@@ -784,9 +791,15 @@ script:
               # See: boot-wipe incident 2026-03-23.
               then:
                 - variables:
-                    _cab_vars: "{{ state_attr(entity_id, 'variables') | default(none) }}"
-                    _vi_raw: "{{ _cab_vars.get('AI_Cabinet_VolumeInfo', none) if _cab_vars is mapping else none }}"
-                    _has_volumeinfo: "{{ _vi_raw is not none }}"
+                    _cab_vars: >
+                      {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                      {{ CAB.cabinet_variables(entity_id, none) | from_json() }}
+                    _vi_raw: >
+                      {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                      {{ CAB.cabinet_volume_info(entity_id, none) | from_json() }}
+                    _has_volumeinfo: >
+                      {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                      {{ CAB.cabinet_volume_info_exists(entity_id) | from_json() }}
                 # GUID GATE — REINIT IS DEAD.
                 # If AI_Cabinet_VolumeInfo exists in variables, this cabinet has data.
                 # State showing 'init' is a boot race artifact — data is intact.
@@ -987,7 +1000,8 @@ script:
       - variables:
           _seed_ai_cab: "{{ states('sensor.zen_default_ai_user_cabinet_resolved') }}"
           _seed_cab_vars: >-
-            {{ state_attr(_seed_ai_cab, 'variables') | default({}, true)
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{ CAB.cabinet_variables(_seed_ai_cab) | from_json()
                if _seed_ai_cab != '' else {} }}
           _seed_essence_raw: "{{ _seed_cab_vars.get('zenai_essence', {}) }}"
           _seed_essence_val: >-
@@ -1040,10 +1054,12 @@ script:
           _b3_kata_cab: "{{ states('sensor.zen_kata_cabinet_resolved') }}"
           _b3_dojo_cab: "{{ states('sensor.zen_dojo_cabinet_resolved') }}"
           _b3_has_zen_template: >-
-            {{ 'zen_template' in (state_attr(_b3_kata_cab, 'variables') | default({}, true))
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{ 'zen_template' in (CAB.cabinet_variables(_b3_kata_cab) | from_json())
                if _b3_kata_cab != '' else false }}
           _b3_has_kfc_template: >-
-            {{ 'kfc_template' in (state_attr(_b3_dojo_cab, 'variables') | default({}, true))
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{ 'kfc_template' in (CAB.cabinet_variables(_b3_dojo_cab) | from_json())
                if _b3_dojo_cab != '' else false }}
       - if: "{{ not _b3_has_zen_template or not _b3_has_kfc_template }}"
         then:
@@ -1283,7 +1299,9 @@ script:
       #########################################################################
       - variables:
           act: "{{ action_type }}"
+          # @todo - no such entity exists - 'sensor.zen_default_user_cabinet' - perhaps 'sensor.zenos_default_user_cabinet'
           sys_cab: "{{ states('sensor.zen_default_user_cabinet') }}"
+          # @todo - no such entity exists - 'sensor.flynn_onboarding'
           onboarding_root: "{{ state_attr('sensor.flynn_onboarding','value') or {} }}"
           drawers: "{{ onboarding_root.get('drawers',{}) }}"
           now_ts: "{{ now().isoformat() }}"
@@ -1347,6 +1365,7 @@ script:
             sequence:
 
               - variables:
+                  # @todo - no such entity exists - 'sensor.flynn_onboarding_schema'
                   schema: "{{ state_attr('sensor.flynn_onboarding_schema','value') or {} }}"
                   schema_json: >-
                     {{
@@ -1632,11 +1651,13 @@ script:
           ai_cab: "{{ states('sensor.zen_default_ai_user_cabinet_resolved') }}"
           hh_cab: "{{ states('sensor.zen_default_household_cabinet_resolved') }}"
           ai_cab_vars: >-
-            {{ state_attr(ai_cab, 'variables') | default({}, true)
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{ CAB.cabinet_variables(ai_cab) | from_json()
                if ai_cab != '' else {} }}
           # @todo cabinet_variables('sensor.zen_default_household_cabinet_resolved') | from_json()
           hh_cab_vars: >-
-            {{ state_attr(hh_cab, 'variables') | default({}, true)
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{ CAB.cabinet_variables(hh_cab) | from_json()
                if hh_cab != '' else {} }}
           essence_raw: "{{ ai_cab_vars.get('zenai_essence', {}) }}"
           essence_val: >-

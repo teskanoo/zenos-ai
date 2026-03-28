@@ -185,9 +185,10 @@ script:
       - alias: Load zen_template schema
         variables:
           zen_template: >-
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
             {{
               (
-                (state_attr(kata_cabinet, 'variables') or {})
+                (CAB.cabinet_variables(kata_cabinet) | from_json())
                 .get('zen_template', {})
                 .get('value', {})
                 .get('structure', {})
@@ -206,7 +207,8 @@ script:
             {%- set manifest   = zen.manifest_loader() | from_json -%}
             {%- set capsule    = zen.ai_capsule(idcard_raw) | from_json -%}
             {%- set overview   = states['sensor.home_overview'].attributes | default({}) -%}
-            {%- set kata_vars  = state_attr(kata_cabinet, 'variables') or {} -%}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {%- set kata_vars  = CAB.cabinet_variables(kata_cabinet) | from_json() -%}
             {%- set last_sum   = kata_vars.get('zen_summary', {}) -%}
             {{
               {
@@ -223,7 +225,8 @@ script:
       - alias: Load last summary
         variables:
           last_summary: >-
-            {%- set _raw = (state_attr(kata_cabinet, 'variables') or {}).get('zen_summary', {}) -%}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {%- set _raw = CAB.cabinet_variables(kata_cabinet) | from_json()).get('zen_summary', {} -%}
             {%- set _v1 = _raw if _raw is mapping else (_raw | from_json if _raw is string else {}) -%}
             {%- set _v2 = _v1 if _v1 is mapping else (_v1 | from_json if _v1 is string else {}) -%}
             {{ _v2 | tojson }}
@@ -234,8 +237,9 @@ script:
       - alias: Collect active components from Dojo meta.enabled
         variables:
           active_components: >-
-            {%- set dojo = state_attr(dojo_cabinet, 'variables') | default({}, true) -%}
-            {%- set kata = state_attr(kata_cabinet, 'variables') | default({}, true) -%}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {%- set dojo = CAB.cabinet_variables(dojo_cabinet) | from_json() -%}
+            {%- set kata = CAB.cabinet_variables(kata_cabinet) | from_json() -%}
             {%- set ns = namespace(active={}) -%}
             {%- for key, drawer in dojo.items() if key not in ['AI_Cabinet_VolumeInfo', 'kfc_template'] -%}
               {%- if drawer is mapping -%}
@@ -271,8 +275,9 @@ script:
           sequence:
             - variables:
                 comp_raw: >-
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
                   {{
-                    (state_attr(kata_cabinet, 'variables') or {}).get(repeat.item, {})
+                    (CAB.cabinet_variables(kata_cabinet) | from_json()).get(repeat.item, {})
                   }}
             - variables:
                 comp_drawer: >-
@@ -312,8 +317,9 @@ script:
               }
             }}
           example_data: >-
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
             {{
-              (state_attr(kata_cabinet, 'variables') or {})
+              (CAB.cabinet_variables(kata_cabinet) | from_json())
               .get('zen_template', {})
               .get('value', {})
               .get('example', {})
@@ -551,9 +557,11 @@ script:
       - alias: Read dojo drawer
         variables:
           dojo_drawer: >-
-            {{ (state_attr(dojo_cabinet, 'variables') or {}).get(component_slug, {}) }}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{ (CAB.cabinet_variables(dojo_cabinet) | from_json()).get(component_slug, {}) }}
           household_drawer: >-
-            {{ (state_attr(household_cabinet, 'variables') or {}).get(component_slug, {}) }}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{ (CAB.cabinet_variables(household_cabinet) | from_json()).get(component_slug, {}) }}
 
       - alias: Unpack drawer values
         variables:
@@ -640,8 +648,9 @@ script:
           query: "{{ query | default(default_query) }}"
           # FIX: was state_attr('sensor.zen_kata_storage_cabinet'...) hardcoded
           kata_template: >-
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
             {{
-              (state_attr(kata_cabinet, 'variables') or {})
+              (CAB.cabinet_variables(kata_cabinet) | from_json())
               .get('kata_template', {})
               .get('structure', {})
             }}

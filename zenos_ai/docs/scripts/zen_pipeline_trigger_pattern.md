@@ -59,7 +59,8 @@ to update. The simplest approach is a short `wait_template` watching the kata ca
 
 ```yaml
     - wait_template: >-
-        {% set kata = state_attr('sensor.zen_kata_cabinet_resolved', 'variables') %}
+        {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+        {% set kata = CAB.cabinet_variables('sensor.zen_kata_cabinet_resolved') | from_json() %}
         {% set drawer = kata.get('water_manager', {}) if kata is mapping else {} %}
         {% set ts = drawer.get('value', {}).get('ts', '') if drawer is mapping else '' %}
         {{ ts > states('input_text.water_flow_last_summary_ts') }}

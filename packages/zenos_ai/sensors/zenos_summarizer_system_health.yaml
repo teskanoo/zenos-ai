@@ -106,7 +106,8 @@ template:
       - name: Zen Default Household Cabinet Resolved
         unique_id: zen_default_household_cabinet_resolved
         state: >-
-          {%- set _sv = state_attr('sensor.zenos_system_cabinet', 'variables') -%}
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {%- set _sv = CAB.cabinet_variables('sensor.zenos_system_cabinet') | from_json() -%}
           {%- set _sv = _sv if _sv is mapping else {} -%}
           {%- set _se = _sv.get('cab_schema_version', {}) -%}
           {%- set _ma = ((_se.get('value', 0) if _se is mapping else 0) | int(0)) >= 1 -%}
@@ -115,7 +116,8 @@ template:
           {%- for e in _cands -%}{%- if ns.r == 'unavailable' and states(e) == 'online_mounted' -%}{%- set ns.r = e -%}{%- endif -%}{%- endfor -%}
           {{ ns.r }}{%- else -%}{{ _cands | first | default('unavailable') }}{%- endif -%}
         availability: >-
-          {%- set _sv = state_attr('sensor.zenos_system_cabinet', 'variables') -%}
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {%- set _sv = CAB.cabinet_variables('sensor.zenos_system_cabinet') | from_json() -%}
           {%- set _sv = _sv if _sv is mapping else {} -%}
           {%- set _se = _sv.get('cab_schema_version', {}) -%}
           {%- set _ma = ((_se.get('value', 0) if _se is mapping else 0) | int(0)) >= 1 -%}
@@ -127,7 +129,8 @@ template:
       - name: Zen Default AI User Cabinet Resolved
         unique_id: zen_default_ai_user_cabinet_resolved
         state: >-
-          {%- set _sv = state_attr('sensor.zenos_system_cabinet', 'variables') -%}
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {%- set _sv = CAB.cabinet_variables('sensor.zenos_system_cabinet') | from_json() -%}
           {%- set _sv = _sv if _sv is mapping else {} -%}
           {%- set _se = _sv.get('cab_schema_version', {}) -%}
           {%- set _ma = ((_se.get('value', 0) if _se is mapping else 0) | int(0)) >= 1 -%}
@@ -136,7 +139,8 @@ template:
           {%- for e in _cands -%}{%- if ns.r == 'unavailable' and states(e) == 'online_mounted' -%}{%- set ns.r = e -%}{%- endif -%}{%- endfor -%}
           {{ ns.r }}{%- else -%}{{ _cands | first | default('unavailable') }}{%- endif -%}
         availability: >-
-          {%- set _sv = state_attr('sensor.zenos_system_cabinet', 'variables') -%}
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {%- set _sv = CAB.cabinet_variables('sensor.zenos_system_cabinet') | from_json() -%}
           {%- set _sv = _sv if _sv is mapping else {} -%}
           {%- set _se = _sv.get('cab_schema_version', {}) -%}
           {%- set _ma = ((_se.get('value', 0) if _se is mapping else 0) | int(0)) >= 1 -%}
@@ -148,7 +152,8 @@ template:
       - name: Zen Default Family Cabinet Resolved
         unique_id: zen_default_family_cabinet_resolved
         state: >-
-          {%- set _sv = state_attr('sensor.zenos_system_cabinet', 'variables') -%}
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {%- set _sv = CAB.cabinet_variables('sensor.zenos_system_cabinet') | from_json() -%}
           {%- set _sv = _sv if _sv is mapping else {} -%}
           {%- set _se = _sv.get('cab_schema_version', {}) -%}
           {%- set _ma = ((_se.get('value', 0) if _se is mapping else 0) | int(0)) >= 1 -%}
@@ -157,7 +162,8 @@ template:
           {%- for e in _cands -%}{%- if ns.r == 'unavailable' and states(e) == 'online_mounted' -%}{%- set ns.r = e -%}{%- endif -%}{%- endfor -%}
           {{ ns.r }}{%- else -%}{{ _cands | first | default('unavailable') }}{%- endif -%}
         availability: >-
-          {%- set _sv = state_attr('sensor.zenos_system_cabinet', 'variables') -%}
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {%- set _sv = CAB.cabinet_variables('sensor.zenos_system_cabinet') | from_json() -%}
           {%- set _sv = _sv if _sv is mapping else {} -%}
           {%- set _se = _sv.get('cab_schema_version', {}) -%}
           {%- set _ma = ((_se.get('value', 0) if _se is mapping else 0) | int(0)) >= 1 -%}
@@ -169,7 +175,8 @@ template:
       - name: Zen Default User Cabinet Resolved
         unique_id: zen_default_user_cabinet_resolved
         state: >-
-          {%- set _sv = state_attr('sensor.zenos_system_cabinet', 'variables') -%}
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {%- set _sv = CAB.cabinet_variables('sensor.zenos_system_cabinet') | from_json() -%}
           {%- set _sv = _sv if _sv is mapping else {} -%}
           {%- set _se = _sv.get('cab_schema_version', {}) -%}
           {%- set _ma = ((_se.get('value', 0) if _se is mapping else 0) | int(0)) >= 1 -%}
@@ -178,7 +185,8 @@ template:
           {%- for e in _cands -%}{%- if ns.r == 'unavailable' and states(e) == 'online_mounted' -%}{%- set ns.r = e -%}{%- endif -%}{%- endfor -%}
           {{ ns.r }}{%- else -%}{{ _cands | first | default('unavailable') }}{%- endif -%}
         availability: >-
-          {%- set _sv = state_attr('sensor.zenos_system_cabinet', 'variables') -%}
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {%- set _sv = CAB.cabinet_variables('sensor.zenos_system_cabinet') | from_json() -%}
           {%- set _sv = _sv if _sv is mapping else {} -%}
           {%- set _se = _sv.get('cab_schema_version', {}) -%}
           {%- set _ma = ((_se.get('value', 0) if _se is mapping else 0) | int(0)) >= 1 -%}
@@ -225,8 +233,9 @@ template:
           {%- elif kata_cab in ['unknown','unavailable','none'] %}
             critical
           {%- else %}
-            {%- set kata = state_attr(kata_cab,'variables') or {} %}
-            {%- set dojo = state_attr(dojo_cab,'variables') or {} %}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {%- set kata = CAB.cabinet_variables(kata_cab) | from_json() %}
+            {%- set dojo = CAB.cabinet_variables(dojo_cab) | from_json() %}
             {%- set _sum_raw = kata.get('zen_summary', {}) %}
             {%- set summary = _sum_raw if _sum_raw is mapping else (_sum_raw | from_json if _sum_raw is string else {}) %}
             {%- set ts = summary.get('timestamp') if summary is mapping else none %}
@@ -296,8 +305,9 @@ template:
             {%- elif kata_cab in ['unknown','unavailable','none'] %}
               Kata cabinet resolver is {{ kata_cab }} — labels may not be assigned.
             {%- else %}
-              {%- set kata = state_attr(kata_cab,'variables') or {} %}
-              {%- set dojo = state_attr(dojo_cab,'variables') or {} %}
+              {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+              {%- set kata = CAB.cabinet_variables(kata_cab) | from_json() %}
+              {%- set dojo = CAB.cabinet_variables(dojo_cab) | from_json() %}
               {%- set _sum_raw = kata.get('zen_summary', {}) %}
               {%- set summary = _sum_raw if _sum_raw is mapping else (_sum_raw | from_json if _sum_raw is string else {}) %}
               {%- set ts = summary.get('timestamp') if summary is mapping else none %}
@@ -360,7 +370,8 @@ template:
                not in ['unknown','unavailable','none'] }}
                
           schema_ok: >-
-            {%- set _vars = state_attr(states('sensor.zen_kata_cabinet_resolved'),'variables') or {} %}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {%- set _vars = CAB.cabinet_variables(states('sensor.zen_kata_cabinet_resolved')) | from_json() %}
             {%- set _zt_drawer = _vars.get('zen_template', {}) %}
             {%- set _zt_v1 = _zt_drawer.get('value', {}) if _zt_drawer is mapping else {} %}
             {%- set _zt_v2 = _zt_v1 if _zt_v1 is mapping else (_zt_v1 | from_json if _zt_v1 is string else {}) %}
@@ -372,7 +383,8 @@ template:
             {%- if _kc in ['unknown','unavailable','none'] %}
               unavailable
             {%- else %}
-              {%- set _k = state_attr(_kc,'variables') or {} %}
+              {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+              {%- set _k = CAB.cabinet_variables(_kc) | from_json() %}
               {%- set _sched_raw = _k.get('zen_scheduler', {}) %}
               {%- set _sched = _sched_raw if _sched_raw is mapping else (_sched_raw | from_json if _sched_raw is string else {}) %}
               {%- set _ts = _sched.get('timestamp') if _sched is mapping else none %}
@@ -391,7 +403,8 @@ template:
             {%- if _kc in ['unknown','unavailable','none'] %}
               unavailable
             {%- else %}
-              {%- set _k    = state_attr(_kc,'variables') or {} %}
+              {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+              {%- set _k    = CAB.cabinet_variables(_kc) | from_json() %}
               {%- set _ss_d = _k.get('zen_supersummary_status', {}) %}
               {%- set _ss_v = _ss_d.get('value', {}) if _ss_d is mapping else {} %}
               {%- set _ss_v = _ss_v if _ss_v is mapping else (_ss_v | from_json if _ss_v is string else {}) %}
@@ -410,7 +423,8 @@ template:
 
           active_components: >-
             {%- set _dc = states('sensor.zen_dojo_cabinet_resolved') %}
-            {%- set _dojo = state_attr(_dc, 'variables') or {} %}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {%- set _dojo = CAB.cabinet_variables(_dc) | from_json() %}
             {%- set _ns = namespace(active=[]) %}
             {%- for _k, _raw in _dojo.items() %}
               {%- set _d_val = _raw.get('value', _raw) if _raw is mapping else {} %}
@@ -427,7 +441,8 @@ template:
             {{ _ns.active | tojson }}
 
           last_timestamp: >-
-            {%- set _vars = state_attr(states('sensor.zen_kata_cabinet_resolved'),'variables') or {} %}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {%- set _vars = CAB.cabinet_variables(states('sensor.zen_kata_cabinet_resolved')) | from_json() %}
             {%- set _sum_d = _vars.get('zen_summary', {}) %}
             {%- set _sum_d = _sum_d if _sum_d is mapping else (_sum_d | from_json if _sum_d is string else {}) %}
             {{ _sum_d.get('timestamp') | default('none') }}
@@ -462,7 +477,8 @@ template:
           {%- elif kata_cab in ['unknown','unavailable','none'] %}
             critical
           {%- else %}
-            {%- set kata = state_attr(kata_cab,'variables') or {} %}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {%- set kata = CAB.cabinet_variables(kata_cab) | from_json() %}
             {%- set _drawer_raw = kata.get('zen_scheduler', {}) %}
             {%- set drawer = _drawer_raw if _drawer_raw is mapping else (_drawer_raw | from_json if _drawer_raw is string else {}) %}
             {%- set ts = drawer.get('timestamp') if drawer is mapping else none %}
@@ -488,7 +504,8 @@ template:
             {%- elif kata_cab in ['unknown','unavailable','none'] %}
               Kata cabinet resolver is {{ kata_cab }} — labels may not be assigned.
             {%- else %}
-              {%- set kata = state_attr(kata_cab,'variables') or {} %}
+              {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+              {%- set kata = CAB.cabinet_variables(kata_cab) | from_json() %}
               {%- set _drawer_raw = kata.get('zen_scheduler', {}) %}
               {%- set drawer = _drawer_raw if _drawer_raw is mapping else (_drawer_raw | from_json(none) if _drawer_raw is string else {}) %}
               {%- set ts = drawer.get('timestamp') if drawer is mapping else none %}
@@ -509,14 +526,16 @@ template:
           kata_cabinet: "{{ states('sensor.zen_kata_cabinet_resolved') }}"
           ai_task_entity: "{{ states('input_text.zenos_ai_task_entity') | trim }}"
           last_timestamp: >-
-            {%- set _vars = state_attr(states('sensor.zen_kata_cabinet_resolved'),'variables') or {} %}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {%- set _vars = CAB.cabinet_variables(states('sensor.zen_kata_cabinet_resolved')) | from_json() %}
             {%- set _sched_d = _vars.get('zen_scheduler', {}) %}
             {%- set _sched_d = _sched_d if _sched_d is mapping else (_sched_d | from_json if _sched_d is string else {}) %}
             {{ _sched_d.get('timestamp') | default('none') }}
 
           component_timings: >-
             {%- set _kc = states('sensor.zen_kata_cabinet_resolved') %}
-            {%- set _vars = state_attr(_kc, 'variables') or {} %}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {%- set _vars = CAB.cabinet_variables(_kc) | from_json() %}
             {%- set _ns = namespace(timings={}) %}
             {%- for k, raw in _vars.items() if k.startswith('zen_ninja_last_run_') %}
               {%- set _v = raw.get('value', {}) if raw is mapping else {} %}
@@ -552,7 +571,8 @@ template:
           {%- elif kata_cab in ['unknown','unavailable','none'] %}
             critical
           {%- else %}
-            {%- set kata = state_attr(kata_cab,'variables') or {} %}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {%- set kata = CAB.cabinet_variables(kata_cab) | from_json() %}
             {%- set _sum_raw = kata.get('zen_summary', {}) %}
             {%- set summary = _sum_raw if _sum_raw is mapping else (_sum_raw | from_json if _sum_raw is string else {}) %}
             {%- set _ss_d = kata.get('zen_supersummary_status', {}) %}
@@ -580,7 +600,8 @@ template:
             {%- elif kata_cab in ['unknown','unavailable','none'] %}
               Kata cabinet resolver is {{ kata_cab }} — labels may not be assigned.
             {%- else %}
-              {%- set kata = state_attr(kata_cab,'variables') or {} %}
+              {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+              {%- set kata = CAB.cabinet_variables(kata_cab) | from_json() %}
               {%- set _ss_d = kata.get('zen_supersummary_status', {}) %}
               {%- set _ss_v = _ss_d.get('value', {}) if _ss_d is mapping else {} %}
               {%- set _ss_v = _ss_v if _ss_v is mapping else (_ss_v | from_json(none) if _ss_v is string else {}) %}
@@ -604,13 +625,15 @@ template:
 
           kata_cabinet: "{{ states('sensor.zen_kata_cabinet_resolved') }}"
           monk_status: >-
-            {%- set _vars = state_attr(states('sensor.zen_kata_cabinet_resolved'),'variables') or {} %}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {%- set _vars = CAB.cabinet_variables(states('sensor.zen_kata_cabinet_resolved')) | from_json() %}
             {%- set _ss_d = _vars.get('zen_supersummary_status', {}) %}
             {%- set _ss_v = _ss_d.get('value', {}) if _ss_d is mapping else {} %}
             {%- set _ss_v = _ss_v if _ss_v is mapping else (_ss_v | from_json if _ss_v is string else {}) %}
             {{ _ss_v.get('status', 'unknown') }}
           last_timestamp: >-
-            {%- set _vars = state_attr(states('sensor.zen_kata_cabinet_resolved'),'variables') or {} %}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {%- set _vars = CAB.cabinet_variables(states('sensor.zen_kata_cabinet_resolved')) | from_json() %}
             {%- set _sum_d = _vars.get('zen_summary', {}) %}
             {%- set _sum_d = _sum_d if _sum_d is mapping else (_sum_d | from_json if _sum_d is string else {}) %}
             {{ _sum_d.get('timestamp') | default('none') }}
@@ -618,13 +641,15 @@ template:
           pipeline_master: "{{ is_state('input_boolean.zen_summarizers_enabled', 'on') }}"
           supersummary_enabled: "{{ is_state('input_boolean.zen_supersummarizer_enabled', 'on') }}"
           last_duration_seconds: >-
-            {%- set _vars = state_attr(states('sensor.zen_kata_cabinet_resolved'),'variables') or {} %}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {%- set _vars = CAB.cabinet_variables(states('sensor.zen_kata_cabinet_resolved')) | from_json() %}
             {%- set _ss_d = _vars.get('zen_supersummary_status', {}) %}
             {%- set _ss_v = _ss_d.get('value', {}) if _ss_d is mapping else {} %}
             {%- set _ss_v = _ss_v if _ss_v is mapping else (_ss_v | from_json if _ss_v is string else {}) %}
             {{ _ss_v.get('duration_seconds', none) | default('none', true) }}
           last_run_at: >-
-            {%- set _vars = state_attr(states('sensor.zen_kata_cabinet_resolved'),'variables') or {} %}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {%- set _vars = CAB.cabinet_variables(states('sensor.zen_kata_cabinet_resolved')) | from_json() %}
             {%- set _ss_d = _vars.get('zen_supersummary_status', {}) %}
             {%- set _ss_v = _ss_d.get('value', {}) if _ss_d is mapping else {} %}
             {%- set _ss_v = _ss_v if _ss_v is mapping else (_ss_v | from_json if _ss_v is string else {}) %}

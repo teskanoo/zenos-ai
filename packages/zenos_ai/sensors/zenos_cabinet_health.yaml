@@ -234,11 +234,12 @@ template:
           # SCROLL COUNT — drawers with ro: true across all online_mounted cabs
           #####################################################################
           scroll_count: >-
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
             {%- set all_cabs = label_entities('Zen Cabinet' | slugify) | list -%}
             {%- set ns = namespace(n=0) -%}
             {%- for eid in all_cabs -%}
               {%- if states(eid) == 'online_mounted' -%}
-                {%- set vars = state_attr(eid, 'variables') | default({}, true) -%}
+                {%- set vars = CAB.cabinet_variables(eid) | from_json() -%}
                 {%- set vars = vars if vars is mapping else {} -%}
                 {%- for key, drawer in vars.items() if key != '_label_index' -%}
                   {%- set entry = drawer if drawer is mapping else {} -%}

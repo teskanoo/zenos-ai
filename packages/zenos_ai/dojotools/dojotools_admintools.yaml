@@ -169,19 +169,18 @@ script:
           then:
             - variables:
                 _dojo_all: >-
-                  {{ state_attr(_rtt_dojo, 'variables') | default({}, true) }}
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_variables(_rtt_dojo) | from_json() }}
             - repeat:
                 for_each: >-
                   {{ _dojo_all.keys() | reject('in', ['AI_Cabinet_VolumeInfo', 'kfc_template']) | list }}
                 sequence:
                   - variables:
                       _kfc_key: "{{ repeat.item }}"
-                      _kfc_raw: "{{ _dojo_all.get(repeat.item, {}) }}"
-                      _kfc_v1: >-
-                        {%- set _r = _kfc_raw -%}
-                        {%- set _v1 = _r.get('value', _r) if _r is mapping else {} -%}
-                        {%- set _v2 = _v1 if _v1 is mapping else (_v1 | from_json if _v1 is string else {}) -%}
-                        {{ _v2 if _v2 is mapping else (_v2 | from_json if _v2 is string else {}) }}
+                      #_kfc_raw: "{{ _dojo_all.get(repeat.item, {}) }}"
+                      _kfc_v1: >
+                        {{- CAB.cabinet_drawer_value(_rtt_dojo, _kfc_key) | from_json() -}}
+
                   - if:
                       - condition: template
                         value_template: "{{ _kfc_v1 is mapping and _kfc_v1.get('kata_key', '') != '' }}"
@@ -590,7 +589,9 @@ script:
         sequence:
         - variables:
             cab: '{{ repeat.item }}'
-            vars: '{{ state_attr(cab,''variables'') | default({}, true) }}'
+            vars: >
+              {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+              {{ CAB.cabinet_variables(cab) | from_json() }}
             drawers: '{{ vars.keys() | list }}'
         - choose:
           - conditions:
@@ -710,21 +711,30 @@ script:
                 response_variable: result
             # ── Classifier ─────────────────────────────────────────────────
             - variables:
-                _vars: >-
-                  {%- set v = state_attr(cab, 'variables') | default(none, true) -%}
-                  {{ v if v is mapping else {} }}
-                has_volumeinfo: "{{ 'AI_Cabinet_VolumeInfo' in _vars }}"
-                has_label_index: "{{ '_label_index' in _vars }}"
-                has_context:     "{{ '_context' in _vars }}"
+                _vars: >
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_variables(cab) | from_json() }}
+                has_volumeinfo: >
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_drawer_exists(cab, 'AI_Cabinet_VolumeInfo') | from_json() }}
+                has_label_index: >
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_drawer_exists(cab, '_label_index') | from_json() }}
+                has_context: >
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_drawer_exists(cab, '_context') | from_json() }}
                 non_system_drawers: >-
-                  {%- set sys = ['AI_Cabinet_VolumeInfo','_label_index','_context',
-                                 '_restored_marker','_hammered'] -%}
+                  {%- set sys = ['AI_Cabinet_VolumeInfo','_label_index','_context', '_restored_marker','_hammered'] -%}
                   {{ _vars.keys() | reject('in', sys) | reject('match', '^_') | list }}
-                _vi_raw: "{{ _vars.get('AI_Cabinet_VolumeInfo', {}) }}"
+                _vi_raw: >
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{ CAB.cabinet_drawer(_cab, 'AI_Cabinet_VolumeInfo', {}) | from_json() -}}
                 _vi_val: >-
-                  {%- set r = _vi_raw.get('value', {}) if _vi_raw is mapping else {} -%}
-                  {{ r if r is mapping else (r | from_json if r is string else {}) }}
-                cabinet_guid: "{{ _vi_val.get('id', '') | string | trim }}"
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{- CAB.cabinet_drawer_value(_cab, 'AI_Cabinet_VolumeInfo') | from_json() -}}
+                cabinet_guid: >
+                  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+                  {{- CAB.cabinet_guid(_cab) -}}
                 cabinet_state_class: >-
                   {%- if not has_volumeinfo and not has_label_index and not has_context
                          and (non_system_drawers | length == 0)
@@ -884,10 +894,10 @@ script:
             {{ label_entities('Zen Cabinet' | slugify) | list }}
       - variables:
           mount_status_result: >-
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
             {%- set ns = namespace(m={}) -%}
             {%- for eid in _all_cabs -%}
-              {%- set _v = state_attr(eid, 'variables') | default({}, true) -%}
-              {%- set _v = _v if _v is mapping else {} -%}
+              {%- set _v = CAB.cabinet_variables(eid) | from_json() -%}
               {%- set _mt = _v.get('meta', {}) -%}
               {%- set _mt = _mt if _mt is mapping else (_mt | from_json if _mt is string else {}) -%}
               {%- set ns.m = ns.m | combine({eid: {'state': states(eid), 'mounted': _mt.get('mounted', false)}}) -%}
@@ -901,8 +911,9 @@ script:
         value_template: '{{ op == ''flip_schema_version'' }}'
       then:
       - variables:
-          _syscab_vars: '{{ state_attr(''sensor.zenos_system_cabinet'', ''variables'') | default({}, true) }}'
-          _syscab_mapped: '{{ _syscab_vars if _syscab_vars is mapping else {} }}'
+          _syscab_mapped: >
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{ CAB.cabinet_variables('sensor.zenos_system_cabinet') | from_json() }}
           _csve: '{{ _syscab_mapped.get(''cab_schema_version'', {}) }}'
           _csve_mapped: '{{ _csve if _csve is mapping else {} }}'
           _current_v: '{{ _csve_mapped.get(''value'', 0) | int(0) }}'
@@ -1001,7 +1012,13 @@ script:
           }}'
         now_iso: '{{ now().isoformat() }}'
         schema_version: 1
-        cabinet_guid: "{{ '%04x%04x-%04x-%04x-%04x-%04x%04x%04x' | format(range(0,65536)|random,range(0,65536)|random,range(0,65536)|random,range(0,65536)|random,range(0,65536)|random,range(0,65536)|random,range(0,65536)|random,range(0,65536)|random) if (force_new_guid or not cabinet_guid) else cabinet_guid }}"
+        cabinet_guid: >
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {{ 
+            CAB.cabinet_guid_new() 
+            if (force_new_guid or not cabinet_guid) else cabinet_guid
+          }}
+        # @todo - this looks problematic - who else has a sensor in their setup named 'sensor.zen_library_manifest'???
         labels_from_manifest: '{{ state_attr(''sensor.zen_library_manifest'',''value'')
           | default({}, true) }}'
         flag_profile: "{% if not auto_profile %}\n  {{ explicit_flag_profile | default('standard')
@@ -1031,8 +1048,9 @@ script:
           \   {% endif %}\n  {% endfor %}\n{% endif %} {{\n  [\n    {\n      \"family_guid\":
           fam_guid,\n      \"nickname\": fam_name\n    }\n  ]\n}}"
         mount_scan: '{{ mount_scan | default(true) }}'
-        existing_drawers: '{{ state_attr(cabinet_entity,''variables'') | default({},
-          true) }}'
+        existing_drawers: >
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {{ CAB.cabinet_variables(cabinet_entity) | from_json() }}
         mounts_out: "{% if mount_scan and existing_drawers is mapping %}
     {%- set ns = namespace(mounts=[]) -%}
     {%- for k in existing_drawers.keys() if '[' in k and 'mount:' in k -%}
@@ -1079,10 +1097,8 @@ script:
       - conditions:
         - condition: template
           value_template: >-
-            {{
-              state_attr(cabinet_entity, 'variables') is none
-              or 'AI_Cabinet_VolumeInfo' not in (state_attr(cabinet_entity, 'variables') | default({}))
-            }}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{ not (CAB.cabinet_drawer_exists(cabinet_entity, 'AI_Cabinet_VolumeInfo') | from_json()) }}
         alias: Initialize New Cabinet
         sequence:
         - repeat:
@@ -1117,16 +1133,18 @@ script:
           response_variable: response
       - conditions:
         - condition: template
-          value_template: '{{ state_attr(cabinet_entity,''variables'') is mapping }}'
+          value_template: >
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{ CAB.cabinet_variables(cabinet_entity, none) | from_json() is not none}}
         alias: Repair / Restamp
         sequence:
         - variables:
-            existing: '{{ state_attr(cabinet_entity,''variables'') }}'
+            existing: >
+              {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+              {{ CAB.cabinet_variables(cabinet_entity) | from_json() }}
             existing_guid: >-
-              {%- set info = existing.get('AI_Cabinet_VolumeInfo', {}) if existing is mapping else {} -%}
-              {%- set _val = info.get('value', {}) if info is mapping else {} -%}
-              {%- set _val = _val if _val is mapping else (_val | from_json if _val is string else {}) -%}
-              {{ _val.get('id', '') }}
+              {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+              {{ cabinet_guid(entity_id) }}
             guid_changed: '{{ force_new_guid or existing_guid != cabinet_guid }}'
         - choose:
           - conditions:
@@ -2526,8 +2544,9 @@ script:
     # Prompt loader writes directly to syscab via set_variable_zenos_system_cabinet.
     # On any run, if cabinet_ro is missing or false, stamp it. Safe to re-run.
     - variables:
-        _pl_sc_vars: '{{ state_attr(''sensor.zenos_system_cabinet'', ''variables'') | default({}, true) }}'
-        _pl_sc_mapped: '{{ _pl_sc_vars if _pl_sc_vars is mapping else {} }}'
+        _pl_sc_mapped: >
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {{ CAB.cabinet_variables('sensor.zenos_system_cabinet') | from_json() }}
         _pl_vi_raw: '{{ _pl_sc_mapped.get(''AI_Cabinet_VolumeInfo'', {}) }}'
         _pl_vi_mapped: '{{ _pl_vi_raw if _pl_vi_raw is mapping else {} }}'
         _pl_vi_val_raw: '{{ _pl_vi_mapped.get(''value'', _pl_vi_mapped) }}'

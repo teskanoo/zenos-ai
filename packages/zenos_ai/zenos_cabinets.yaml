@@ -84,7 +84,8 @@ template:
           # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
           # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
           current: >-
-            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{- CAB.cabinet_variables(this_entity_id, none) | from_json() -}}
       # ── BOOT GUARD ────────────────────────────────────────────────────────────
       # current is none = recorder has not yet restored this cabinet's state.
       # We do not know what is in it. NEVER write into unknown state.
@@ -219,7 +220,8 @@ template:
           # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
           # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
           current: >-
-            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{- CAB.cabinet_variables(this_entity_id, none) | from_json() -}}
       # ── BOOT GUARD ────────────────────────────────────────────────────────────
       # current is none = recorder has not yet restored this cabinet's state.
       # We do not know what is in it. NEVER write into unknown state.
@@ -354,7 +356,8 @@ template:
           # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
           # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
           current: >-
-            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{- CAB.cabinet_variables(this_entity_id, none) | from_json() -}}
       # ── BOOT GUARD ────────────────────────────────────────────────────────────
       # current is none = recorder has not yet restored this cabinet's state.
       # We do not know what is in it. NEVER write into unknown state.
@@ -489,7 +492,8 @@ template:
           # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
           # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
           current: >-
-            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{- CAB.cabinet_variables(this_entity_id, none) | from_json() -}}
       # ── BOOT GUARD ────────────────────────────────────────────────────────────
       # current is none = recorder has not yet restored this cabinet's state.
       # We do not know what is in it. NEVER write into unknown state.
@@ -624,7 +628,8 @@ template:
           # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
           # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
           current: >-
-            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{- CAB.cabinet_variables(this_entity_id, none) | from_json() -}}
       # ── BOOT GUARD ────────────────────────────────────────────────────────────
       # current is none = recorder has not yet restored this cabinet's state.
       # We do not know what is in it. NEVER write into unknown state.
@@ -759,7 +764,8 @@ template:
           # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
           # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
           current: >-
-            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{- CAB.cabinet_variables(this_entity_id, none) | from_json() -}}
       # ── BOOT GUARD ────────────────────────────────────────────────────────────
       # current is none = recorder has not yet restored this cabinet's state.
       # We do not know what is in it. NEVER write into unknown state.
@@ -898,7 +904,8 @@ template:
           # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
           # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
           current: >-
-            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{- CAB.cabinet_variables(this_entity_id, none) | from_json() -}}
       # ── BOOT GUARD ────────────────────────────────────────────────────────────
       # current is none = recorder has not yet restored this cabinet's state.
       # We do not know what is in it. NEVER write into unknown state.
@@ -1033,7 +1040,8 @@ template:
           # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
           # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
           current: >-
-            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{- CAB.cabinet_variables(this_entity_id, none) | from_json() -}}
       # ── BOOT GUARD ────────────────────────────────────────────────────────────
       # current is none = recorder has not yet restored this cabinet's state.
       # We do not know what is in it. NEVER write into unknown state.
@@ -1172,7 +1180,8 @@ template:
           # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
           # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
           current: >-
-            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{- CAB.cabinet_variables(this_entity_id, none) | from_json() -}}
       # ── BOOT GUARD ────────────────────────────────────────────────────────────
       # current is none = recorder has not yet restored this cabinet's state.
       # We do not know what is in it. NEVER write into unknown state.
@@ -1307,7 +1316,8 @@ template:
           # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
           # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
           current: >-
-            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{- CAB.cabinet_variables(this_entity_id, none) | from_json() -}}
       # ── BOOT GUARD ────────────────────────────────────────────────────────────
       # current is none = recorder has not yet restored this cabinet's state.
       # We do not know what is in it. NEVER write into unknown state.
@@ -1446,7 +1456,8 @@ template:
           # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
           # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
           current: >-
-            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{- CAB.cabinet_variables(this_entity_id, none) | from_json() -}}
       # ── BOOT GUARD ────────────────────────────────────────────────────────────
       # current is none = recorder has not yet restored this cabinet's state.
       # We do not know what is in it. NEVER write into unknown state.
@@ -1581,7 +1592,8 @@ template:
           # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
           # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
           current: >-
-            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{- CAB.cabinet_variables(this_entity_id, none) | from_json() -}}
       # ── BOOT GUARD ────────────────────────────────────────────────────────────
       # current is none = recorder has not yet restored this cabinet's state.
       # We do not know what is in it. NEVER write into unknown state.
@@ -1720,7 +1732,8 @@ template:
           # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
           # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
           current: >-
-            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{- CAB.cabinet_variables(this_entity_id, none) | from_json() -}}
       # ── BOOT GUARD ────────────────────────────────────────────────────────────
       # current is none = recorder has not yet restored this cabinet's state.
       # We do not know what is in it. NEVER write into unknown state.
@@ -1855,7 +1868,8 @@ template:
           # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
           # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
           current: >-
-            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{- CAB.cabinet_variables(this_entity_id, none) | from_json() -}}
       # ── BOOT GUARD ────────────────────────────────────────────────────────────
       # current is none = recorder has not yet restored this cabinet's state.
       # We do not know what is in it. NEVER write into unknown state.
@@ -2000,7 +2014,8 @@ template:
           # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
           # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
           current: >-
-            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{- CAB.cabinet_variables(this_entity_id, none) | from_json() -}}
       # ── BOOT GUARD ────────────────────────────────────────────────────────────
       # current is none = recorder has not yet restored this cabinet's state.
       # We do not know what is in it. NEVER write into unknown state.
@@ -2134,7 +2149,8 @@ template:
           # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
           # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
           current: >-
-            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{- CAB.cabinet_variables(this_entity_id, none) | from_json() -}}
       # ── BOOT GUARD ────────────────────────────────────────────────────────────
       # current is none = recorder has not yet restored this cabinet's state.
       # We do not know what is in it. NEVER write into unknown state.
@@ -2268,7 +2284,8 @@ template:
           # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
           # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
           current: >-
-            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{- CAB.cabinet_variables(this_entity_id, none) | from_json() -}}
       # ── BOOT GUARD ────────────────────────────────────────────────────────────
       # current is none = recorder has not yet restored this cabinet's state.
       # We do not know what is in it. NEVER write into unknown state.
@@ -2402,7 +2419,8 @@ template:
           # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
           # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
           current: >-
-            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{- CAB.cabinet_variables(this_entity_id, none) | from_json() -}}
       # ── BOOT GUARD ────────────────────────────────────────────────────────────
       # current is none = recorder has not yet restored this cabinet's state.
       # We do not know what is in it. NEVER write into unknown state.
@@ -2536,7 +2554,8 @@ template:
           # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
           # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
           current: >-
-            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{- CAB.cabinet_variables(this_entity_id, none) | from_json() -}}
       # ── BOOT GUARD ────────────────────────────────────────────────────────────
       # current is none = recorder has not yet restored this cabinet's state.
       # We do not know what is in it. NEVER write into unknown state.
@@ -2670,7 +2689,8 @@ template:
           # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
           # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
           current: >-
-            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{- CAB.cabinet_variables(this_entity_id, none) | from_json() -}}
       # ── BOOT GUARD ────────────────────────────────────────────────────────────
       # current is none = recorder has not yet restored this cabinet's state.
       # We do not know what is in it. NEVER write into unknown state.
@@ -2877,7 +2897,8 @@ automation:
         manifest_key: zen_library_manifest
         manifest_entity: sensor.zenos_default_household_cabinet
         manifest_data: >
-          {% set vars = state_attr(manifest_entity, 'variables') | default({}, true) %}
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {% set vars = CAB.cabinet_variables(manifest_entity) | from_json() %}
           {% set slot = vars.get(manifest_key, {}) if vars is mapping else {} %}
           {{ slot.get('value', {}) if slot is mapping else {} }}
 
@@ -2913,13 +2934,12 @@ automation:
 
         # Cabinet → info
         cabinet_info: >
-          {% set vars = state_attr(volume_entity, 'variables') | default({}, true) %}
-          {% set entry = vars.get('AI_Cabinet_VolumeInfo', {}) %}
-          {{ entry if entry is mapping else {} }}
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {{ CAB.cabinet_drawer(volume_entity, 'AI_Cabinet_VolumeInfo') | from_json() }}
 
         cabinet_info_value: >
-          {% set val = cabinet_info.get('value', {}) if cabinet_info is mapping else {} %}
-          {{ val if val is mapping else (val | from_json if val is string else {}) }}
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {{ CAB.cabinet_drawer_value(volume_entity, 'AI_Cabinet_VolumeInfo') | from_json() }}
         cabinet_guid: >
           {% set civ = cabinet_info_value if cabinet_info_value is mapping else (cabinet_info_value | from_json if cabinet_info_value is string else {}) %}
           {% if civ.get('id') %}

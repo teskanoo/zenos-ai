@@ -294,7 +294,8 @@ automation:
         _force_component: "{{ zen_event_component | default('', true) | slugify }}"
         _protected: "['AI_Cabinet_VolumeInfo', 'kfc_template', 'zen_library_manifest', 'zen_identity_manifest', '_context']"
         _subscribers: >-
-          {%- set dojo_vars = state_attr(_dojo_cab, 'variables') | default({}, true) -%}
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {%- set dojo_vars = CAB.cabinet_variables(_dojo_cab) | from_json() -%}
           {%- if _dojo_cab in ['unknown', 'unavailable'] or _kata_cab in ['unknown', 'unavailable'] -%}
             {{ [] }}
           {%- else -%}

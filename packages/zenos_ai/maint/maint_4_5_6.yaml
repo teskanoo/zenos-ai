@@ -109,12 +109,8 @@ script:
     # Read current VolumeInfo
     - variables:
         _vi_raw: >-
-          {%- set _v = state_attr(_cab, 'variables') | default({}, true) -%}
-          {%- set _v = _v if _v is mapping else {} -%}
-          {%- set _vi = _v.get('AI_Cabinet_VolumeInfo', {}) -%}
-          {%- set _vi = _vi.get('value', _vi) if _vi is mapping else {} -%}
-          {%- set _vi = _vi | from_json if _vi is string else _vi -%}
-          {{ _vi | tojson }}
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {{ CAB.cabinet_drawer_value(_cab, 'AI_Cabinet_VolumeInfo') | from_json() }}
     - variables:
         _existing_id: >-
           {%- set _vi = _vi_raw | from_json if _vi_raw is string else (_vi_raw if _vi_raw is mapping else {}) -%}
@@ -133,15 +129,8 @@ script:
     # Generate v4-style UUID (all ranges capped at 65536 — HA sandbox MAX_RANGE=100000)
     - variables:
         _new_guid: >-
-          {%- set p1a = range(0, 65536) | random -%}
-          {%- set p1b = range(0, 65536) | random -%}
-          {%- set p2  = range(0, 65536) | random -%}
-          {%- set p3  = range(0, 4096)  | random -%}
-          {%- set p4  = range(0, 4096)  | random -%}
-          {%- set p5  = range(0, 65536) | random -%}
-          {%- set p6a = range(0, 65536) | random -%}
-          {%- set p6b = range(0, 65536) | random -%}
-          {{ '%04x%04x-%04x-4%03x-8%03x-%04x%04x%04x' | format(p1a, p1b, p2, p3, p4, p5, p6a, p6b) }}
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {{ CAB.cabinet_guid_new_v4() }}
     # Patch id into VolumeInfo and write back via set_variable_legacy (same path as admintools)
     - variables:
         _vi_patched: >-
@@ -204,15 +193,15 @@ script:
     # Read current family and household member lists (dynamic — works for any topology)
     - variables:
         _fam_members_raw: >-
-          {%- set _v = state_attr(_fam_cab, 'variables') | default({}, true) -%}
-          {%- set _v = _v if _v is mapping else {} -%}
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {%- set _v = CAB.cabinet_variables(_fam_cab) | from_json() -%}
           {%- set _m = _v.get('members', {}) -%}
           {%- set _m = _m if _m is mapping else (_m | from_json if _m is string else {}) -%}
           {%- set _m = _m.get('value', _m) if _m is mapping else {} -%}
           {{ _m | tojson }}
         _hh_members_raw: >-
-          {%- set _v = state_attr(_hh_cab, 'variables') | default({}, true) -%}
-          {%- set _v = _v if _v is mapping else {} -%}
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {%- set _v = CAB.cabinet_variables(_hh_cab) | from_json() -%}
           {%- set _m = _v.get('members', {}) -%}
           {%- set _m = _m if _m is mapping else (_m | from_json if _m is string else {}) -%}
           {%- set _m = _m.get('value', _m) if _m is mapping else {} -%}

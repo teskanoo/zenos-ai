@@ -41,7 +41,8 @@ script:
       - variables:
           _ai_cab: "{{ states('sensor.zen_default_ai_user_cabinet_resolved') }}"
           _ai_vars: >-
-            {{ state_attr(_ai_cab, 'variables') | default({}, true)
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{ CAB.cabinet_variables(_ai_cab) | from_json()
                if _ai_cab != '' else {} }}
           _oobe_done: "{{ '_oobe_complete' in _ai_vars }}"
           _essence_raw: "{{ _ai_vars.get('zenai_essence', {}) }}"

@@ -174,7 +174,8 @@ automation:
         _protected: "['AI_Cabinet_VolumeInfo', 'kfc_template', 'zen_library_manifest', '_context']"
         # @todo cabinet_variables_from_label('Zen Dojo Cabinet') | from_json()
         _subscribers: >-
-          {%- set dojo_vars = state_attr(_dojo_cab, 'variables') | default({}, true) -%}
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+          {%- set dojo_vars = CAB.cabinet_variables(_dojo_cab) | from_json() -%}
           {%- set trig_id   = trigger.id | default('') -%}
           {%- set force_c   = zen_event_component | default('') | slugify -%}
           {%- set protected = ['AI_Cabinet_VolumeInfo', 'kfc_template', 'zen_library_manifest', '_context'] -%}

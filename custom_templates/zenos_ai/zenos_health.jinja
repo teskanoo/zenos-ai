@@ -132,13 +132,17 @@ Provides mapping of slots to default entities
 #######################################################################
 -#}
 {%- macro essence_probe(cab) -%}
-  {%- set _av = state_attr(cab, 'variables') | default({}, true)
+  {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+  {#
+  {%- set _av = CAB.cabinet_variables(cab) | from_json()
                 if (cab != '' and cab not in ['unknown','unavailable']
                     and states(cab) not in ['unknown','unavailable'])
                 else {} -%}
   {%- set _raw = _av.get('zenai_essence', {}) if _av is mapping else {} -%}
   {%- set _r1  = _raw.get('value', _raw) if _raw is mapping else {} -%}
   {%- set _ev  = _r1 if _r1 is mapping else (_r1 | from_json if _r1 is string else {}) -%}
+  #}
+  {%- set _ev = CAB.cabinet_drawer_value(cab, 'zenai_essence', none) -%}
   {%- if not (_ev is mapping and _ev) -%}
     {{- {'schema': 'empty', 'valid': false, 'name': '', 'guid': '', 'jacket_id': '',
          'signed_by': '', 'signed_by_ok': false,

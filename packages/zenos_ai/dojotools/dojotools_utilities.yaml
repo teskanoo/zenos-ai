@@ -608,11 +608,12 @@ script:
         _filtered: >-
           {%- set cabs = label_entities('zen_cabinet') | select('match', '^sensor\.') | list -%}
           {%- set ns = namespace(out=[]) -%}
+          {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
           {%- for e in cabs -%}
-            {%- set vars = state_attr(e, 'variables') -%}
+            {%- set vars = CAB.cabinet_variables(e) | from_json() -%}
             {%- if vars is mapping -%}
-              {%- set vi_raw = vars.get('AI_Cabinet_VolumeInfo') -%}
-              {%- set vi = vi_raw.get('value', vi_raw) if vi_raw is mapping else none -%}
+              {%- set vi = CAB.cabinet_drawer_value(e, 'AI_Cabinet_VolumeInfo') -%}
+
               {%- if vi is mapping -%}
                 {%- set hidden = vi.get('flags', {}).get('hidden', false) or e.startswith('sensor._') -%}
                 {%- if (not hidden) or _include_hidden -%}

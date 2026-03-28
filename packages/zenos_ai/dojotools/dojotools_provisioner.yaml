@@ -253,15 +253,12 @@ script:
       # FG-38 safe — two-round normalization on VolumeInfo
       - variables:
           _vi_vars: >-
-            {%- set _v = state_attr(_target, 'variables') | default({}, true) -%}
-            {{ _v if _v is mapping else {} }}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{ CAB.cabinet_variables(_target) | from_json() }}
       - variables:
           _vi_entry: >-
-            {%- set _e = _vi_vars.get('AI_Cabinet_VolumeInfo', {}) -%}
-            {%- set _e = _e if _e is mapping else (_e | from_json if _e is string else {}) -%}
-            {%- set _vi = _e.get('value', _e) -%}
-            {%- set _vi = _vi if _vi is mapping else (_vi | from_json if _vi is string else {}) -%}
-            {{ _vi }}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
+            {{ CAB.cabinet_drawer)value(_target, 'AI_Cabinet_VolumeInfo') | from_json() }}
       - variables:
           _guid: "{{ _vi_entry.get('id', '') | trim }}"
           _guid_pattern: "(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
@@ -299,15 +296,10 @@ script:
           _guid_collision: >-
             {%- set ns = namespace(collision='') -%}
             {%- set all_cabs = label_entities('Zen Cabinet' | slugify) | list -%}
+            {%- import 'zenos_ai/zenos_cabinets.jinja' as CAB -%}
             {%- for eid in all_cabs if eid != _target -%}
               {%- if states(eid) == 'online_mounted' -%}
-                {%- set _v = state_attr(eid, 'variables') | default({}, true) -%}
-                {%- set _v = _v if _v is mapping else {} -%}
-                {%- set _e = _v.get('AI_Cabinet_VolumeInfo', {}) -%}
-                {%- set _e = _e if _e is mapping else (_e | from_json if _e is string else {}) -%}
-                {%- set _vi = _e.get('value', _e) -%}
-                {%- set _vi = _vi if _vi is mapping else (_vi | from_json if _vi is string else {}) -%}
-                {%- set _other_guid = _vi.get('id', '') | trim -%}
+                {%- set _other_guid = CAB.cabinet_guid(eid) -%}
                 {%- if _other_guid != '' and _other_guid | lower == _guid | lower -%}
                   {%- set ns.collision = eid -%}
                 {%- endif -%}
