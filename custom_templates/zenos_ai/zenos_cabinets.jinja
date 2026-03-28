@@ -1,0 +1,661 @@
+{#- zenos_cabinets.jinja -#}
+
+{#- <editor-fold desc="Docs" defaultstate="collapsed"> -#}
+{#- <editor-fold desc="API" defaultstate="collapsed"> -#}
+
+{#
+-----------------
+ZENOS CABINET API
+-----------------
+cabinet_list_from_label(cabinet_label)
+  Returns all sensor entities associated with a specific label.
+
+cabinet_id_from_label(cabinet_label, default_return)
+  Resolves a label to a single primary cabinet sensor entity ID.
+
+cabinet_id_from_slot(cabinet_slot, default_return)
+  Maps a physical slot designation to a specific entity ID.
+
+cabinet_variables(entity_id)
+  Extracts the 'variables' attribute dict from a known entity.
+  Returns the 'variables' attribute dict as JSON.
+  Safety: Returns {} if entity is unavailable.
+
+cabinet_variables_from_label(cabinet_label)
+  Resolves a label and extracts its variables in one step.
+  Returns the 'variables' attribute dict as JSON.
+  Safety: Depends on cabinet_id_from_label logic.
+#}
+{#- </editor-fold> -#}
+
+
+{#- <editor-fold desc="Assumptions" defaultstate="collapsed"> -#}
+
+{#-
+@assumptions: A Cabinet using these macros ALWAYS has the following structure
+
+    state: Variables
+
+    attributes:
+
+      # icon and friendly_name populated from HA-Template-Configuration
+      icon: mdi:file-cabinet
+      friendly_name: ZenOS Default AI User Cabinet
+
+      # [boolean] Indicates if attributes are to be timestampped
+      default_timestamp: true
+
+      # [boolean] Indicates if attribute changes should be logged to the logbook
+      log_events: false
+
+      # [dict] Data storage for the cabinet template sensor
+      variables:
+
+          attr_1:
+            # value: [string|list|dict] The Value of 'attr_1' [optional]
+            value: {}
+            # timestamp: [string|null] last modified datetime of 'attr_1' [optional]
+            timestamp: '2026-03-12T19:40:11.060327-07:00'
+
+          attr_2:
+            value: 'string-value'
+            timestamp: null
+
+          attr_3:
+            value:
+            - list-item-1
+            - list-item-2
+
+          attr_n:
+            value: ...
+-#}
+{#- </editor-fold> -#}
+
+{#- </editor-fold> -#}
+
+{#- <editor-fold desc="Cabinet Helpers" defaultstate="collapsed"> -#}
+
+{#-
+@macro: cabinet_list_from_label
+@desc: Retrieves a comprehensive list of all 'sensor' domain entities matching a specific label.
+@param: cabinet_label (string) - The HA label to query.
+@returns: JSON Array - A list of entity IDs.
+@usage: {{ cabinet_list_from_label('kitchen_storage') | from_json() }}
+-#}
+{%- macro cabinet_list_from_label(cabinet_label) -%}
+    {{- label_entities(cabinet_label)
+    | select('match', 'sensor[.]')
+    | list
+    | to_json(pretty_print=true) -}}
+{%- endmacro -%}
+
+{#-
+@macro: cabinet_id_from_label
+@desc: Resolves a label to the first available 'sensor' entity ID found.
+@param: cabinet_label (string) - The HA label to query.
+@param: default_return (any) - Value to return if no entity is matched. Defaults to ''.
+@returns: String - The entity ID (e.g., 'sensor.cabinet_1') or default_return.
+@note: Uses character class [.] for regex safety.
+   Not using any of the following variants here
+    1. | select('match', 'sensor.')
+    2. | select('match', 'sensor\.')
+    3. | select('match', 'sensor\\.')
+    Character Class: [.] Is cleaner to read and avoids backslash confusion entirely.
+@caveat: | first will only ever give you the one that comes first alphabetically.
+@note: label_entities ALWAYS returns a list and usually returns IDs in the order they were assigned or created, which often happens to be alphabetical
+@usage: {{ cabinet_id_from_label('tool_chest', 'sensor.none') | from_json() }}
+-#}
+{%- macro cabinet_id_from_label(cabinet_label, default_return='') -%}
+    {{- label_entities(cabinet_label)
+    | select('match', 'sensor[.]')
+    | list
+    | first
+    | default(default_return) -}}
+{%- endmacro -%}
+
+{#-
+@macro: cabinet_id_from_slot
+@desc: Cross-references a cabinet slot designation against the ZenOS health configuration.
+@param: cabinet_slot (string) - The slot identifier to look up.
+@param: default_return (any) - Value to return if slot is not mapped.
+@returns: String - The mapped entity ID.
+@usage: {{ cabinet_id_from_slot('ai_user') }}
+-#}
+{%- macro cabinet_id_from_slot(cabinet_slot, default_return='') -%}
+    {%- import 'zenos_ai/zenos_health.jinja' as HEALTH -%}
+    {%- set slot_to_default_entity = HEALTH.slot_to_default_entity() | from_json() -%}
+    {{- slot_to_default_entity.get(cabinet_slot) | default(default_return) -}}
+{%- endmacro -%}
+
+
+
+{#-
+@macro: cabinet_variables
+@desc: Safe getter for the 'variables' attribute of a ZenOS schema cabinet.
+@param: entity_id (string) - The full HA entity ID.
+@param: fallback (dict) - Value to return if entity is missing, invalid, or 'variables' is undefined/falsy. Defaults to {}.
+@returns: JSON Object - The 'variables' dictionary, or fallback if entity is invalid.
+@note: Performs has_value() check before attempting extraction.
+@note: Uses | default(fallback, true) to treat any falsy value (none, false, "", [], {}) as needing the fallback.
+@usage: {{ cabinet_variables('sensor.ai_cabinet') | from_json() }}
+        {{ cabinet_variables('sensor.unknown', {'error': 'missing'}) | from_json() }}
+
+"Safe Getter" for the complex nested data structure defined in ZenOS cabinet schema.
+Purpose: Retrieves the variables attribute from a specific sensor entity while providing safety checks to prevent template errors.
+Input: entity_id (string): The full Home Assistant entity ID (e.g., sensor.kitchen_cabinet).
+Logic: Checks if the entity_id is provided and if the entity currently exists/has a valid state in the state machine using has_value().
+       If the entity is valid, extracts the variables attribute with defensive fallback for any falsy result.
+
+Fallback Behavior: The second parameter of | default(fallback, true) ensures that not only missing attributes,
+       but also null, false, empty strings, empty lists, and empty dicts are replaced with the fallback value.
+       This is critical for cabinet handling where an empty/undefined variables attribute should always resolve to {}.
+
+Output: A JSON-formatted string of the variables dictionary (or fallback if entity is missing/invalid).
+Technical Note: By using to_json(pretty_print=true), the output is optimized for debugging in the Developer Tools or for being passed into fields that expect a JSON string.
+-#}
+{%- macro cabinet_variables(entity_id, fallback = {}) -%}
+    {%- set rv = fallback -%}
+    {%- if entity_id and has_value(entity_id) -%}
+        {%- set rv = state_attr(entity_id, 'variables') | default(fallback, true) -%}
+    {%- endif -%}
+    {{- rv | to_json(pretty_print=true) -}}
+{%- endmacro -%}
+
+{#-
+@macro: cabinet_variables_from_label
+@desc: High-level wrapper to fetch cabinet data directly via a label.
+@param: cabinet_label (string) - The HA label assigned to the cabinet.
+@returns: JSON Object - The 'variables' dictionary.
+@usage: {{ cabinet_variables_from_label('primary_storage') | from_json() }}
+
+"High-Level Wrapper" that abstracts away the need to know the specific entity ID, relying instead on Home Assistant's organizational labels.
+
+Purpose: Finds the primary sensor associated with a label and returns its stored variables in one call.
+
+Input: cabinet_label (string): The slug or name of the Home Assistant label assigned to the cabinet sensor.
+
+Logic: Calls cabinet_id_from_label(cabinet_label) to resolve the label into a specific sensor. entity ID.
+        Passes that ID into cabinet_variables(entity_id).
+
+Output: A JSON-formatted string of the variables dictionary (or an empty JSON object if no entity is found for that label).
+-#}
+{%- macro cabinet_variables_from_label(cabinet_label) -%}
+    {%- set entity_id = cabinet_id_from_label(cabinet_label) -%}
+    {{- cabinet_variables(entity_id) -}}
+{%- endmacro -%}
+
+
+{#- </editor-fold> -#}
+
+{#- <editor-fold desc="Cabinet Drawer Helpers" defaultstate="collapsed"> -#}
+
+
+
+{#-
+@macro: cabinet_drawer_exists
+@desc: Checks if a drawer key exists in a cabinet's variables.
+@param: entity_id (string) - Cabinet sensor entity ID.
+@param: drawer_key (string) - Drawer key to check.
+@returns: JSON String - Boolean ("true" or "false").
+@usage: {% if (cabinet_drawer_exists('sensor.ai_cabinet', 'essence') | from_json) %}
+-#}
+{%- macro cabinet_drawer_exists(entity_id, drawer_key) -%}
+    {%- set vars = cabinet_variables(entity_id) | from_json -%}
+    {{- (drawer_key in vars) | to_json(pretty_print=true) -}}
+{%- endmacro -%}
+
+
+{#-
+@macro: cabinet_drawer
+@desc: Retrieves a drawer (attribute dict) from a cabinet's variables by key.
+@param: entity_id (string) - Cabinet sensor entity ID.
+@param: drawer_key (string) - The key name of the drawer to retrieve.
+@param: fallback (dict) - Value to return if drawer_key is not found. Defaults to {}.
+@returns: JSON Object - The drawer dictionary, or fallback if not found.
+@note: Handles JSON-encoded string values within the drawer by automatically parsing them.
+@note: If the drawer itself is a JSON string, it will be parsed; if parsing fails, fallback is used.
+@usage: {{ cabinet_drawer('sensor.ai_cabinet', 'essence') | from_json() }}
+        {{ cabinet_drawer('sensor.ai_cabinet', 'missing_drawer', {'error': 'not_found'}) | from_json() }}
+
+"Drawer Accessor" for retrieving a single attribute-dict from the cabinet's variables structure.
+Purpose: Provides safe access to any named drawer within a cabinet without manual dict traversal.
+Input: entity_id (string): The cabinet sensor entity ID.
+       drawer_key (string): The name of the drawer (e.g., 'essence', 'metadata', 'config').
+       fallback (dict): Default value if the drawer doesn't exist.
+Logic: Fetches the full variables dict using cabinet_variables().
+       Retrieves the drawer by key, defaulting to fallback if missing.
+       Detects and auto-parses JSON-encoded strings within the drawer value to handle legacy or nested encoding.
+Output: A JSON-formatted string of the drawer (or fallback if not found).
+-#}
+{%- macro cabinet_drawer(entity_id, drawer_key, fallback={}) -%}
+    {%- set vars = cabinet_variables(entity_id) | from_json -%}
+    {%- set drawer = vars.get(drawer_key, fallback) -%}
+    {#- Note that in some cabinets, the data under 'drawer_key' might be a JSON encoded string -#}
+    {%- if drawer is string -%}
+        {%- set drawer = drawer | from_json(fallback) -%}
+    {%- endif -%}
+    {{- drawer | to_json(pretty_print=true) -}}
+{%- endmacro -%}
+
+
+{#-
+@macro: cabinet_drawer_value
+@desc: Extracts the 'value' field from a named drawer in a cabinet's variables.
+@param: entity_id (string) - Cabinet sensor entity ID.
+@param: drawer_key (string) - The key name of the drawer to access.
+@param: fallback (any) - Value to return if 'value' field is not found. Defaults to {}.
+@returns: JSON Object/String - The 'value' field from the drawer, or fallback if not found.
+@note: Handles both JSON-encoded string values at the drawer level and within the 'value' field.
+@note: Useful for extracting stored data from cabinet attributes that follow the {value, timestamp} pattern.
+@usage: {{ cabinet_drawer_value('sensor.ai_cabinet', 'essence') | from_json() }}
+        {{ cabinet_drawer_value('sensor.ai_cabinet', 'config', {}) | from_json() }}
+
+"Drawer Value Extractor" for accessing the 'value' field specifically from a drawer.
+Purpose: Simplifies access to the data payload stored in cabinet attributes that follow the {value, timestamp} structure.
+Input: entity_id (string): The cabinet sensor entity ID.
+       drawer_key (string): The name of the drawer containing the value.
+       fallback (any): Default if the value field doesn't exist.
+Logic: Fetches the full drawer using cabinet_drawer().
+       Extracts the 'value' field from the drawer dict.
+       Handles JSON-encoded strings within the value field for nested encoding scenarios.
+Output: A JSON-formatted string of the value (or fallback if missing).
+-#}
+{%- macro cabinet_drawer_value(entity_id, drawer_key, fallback={}) -%}
+    {%- set drawer = cabinet_drawer(entity_id, drawer_key, {}) | from_json -%}
+    {%- set value = drawer.get('value', fallback) -%}
+    {#- Note that in some cabinets, the data under 'drawer_key'->'value' might be a JSON encoded string -#}
+    {%- if value is string -%}
+        {%- set value = value | from_json(fallback) -%}
+    {%- endif -%}
+    {{- value | to_json(pretty_print=true) -}}
+{%- endmacro -%}
+
+
+{#- </editor-fold> -#}
+
+{#- <editor-fold desc="Volume Drawer Helpers" defaultstate="collapsed"> -#}
+
+
+{#-
+@macro: volume_drawer
+@desc: Retrieves a drawer (attribute dict) from a volume object by key.
+@param: volume (dict) - The volume dictionary to access.
+@param: drawer_key (string) - The key name of the drawer to retrieve.
+@param: fallback (dict) - Value to return if drawer_key is not found. Defaults to {}.
+@returns: JSON Object - The drawer dictionary, or fallback if not found.
+@note: Handles JSON-encoded string values within the drawer by automatically parsing them.
+@note: Operates on a volume dict directly (rather than fetching from an entity), suitable for processing volume collections.
+@usage: {{ volume_drawer(my_volume, 'metadata') | from_json() }}
+        {{ volume_drawer(my_volume, 'missing', {'error': 'not_found'}) | from_json() }}
+
+"Volume Drawer Accessor" for retrieving a single attribute-dict from a volume object.
+Purpose: Parallels cabinet_drawer() but operates on a pre-fetched volume dict instead of an entity ID.
+Input: volume (dict): The volume object (e.g., from iterating over a volumes list).
+       drawer_key (string): The name of the drawer within the volume.
+       fallback (dict): Default value if the drawer doesn't exist.
+Logic: Retrieves the drawer from the volume dict by key, defaulting to fallback if missing.
+       Detects and auto-parses JSON-encoded strings within the drawer value.
+Output: A JSON-formatted string of the drawer (or fallback if not found).
+-#}
+{%- macro volume_drawer(volume, drawer_key, fallback={}) -%}
+    {%- set drawer = volume.get(drawer_key, fallback) -%}
+    {#- Note that in some cabinets, the data under 'drawer_key' might be a JSON encoded string -#}
+    {%- if drawer is string -%}
+        {%- set drawer = drawer | from_json(fallback) -%}
+    {%- endif -%}
+    {{- drawer | to_json(pretty_print=true) -}}
+{%- endmacro -%}
+
+
+
+{#-
+@macro: volume_drawer_value
+@desc: Extracts the 'value' field from a named drawer in a volume object.
+@param: volume (dict) - The volume dictionary to access.
+@param: drawer_key (string) - The key name of the drawer to access.
+@param: fallback (any) - Value to return if 'value' field is not found. Defaults to {}.
+@returns: JSON Object/String - The 'value' field from the drawer, or fallback if not found.
+@note: Handles both JSON-encoded string values at the drawer level and within the 'value' field.
+@note: Parallels cabinet_drawer_value() but operates on a volume dict rather than an entity ID.
+@usage: {{ volume_drawer_value(my_volume, 'metadata') | from_json() }}
+        {{ volume_drawer_value(my_volume, 'config', {}) | from_json() }}
+
+"Volume Drawer Value Extractor" for accessing the 'value' field from a drawer within a volume.
+Purpose: Simplifies access to the data payload stored in volume attributes that follow the {value, timestamp} structure.
+Input: volume (dict): The volume object.
+       drawer_key (string): The name of the drawer containing the value.
+       fallback (any): Default if the value field doesn't exist.
+Logic: Retrieves the drawer from the volume dict.
+       Extracts the 'value' field from the drawer.
+       Handles JSON-encoded strings within the value field.
+Output: A JSON-formatted string of the value (or fallback if missing).
+-#}
+{%- macro volume_drawer_value(volume, drawer_key, fallback={}) -%}
+    {%- set drawer = volume.get(drawer_key, {}) -%}
+    {%- set value = drawer.get('value', fallback) -%}
+    {#- Note that in some cabinets, the data under 'drawer_key'->'value' might be a JSON encoded string -#}
+    {%- if value is string -%}
+        {%- set value = value | from_json(fallback) -%}
+    {%- endif -%}
+    {{- value | to_json(pretty_print=true) -}}
+{%- endmacro -%}
+
+{#-
+@macro: volume_guid
+@desc: Extracts the GUID identifier from a volume object's VolumeInfo metadata.
+@param: volume (dict) - The volume dictionary containing VolumeInfo metadata.
+@param: fallback (string) - Value to return if GUID is not found. Defaults to ''.
+@returns: String - The GUID/ID value from VolumeInfo, or fallback if not found.
+@note: Assumes the volume follows the standard cabinet schema with 'AI_Cabinet_VolumeInfo' drawer.
+@note: Safely handles missing VolumeInfo by returning fallback; does not output JSON.
+@usage: {{ volume_guid(my_volume) }}
+        {{ volume_guid(my_volume, 'unknown') }}
+
+"Volume GUID Extractor" for retrieving the unique identifier from a volume's metadata block.
+Purpose: Provides direct access to a volume's identity (GUID/ID) from its VolumeInfo metadata without manual traversal.
+Input: volume (dict): The volume object.
+       fallback (string): Default if the ID/GUID is not present.
+Logic: Fetches the VolumeInfo drawer from the volume using volume_drawer_value().
+       Extracts the 'id' field from the VolumeInfo metadata.
+       Safely handles missing or null values, returning fallback.
+Output: A plain string GUID (not JSON-encoded), trimmed of whitespace.
+-#}
+{%- macro volume_guid(volume, fallback='') -%}
+    {%- set _vi_val = volume_drawer_value(volume, 'AI_Cabinet_VolumeInfo') | from_json() -%}
+    {%- set _guid = _vi_val.get('id', fallback) | string | trim -%}
+    {{- _guid -}}
+{%- endmacro -%}
+
+
+{#- </editor-fold> -#}
+
+{#- <editor-fold desc="AI_Cabinet_VolumeInfo" defaultstate="collapsed"> -#}
+
+{#-
+@macro: cabinet_volume_info
+@desc: Retrieves the 'AI_Cabinet_VolumeInfo' metadata block from a cabinet sensor.
+@param: entity_id (string) - The full HA entity ID of the cabinet sensor.
+@param: fallback (dict) - Value to return if VolumeInfo drawer is missing. Defaults to {}.
+@returns: JSON Object - The 'AI_Cabinet_VolumeInfo' metadata block, or fallback if not found.
+@note: Depends on cabinet_variables() for safe extraction. Caller must | from_json the result.
+@usage: {{ cabinet_volume_info('sensor.ai_cabinet') | from_json() }}
+        {{ cabinet_volume_info('sensor.unknown', {'error': 'missing'}) | from_json() }}
+
+"Cabinet Header Extractor" for the VolumeInfo block — the metadata and validation layer of a cabinet.
+Purpose: Provides safe, single-call access to cabinet identity metadata without manually navigating the variables structure.
+Input: entity_id (string): The full Home Assistant entity ID (e.g., sensor.kitchen_cabinet).
+Logic: Calls cabinet_variables(entity_id) to safely extract the variables attribute.
+       Then retrieves the 'AI_Cabinet_VolumeInfo' drawer from the result.
+
+The VolumeInfo block contains: id (GUID), version, friendly_name, description, flags, validation signature.
+Only the header metadata is exposed; the full drawer volume remains encapsulated.
+
+Output: A JSON-formatted string of the VolumeInfo metadata block (or fallback if drawer is missing).
+Technical Note: By using to_json(pretty_print=true), the output is optimized for debugging in the Developer Tools.
+-#}
+{%- macro cabinet_volume_info(entity_id, fallback = {}) -%}
+    {%- set rv = CAB.cabinet_drawer_value(entity_id, 'AI_Cabinet_VolumeInfo', fallback) | from_json() -%}
+    {{- rv | to_json(pretty_print=true) -}}
+{%- endmacro -%}
+
+{#-
+@macro: cabinet_volume_info_exists
+@desc: Checks if a cabinet has valid AI_Cabinet_VolumeInfo metadata.
+@param: entity_id (string) - The full HA entity ID of the cabinet sensor.
+@returns: JSON String - Boolean ("true" or "false").
+@note: Returns true only if VolumeInfo exists and is not none/null.
+@usage: {% if (cabinet_volume_info_exists('sensor.ai_cabinet') | from_json) %}
+-#}
+{%- macro cabinet_volume_info_exists(entity_id) -%}
+    {%- set _vi = cabinet_volume_info(entity_id, none) -%}
+    {%- set rv = _vi is not none -%}
+    {{- rv | to_json(pretty_print=true) -}}
+{%- endmacro -%}
+{#-
+"Cabinet Metadata Validator" that checks for the presence of VolumeInfo.
+Purpose: Safely determines if a cabinet sensor contains valid metadata before attempting to use it.
+Input: entity_id (string): The cabinet sensor entity ID.
+Logic: Fetches VolumeInfo using cabinet_volume_info() with a none fallback.
+       Checks if the result is not none (indicating successful retrieval).
+Output: A JSON-formatted boolean string ("true" or "false").
+-#}
+{%- macro cabinet_volume_info_exists(entity_id) -%}
+    {%- set _vi = cabinet_volume_info(entity_id, none) -%}
+    {%- set rv = _vi is not none -%}
+    {{- rv | to_json(pretty_print=true) -}}
+{%- endmacro -%}
+
+{#-
+@macro: cabinet_members
+@desc: Retrieves the members list or dict from a cabinet's 'members' drawer.
+@param: entity_id (string) - The full HA entity ID of the cabinet sensor.
+@param: fallback (dict) - Value to return if members drawer is missing. Defaults to {}.
+@returns: JSON Object - The members data structure, or fallback if not found.
+@note: Assumes the cabinet follows the standard schema with a 'members' attribute drawer.
+@note: Members can be a dict or list; no specific structure is enforced.
+@usage: {{ cabinet_members('sensor.ai_cabinet') | from_json() }}
+        {{ cabinet_members('sensor.ai_cabinet', []) | from_json() }}
+
+"Cabinet Members Accessor" for retrieving the members collection from a cabinet.
+Purpose: Provides convenient access to the members drawer without manual dict traversal.
+Input: entity_id (string): The cabinet sensor entity ID.
+       fallback (dict): Default value if the members drawer doesn't exist.
+Logic: Uses cabinet_drawer_value() to fetch the 'members' drawer's value field.
+       Returns the members data structure as-is, or fallback if missing.
+Output: A JSON-formatted string of the members data (or fallback if not found).
+-#}
+{%- macro cabinet_members(entity_id, fallback = {}) -%}
+    {%- set rv = CAB.cabinet_drawer_value(entity_id, 'members', fallback) | from_json() -%}
+    {{- rv | to_json(pretty_print=true) -}}
+{%- endmacro -%}
+
+{#-
+@macro: cabinet_guid
+@desc: Extracts the GUID identifier from a cabinet's AI_Cabinet_VolumeInfo metadata.
+@param: entity_id (string) - The full HA entity ID of the cabinet sensor.
+@param: fallback (string) - Value to return if GUID is not found. Defaults to ''.
+@returns: String - The GUID/ID value from VolumeInfo, or fallback if not found.
+@note: Looks for the 'id' field within VolumeInfo.
+@note: Safely handles missing metadata by returning fallback; does not output JSON.
+@usage: {{ cabinet_guid('sensor.ai_cabinet') }}
+        {{ cabinet_guid('sensor.ai_cabinet', 'unknown') }}
+
+"Cabinet GUID Extractor" for retrieving the unique identifier from a cabinet's metadata block.
+Purpose: Provides direct access to a cabinet's identity (GUID/ID) from its VolumeInfo metadata without manual traversal.
+Input: entity_id (string): The cabinet sensor entity ID.
+       fallback (string): Default if the ID/GUID is not present or metadata is missing.
+Logic: Fetches the VolumeInfo drawer's value using cabinet_drawer_value().
+       Extracts the 'id' field from VolumeInfo.
+       Safely handles missing or null values, returning fallback.
+Output: A plain string GUID (not JSON-encoded), trimmed of whitespace.
+-#}
+{%- macro cabinet_guid(entity_id, fallback='') -%}
+    {%- set _vi_val = cabinet_drawer_value(entity_id, 'AI_Cabinet_VolumeInfo') | from_json() -%}
+    {%- set _guid = _vi_val.get('id', fallback) | string | trim -%}
+    {{- _guid -}}
+{%- endmacro -%}
+
+{#-
+@macro: cabinet_guid_compat
+@desc: Extracts the GUID from a cabinet's VolumeInfo with backward compatibility fallback.
+@param: entity_id (string) - The full HA entity ID of the cabinet sensor.
+@param: fallback (string) - Value to return if GUID/guid is not found. Defaults to ''.
+@returns: String - The GUID value from VolumeInfo (tries 'id' first, then 'guid'), or fallback if not found.
+@note: Provides compatibility for cabinets using either 'id' or 'guid' field names.
+@note: Does not output JSON; returns a plain trimmed string.
+@usage: {{ cabinet_guid_compat('sensor.ai_cabinet') }}
+        {{ cabinet_guid_compat('sensor.ai_cabinet', 'unknown') }}
+
+"Cabinet GUID Extractor with Compatibility" for retrieving GUID from cabinets using different field naming conventions.
+Purpose: Supports legacy or alternate cabinet schemas where the GUID field may be named 'id' or 'guid'.
+Input: entity_id (string): The cabinet sensor entity ID.
+       fallback (string): Default if neither 'id' nor 'guid' fields are present.
+Logic: Fetches the VolumeInfo drawer's value using cabinet_drawer_value().
+       Attempts to extract the 'id' field first.
+       Falls back to 'guid' field if 'id' is not found.
+       Returns fallback if neither field exists.
+Output: A plain string GUID (not JSON-encoded), trimmed of whitespace.
+-#}
+{%- macro cabinet_guid_compat(entity_id, fallback='') -%}
+    {%- set _vi_val = cabinet_drawer_value(entity_id, 'AI_Cabinet_VolumeInfo') | from_json() -%}
+    {%- set _guid = _vi_val.get('id', _vi_val.get('guid', fallback)) | string | trim -%}
+    {{- _guid -}}
+{%- endmacro -%}
+
+{#-
+@macro: cabinet_friendly_name
+@desc: Extracts the user-friendly name from a cabinet's AI_Cabinet_VolumeInfo metadata.
+@param: entity_id (string) - The full HA entity ID of the cabinet sensor.
+@param: fallback (string) - Value to return if friendly_name is not found. Defaults to ''.
+@returns: String - The friendly_name from VolumeInfo, or fallback if not found.
+@note: Provides a human-readable label for the cabinet distinct from the entity ID.
+@note: Does not output JSON; returns a plain string.
+@usage: {{ cabinet_friendly_name('sensor.ai_cabinet') }}
+        {{ cabinet_friendly_name('sensor.unknown', 'Unnamed Cabinet') }}
+
+"Cabinet Friendly Name Extractor" for retrieving the user-facing name from cabinet metadata.
+Purpose: Provides easy access to a cabinet's display name for UI rendering or logging.
+Input: entity_id (string): The cabinet sensor entity ID.
+       fallback (string): Default if the friendly_name field is not present.
+Logic: Fetches the VolumeInfo drawer's value using cabinet_drawer_value().
+       Extracts the 'friendly_name' field from VolumeInfo.
+       Returns fallback if the field is missing or null.
+Output: A plain string (not JSON-encoded).
+-#}
+{%- macro cabinet_friendly_name(entity_id, fallback='') -%}
+    {%- set _vi_val = cabinet_drawer_value(entity_id, 'AI_Cabinet_VolumeInfo') | from_json() -%}
+    {%- set _guid = _vi_val.get('friendly_name', fallback) -%}
+    {{- _guid -}}
+{%- endmacro -%}
+
+
+{#-
+@macro: cabinet_guid_new
+@desc: Generates a new random GUID in standard UUID-like format (8-4-4-4-12 hex digits).
+@param: None
+@returns: String - A randomly generated GUID string (e.g., '1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b').
+@note: Uses Jinja's random filter to generate numeric parts; not cryptographically secure.
+@note: For non-security applications like temporary IDs or test data only.
+@usage: {{ cabinet_guid_new() }}
+
+"Random GUID Generator" for creating new cabinet identifiers.
+Purpose: Generates a new random GUID suitable for assigning unique identifiers to cabinets or volumes.
+Input: None
+Logic: Uses range() and random filter to generate 8 random 16-bit integers.
+       Formats them into a standard GUID structure with hyphens.
+Output: A plain string GUID in the format '8hex-4hex-4hex-4hex-12hex'.
+Technical Note: Not cryptographically secure; use for non-critical applications.
+-#}
+{%- macro cabinet_guid_new() -%}
+    {{- '%04x%04x-%04x-%04x-%04x-%04x%04x%04x'
+    | format(
+        range(0, 65536) | random, range(0, 65536) | random,
+        range(0, 65536) | random, range(0, 65536) | random,
+        range(0, 65536) | random, range(0, 65536) | random,
+        range(0, 65536) | random, range(0, 65536) | random
+    ) -}}
+{%- endmacro -%}
+
+{#-
+@macro: cabinet_guid_new_v4
+@desc: Generates a new UUID v4-compatible random GUID with version and variant bits set correctly.
+@param: None
+@returns: String - A randomly generated UUID v4 string (e.g., '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d').
+@note: Sets version bits to 4 and variant bits to 8 for RFC 4122 compliance.
+@note: Uses Jinja's random filter; not cryptographically secure but suitable for non-security use cases.
+@usage: {{ cabinet_guid_new_v4() }}
+
+"UUID v4 Compatible GUID Generator" for creating RFC 4122 compliant random GUIDs.
+Purpose: Generates a new random GUID with proper UUID v4 version and variant bits set for standards compliance.
+Input: None
+Logic: Generates random 16-bit integers for the first part (p1a, p1b) and second part (p2).
+       Generates random 12-bit integers for the version-sensitive parts (p3, p4).
+       Generates random 16-bit integers for the final two parts (p5, p6a, p6b).
+       Formats with version bit '4' in the third segment and variant bit '8' in the fourth segment.
+Output: A plain string GUID in RFC 4122 v4 format: '8hex-4hex-4vhex-8vhex-12hex'.
+Technical Note: The format string '4' and '8' represent literal version/variant bits; random parts fill remaining hex digits.
+-#}
+{%- macro cabinet_guid_new_v4() -%}
+    {%- set p1a = range(0, 65536) | random -%}
+    {%- set p1b = range(0, 65536) | random -%}
+    {%- set p2  = range(0, 65536) | random -%}
+    {%- set p3  = range(0, 4096)  | random -%}
+    {%- set p4  = range(0, 4096)  | random -%}
+    {%- set p5  = range(0, 65536) | random -%}
+    {%- set p6a = range(0, 65536) | random -%}
+    {%- set p6b = range(0, 65536) | random -%}
+    {{- '%04x%04x-%04x-4%03x-8%03x-%04x%04x%04x' | format(p1a, p1b, p2, p3, p4, p5, p6a, p6b) -}}
+{%- endmacro -%}
+
+{#-
+@macro: cabinet_acls
+@desc: Retrieves the access control list (ACLs) from a cabinet's AI_Cabinet_VolumeInfo metadata.
+@param: entity_id (string) - The full HA entity ID of the cabinet sensor.
+@param: fallback (dict) - Value to return if ACLs are not found. Defaults to {}.
+@returns: JSON Object - The ACLs data structure, or fallback if not found.
+@note: ACLs define permissions and access rules for the cabinet.
+@note: Assumes the cabinet follows the standard schema with VolumeInfo containing an 'acls' field.
+@usage: {{ cabinet_acls('sensor.ai_cabinet') | from_json() }}
+        {{ cabinet_acls('sensor.ai_cabinet', {'default': 'deny'}) | from_json() }}
+
+"Cabinet ACLs Accessor" for retrieving access control list metadata from a cabinet.
+Purpose: Provides convenient access to the permission/authorization data stored in a cabinet's metadata.
+Input: entity_id (string): The cabinet sensor entity ID.
+       fallback (dict): Default value if the ACLs field doesn't exist.
+Logic: Fetches the VolumeInfo drawer's value using cabinet_drawer_value().
+       Extracts the 'acls' field from VolumeInfo.
+       Returns the ACLs data structure as-is, or fallback if missing.
+Output: A JSON-formatted string of the ACLs data (or fallback if not found).
+-#}
+{%- macro cabinet_acls(entity_id, fallback={}) -%}
+    {%- set _vi_val = cabinet_drawer_value(entity_id, 'AI_Cabinet_VolumeInfo') | from_json() -%}
+    {%- set _acls = _vi_val.get('acls', fallback) -%}
+    {{- _acls | to_json(pretty_print=true) -}}
+{%- endmacro -%}
+
+{#- </editor-fold> -#}
+
+{#- <editor-fold desc="UTILITIES" defaultstate="collapsed"> -#}
+
+{#-
+@macro: safe_parse_json_string
+@desc: Safely parses a string that may contain JSON.
+@param: raw (string) - Raw input that might be JSON.
+@param: fallback (any) - Value if parsing fails.
+@returns: Parsed object or fallback.
+@usage: {% set data = safe_parse_json_string(my_string, {}) %}
+-#}
+{%- macro safe_parse_json_string(raw, fallback={}) -%}
+    {%- if raw is string -%}
+        {{- raw | from_json(default=fallback) | tojson -}}
+        {%- elif raw is mapping -%}
+        {{- raw | tojson -}}
+    {%- else -%}
+        {{- fallback | tojson -}}
+    {%- endif -%}
+{%- endmacro -%}
+
+{#-
+@macro: safe_get_nested
+@desc: Safely traverses a nested dict/object structure.
+@param: obj (any) - Starting object (dict, JSON string, or other).
+@param: keys (list) - Path of keys to traverse.
+@param: fallback (any) - Value if path doesn't exist.
+@returns: JSON String - Value at path, or fallback.
+@usage: {{ safe_get_nested(state_attr('sensor.x', 'variables'), ['drawer', 'value', 'ts'], '') | from_json }}
+-#}
+{%- macro safe_get_nested(obj, keys, fallback='') -%}
+    {%- set current = obj -%}
+
+    {%- if current is string -%}
+        {%- set current = current | from_json(default={}) -%}
+    {%- endif -%}
+
+    {%- for key in keys if current is mapping -%}
+        {%- set current = current.get(key) -%}
+    {%- endfor -%}
+
+    {{- (current if current is not none else fallback) | tojson -}}
+{%- endmacro -%}
+
+{#- </editor-fold> -#}
