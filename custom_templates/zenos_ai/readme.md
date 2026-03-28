@@ -39,7 +39,7 @@ clear in how it imports and arranges the core primitives
 
 Key Responsibilities:
 
-Import foundational primitives (zen_os_1rc.jinja)
+Import foundational primitives (zen_os_1.jinja)
 
 Load & merge identity + capsule metadata
 
@@ -112,7 +112,7 @@ Determining active participants
 
 ---
 
-4. zen_os_1rc.jinja
+4. zen_os_1.jinja
 
 Purpose:
 The Ring-0 operational cortex of ZenOS-AI templates.
@@ -219,14 +219,14 @@ It is forbidden to fabricate.”
 
 When writing new tools:
 
-{% import 'zenos_ai/zen_os_1rc.jinja' as zen %}
+{% import 'zenos_ai/zen_os_1.jinja' as zen %}
 
 
 ---
 
 🛠 Typical Development Workflow
 
-1. Import zen_os_1rc.jinja
+1. Import zen_os_1.jinja
 2. Resolve identities via zen_identity.jinja
 3. Access cabinets via zen_cabinets.jinja
 4. Filter entity sets using zen_query.jinja

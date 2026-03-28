@@ -1,4 +1,4 @@
-# ZenOS-AI Health Sensors
+# ZenOS-AI Health Sensors — 4.5.5 'Ready Player Two'
 
 *System observability stack — labels, cabinets, cognition, agents*
 
@@ -6,14 +6,17 @@
 
 ## Overview
 
-ZenOS-AI ships a layered health monitoring system. Every sensor reports one of four states:
+ZenOS-AI ships a layered health monitoring system. Every sensor reports one of five states:
 
 | State | Meaning |
 |---|---|
 | `ok` | All checks pass |
+| `disabled` | Pipeline intentionally off via kill switch — not an error |
 | `warn` | Degraded but functional — system can run, something needs attention |
 | `error` | Functional impaired — action required |
 | `critical` | Bootstrap blocked — Flynn will engage |
+
+State ladder (severity): `critical > error > warn > disabled > ok`. `disabled` is a clean, intentional state — not a fault. Turning a kill switch back on returns the sensor to `ok` and triggers an auto-refire of the pipeline (see Kill Switches below).
 
 Sensors are arranged in a dependency stack. Label health feeds cabinet health, which feeds monastery health, which feeds Flynn health, which feeds agent health. A problem at the bottom propagates up.
 
@@ -82,7 +85,7 @@ sensor.zen_label_health          ← updates every 1 minute
 |---|---|
 | `critical` | One or more required cabinet labels are missing from the index |
 | `error` | A required slot has multiple cabinets assigned, or a required cabinet is unavailable/unknown |
-| `warn` | A required label exists but no cabinet entity is tagged with it |
+| `warn` | A required label exists but no cabinet entity is tagged; OR a required cabinet is on legacy schema (state: `Variables`/`init`) — **non-blocking, system runs normally** |
 | `ok` | All required slots have exactly one healthy cabinet |
 
 **Required slots (7):** system, dojo, kata, default_household, default_family, default_user, default_ai_user
@@ -99,7 +102,7 @@ sensor.zen_label_health          ← updates every 1 minute
 | `slot_to_default_entity` | Default sensor entity ID per slot |
 | `resolver_suggestions` | Per-slot plain-language action strings |
 
-**Flynn gate:** Not `ok` → Gate 2 (initialize missing cabinets).
+**Flynn gate:** `error`/`critical` → Gate 2 hard stop (initialize missing cabinets, operator action required). `warn` → Gate 2 non-blocking: schema upgrade notification fired outside warmup window; during warmup or `ha_start`, logged and skipped.
 
 ---
 
@@ -143,6 +146,7 @@ sensor.zen_label_health          ← updates every 1 minute
 |---|---|
 | `critical` | Kata cabinet unavailable/unknown/missing |
 | `warn` | AI task entity not configured or unavailable; OR `zen_scheduler` drawer missing; OR drawer timestamp >20 minutes stale |
+| `disabled` | `input_boolean.zen_ninja_summarizer_enabled` or `input_boolean.zen_summarizers_enabled` is `off` |
 | `ok` | AI task configured, scheduler drawer exists, timestamp ≤20 minutes old |
 
 **Key attributes:**
@@ -166,6 +170,7 @@ sensor.zen_label_health          ← updates every 1 minute
 |---|---|
 | `critical` | Kata cabinet unavailable/unknown/missing |
 | `warn` | Monk status is error/timeout/none/null; OR summary >15 minutes stale; OR summary 15–30 minutes stale |
+| `disabled` | `input_boolean.zen_supersummarizer_enabled` or `input_boolean.zen_summarizers_enabled` is `off` |
 | `ok` | Monk status ok AND summary ≤15 minutes old |
 
 **Key attributes:**
@@ -215,8 +220,9 @@ Use `current_gate` and `next_step` when troubleshooting a stuck boot — they te
 |---|---|
 | `critical` | label_health or cabinet_health = `critical` or `error` |
 | `error` | label/cabinet = `error`, 0 agents bootable |
+| `warmup` | Inside boot warmup window (≤5 min) with monastery not yet settled — system initializing, check again shortly |
 | `warn` | Structural gates blocking; or ≥1 agent bootable but monastery ≠ `ok` |
-| `ok` | Infrastructure ok, ≥1 agent bootable, monastery ok |
+| `ok` | Infrastructure ok, ≥1 agent bootable, monastery ok, cabinet ok |
 
 **Agent bootability gates (per agent):**
 
@@ -245,21 +251,111 @@ Use `current_gate` and `next_step` when troubleshooting a stuck boot — they te
 
 ## binary_sensor.flynn_system_ready
 
-**State:** `on` when labels ok AND cabinets ok AND monastery in [`ok`, `warn`]
+**State:** `on` when labels ok AND cabinets in [`ok`, `warn`] AND monastery in [`ok`, `warn`]
 
-`warn` monastery is acceptable — schema and cabinets are valid, summarizer may not have run yet. This is the bootstrap eligibility gate, not a health gate.
+Cabinet `warn` and monastery `warn` are both acceptable — schema and cabinets are valid, legacy schema upgrade may be pending or summarizer may not have run yet. This is the bootstrap eligibility gate, not a health gate.
 
 ---
 
-## UI Selectors
+## sensor.zen_prompt_health
 
-Three template selects provide UI-level control:
+**What it checks:** Prompt integrity — schema, signature, manifest presence, and environment health.
+
+**Update frequency:** Trigger-based (ha_start + custom event)
+
+**Source:** `prompt_health_check()` macro in `zen_os_1.jinja`
+
+| State | Condition |
+|---|---|
+| `ok` | All health signals true |
+| `warn` | One or more signals false but non-critical (e.g. manifest or id_manifest missing) |
+| `error` | Legacy schema, missing essence, or cabinet unavailable |
+
+**Key attributes:**
+
+| Attribute | Contents |
+|---|---|
+| `schema_ok` | Three-layer essence schema detected |
+| `sig_ok` | Identity hash / signature present |
+| `manifest_present` | `zen_library_manifest` drawer exists in household cabinet |
+| `familiar_ok` | Companion block present in essence |
+| `environment_ok` | Environment block present in essence |
+| `id_manifest_present` | `zen_identity_manifest` drawer exists in household cabinet |
+| `wake_scene chars` | Character count of the rendered wake scene |
+| `signed_at` | Timestamp of the last signature |
+| `jacket_hash` | Current essence signature hash |
+
+`id_manifest_present: false` is expected on a fresh install — clears automatically on `ha_start` once the scheduler builds the manifest, or immediately after running `zen_dojotools_identity` with `mode: build_identity_manifest`.
+
+---
+
+## sensor.zen_prompt_length
+
+**What it checks:** Total prompt character count, broken down by section.
+
+**Update frequency:** Trigger-based (ha_start + custom event)
+
+**Source:** `prompt_length_audit()` macro in `zen_os_1.jinja` — renders all 9 sections. Heavy — do not call inline.
+
+| State | Value |
+|---|---|
+| Numeric | Total character count of the compiled prompt |
+
+**Key attributes:**
+
+| Attribute | Contents |
+|---|---|
+| `total` | Total character count |
+| `sections` | Dict: per-section char counts |
+
+Section keys in `sections`: `header`, `system`, `manifest`, `index`, `dojo`, `capsule`, `overview`, `wake`, `id_manifest`
+
+Note: `dojo` is typically the largest section (~40-50% of budget). If prompt length is a concern, the dojo density is the first place to look.
+
+Both `sensor.zen_prompt_health` and `sensor.zen_prompt_length` receive the `zen_health`, `system_status`, and `zen` labels and are included in the health rollup provisioned by Flynn Step 4.
+
+---
+
+## UI Selectors and Kill Switches
+
+### Companion Input Selects
+
+| Entity | Drives | Options Source |
+|---|---|---|
+| `select.zenos_persona` | `input_text.zenos_persona_name` | AI user cabinet essence names |
+| `select.zenos_primary_user` | `input_text.zenos_primary_user` | `person.*` with `user_id` attr |
+| `select.zenos_conversation_agent` | `input_text.zenos_conversation_agent` | `conversation.*` domain |
+| `select.zenos_ai_task` | `input_text.zenos_ai_task_entity` | `ai_task.*` domain |
+
+Options resolve dynamically at render time. Each select writes back to its input_text on change — input_texts remain canonical.
+
+### Legacy Selects
 
 | Entity | Purpose |
 |---|---|
 | `select.zenos_active_persona` | Switch between registered AI personas |
 | `select.zenos_reasoning_task` | Select the active reasoning task entity |
-| `select.zenos_cabinet_selector` | Inspect/select cabinet slots (shows missing and invalid slots) |
+| `select.zenos_cabinet_selector` | Inspect/select cabinet slots |
+
+### Summarizer Kill Switches
+
+| Entity | Default | Purpose |
+|---|---|---|
+| `input_boolean.zen_summarizers_enabled` | `off` | Master — gates both summarizers |
+| `input_boolean.zen_supersummarizer_enabled` | `off` | SuperSummary on/off |
+| `input_boolean.zen_ninja_summarizer_enabled` | `off` | Ninja Summarizer on/off |
+
+Master is checked first. If off, both summarizers exit immediately regardless of their individual switches. Turning any switch off is non-destructive — schedules, automations, and cabinet data are untouched.
+
+**Auto-refire on re-enable:** `automation.zen_pipeline_autofire_on_enable` watches all three kill switches. When any switch is turned back `on`, it fires the appropriate force event immediately — no waiting for the next scheduled run:
+
+| Switch turned on | Event fired |
+|---|---|
+| `zen_summarizers_enabled` (master) | `zen_event: {kind: supersummary_force}` |
+| `zen_ninja_summarizer_enabled` | `zen_event: {kind: ninja_force}` |
+| `zen_supersummarizer_enabled` | `zen_event: {kind: supersummary_force}` |
+
+This means the summarizer is live again within seconds of being re-enabled, not at the next quarter-hour or hourly tick.
 
 ---
 
@@ -269,7 +365,12 @@ Three template selects provide UI-level control:
 |---|---|
 | Friday won't wake up | `sensor.zen_agent_health` → `roster` attribute |
 | Summaries are stale | `sensor.zen_supersummary_health` → `monk_status` |
+| Summaries stopped running | Check `input_boolean.zen_summarizers_enabled` and individual kill switches — all three must be `on`. If a switch was just turned back on, `zen_pipeline_autofire_on_enable` fires automatically; wait ~10s before assuming it's stuck. |
+| Summarizer health shows `disabled` | Kill switch is off — intentional. Turn the switch back on; pipeline will auto-restart. |
 | Scheduler not firing | `sensor.zen_summarizer_health` → `ai_task_entity` and `last_timestamp` |
 | Flynn stuck at boot | `sensor.zen_flynn_health` → `current_gate` and `next_step` |
 | Labels not assigning | `sensor.zen_label_health` → `missing_label_ids` and `unassigned_label_ids` |
 | Cabinet missing | `sensor.zen_cabinet_health` → `missing_cabinets` |
+| Resolver sensors stuck unavailable | Check `label_entities()` calls use slug IDs — display names return `[]` on strict HA versions. Fire `zen_resolver_refresh` after fixing. |
+| `zen_prompt_health` stuck at `warn` | Check `id_manifest_present` attribute. If `false`, fire `zen_dojotools_identity` with `mode: build_identity_manifest` or fire `zen_event` with `kind: identity_manifest_rebuild`. Clears on next `ha_start` automatically. |
+| `zen_prompt_length` state `unknown` | Sensor is heavy — may timeout on slow hardware or very large prompts. Check HA logs for template complexity errors. |

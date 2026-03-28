@@ -113,6 +113,88 @@ Provides mapping of slots to default entities
 {%- endmacro -%}
 
 {#- ################################################# -#}
+{#-
+#######################################################################
+# ESSENCE PROBE
+# Reads zenai_essence from a cabinet entity and returns a JSON
+# diagnostic dict. Caller pipes through | from_json.
+#
+# schema:  three_layer | legacy | empty
+# status:  ok | warn | error
+#   ok    — name + guid present, signed_by valid (three_layer),
+#           household_guid stamped, companion present
+#   warn  — name + guid present but secondary fields missing
+#   error — no essence, or name/guid absent
+#
+# Fields returned:
+#   schema, valid, name, guid, jacket_id, signed_by, signed_by_ok,
+#   has_companion, has_household_guid, missing[], status
+#######################################################################
+-#}
+{%- macro essence_probe(cab) -%}
+  {%- set _av = state_attr(cab, 'variables') | default({}, true)
+                if (cab != '' and cab not in ['unknown','unavailable']
+                    and states(cab) not in ['unknown','unavailable'])
+                else {} -%}
+  {%- set _raw = _av.get('zenai_essence', {}) if _av is mapping else {} -%}
+  {%- set _r1  = _raw.get('value', _raw) if _raw is mapping else {} -%}
+  {%- set _ev  = _r1 if _r1 is mapping else (_r1 | from_json if _r1 is string else {}) -%}
+  {%- if not (_ev is mapping and _ev) -%}
+    {{- {'schema': 'empty', 'valid': false, 'name': '', 'guid': '', 'jacket_id': '',
+         'signed_by': '', 'signed_by_ok': false,
+         'has_companion': false, 'has_household_guid': false,
+         'missing': ['essence'], 'status': 'error'} | tojson -}}
+  {%- else -%}
+    {%- set _is_new = _ev.get('core') is mapping and _ev.get('jacket') is mapping -%}
+    {%- if _is_new -%}
+      {%- set _co        = _ev.get('core', {}) -%}
+      {%- set _j         = _ev.get('jacket', {}) -%}
+      {%- set _schema    = 'three_layer' -%}
+      {%- set _name      = _j.get('name', '') | string | trim -%}
+      {%- set _guid      = _co.get('id', '') | string | trim -%}
+      {%- set _jacket_id = _j.get('id', '') | string | trim -%}
+      {%- set _signed_by = _j.get('signed_by', '') | string | trim -%}
+      {%- set _hh_guid   = _co.get('household_guid', '') | string | trim -%}
+      {%- set _cmp       = _ev.get('companion', {}) if _ev.get('companion') is mapping else {} -%}
+      {%- set _has_cmp   = _cmp.get('name', '') | trim != '' -%}
+    {%- else -%}
+      {%- set _id        = _ev.get('identity', {}) if _ev.get('identity') is mapping else {} -%}
+      {%- set _fa        = _ev.get('familiar', {}) if _ev.get('familiar') is mapping else {} -%}
+      {%- set _schema    = 'legacy' -%}
+      {%- set _name      = _id.get('name', '') | string | trim -%}
+      {%- set _guid      = _id.get('guid', '') | string | trim -%}
+      {%- set _jacket_id = '' -%}
+      {%- set _signed_by = '' -%}
+      {%- set _hh_guid   = _id.get('household_id', '') | string | trim -%}
+      {%- set _has_cmp   = _fa.get('name', '') | trim != '' -%}
+    {%- endif -%}
+    {%- set _signed_ok = _signed_by.startswith('person.') if _signed_by != '' else false -%}
+    {%- set ns = namespace(miss=[]) -%}
+    {%- if _name      == '' -%}{%- set ns.miss = ns.miss + ['name'] -%}{%- endif -%}
+    {%- if _guid      == '' -%}{%- set ns.miss = ns.miss + ['guid'] -%}{%- endif -%}
+    {%- if _is_new and not _signed_ok -%}{%- set ns.miss = ns.miss + ['signed_by'] -%}{%- endif -%}
+    {%- if _hh_guid   == '' -%}{%- set ns.miss = ns.miss + ['household_guid'] -%}{%- endif -%}
+    {%- if not _has_cmp -%}{%- set ns.miss = ns.miss + ['companion'] -%}{%- endif -%}
+    {%- set _status =
+      'error' if ('name' in ns.miss or 'guid' in ns.miss) else
+      'warn'  if ns.miss | length > 0 else
+      'ok' -%}
+    {{- {
+      'schema':            _schema,
+      'valid':             true,
+      'name':              _name,
+      'guid':              _guid,
+      'jacket_id':         _jacket_id,
+      'signed_by':         _signed_by,
+      'signed_by_ok':      _signed_ok,
+      'has_companion':     _has_cmp,
+      'has_household_guid': (_hh_guid != ''),
+      'missing':           ns.miss,
+      'status':            _status
+    } | tojson -}}
+  {%- endif -%}
+{%- endmacro -%}
+
 {%- macro unhealthy_label_ids() -%}
     {%- set ns = namespace(unhealthy=[]) -%}
     {%- for lid in existing_label_ids() | from_json([]) -%}
@@ -168,6 +250,69 @@ Provides mapping of slots to default entities
 {%- endmacro -%}
 
 {#- ################################################# -#}
+{#-
+#######################################################################
+# ZEN CABINET HEALTH REASON
+# Returns a single plain-language sentence explaining the current state.
+# Same priority order as zen_cabinet_health_state().
+#######################################################################
+-#}
+{%- macro zen_cabinet_health_reason() -%}
+    {%- set required = slots_required() | from_json() -%}
+    {%- set optional = slots_optional() | from_json() -%}
+    {%- set slot_to_label = slot_to_label() | from_json() -%}
+    {%- set parent_slug = 'Zen Cabinet' | slugify -%}
+    {%- set all_cabs = label_entities(parent_slug) | list -%}
+    {%- set label_index = labels() -%}
+    {%- set ns = namespace(missing_req=[], unassigned_req=[], invalid_req=[], unhealthy_req=[], unhealthy_opt=[]) -%}
+    {%- for slot in required -%}
+        {%- set label_slug = slot_to_label[slot] | slugify -%}
+        {%- set label_exists = label_slug in label_index -%}
+        {%- set ents = intersect(all_cabs, label_entities(label_slug) or []) | list -%}
+        {%- set bad = ents | selectattr('state','eq','unavailable') | list -%}
+        {%- if not label_exists -%}{%- set ns.missing_req = ns.missing_req + [slot] -%}
+        {%- elif ents | count == 0 -%}{%- set ns.unassigned_req = ns.unassigned_req + [slot] -%}
+        {%- elif ents | count > 1 -%}{%- set ns.invalid_req = ns.invalid_req + [slot] -%}
+        {%- elif bad | count > 0 -%}{%- set ns.unhealthy_req = ns.unhealthy_req + [slot] -%}
+        {%- endif -%}
+    {%- endfor -%}
+    {%- for slot in optional -%}
+        {%- set label_slug = slot_to_label[slot] | slugify -%}
+        {%- set ents = intersect(all_cabs, label_entities(label_slug) or []) | list -%}
+        {%- if ents | count > 0 -%}
+            {%- set bad = ents | selectattr('state','eq','unavailable') | list -%}
+            {%- if bad | count > 0 -%}{%- set ns.unhealthy_opt = ns.unhealthy_opt + [slot] -%}{%- endif -%}
+        {%- endif -%}
+    {%- endfor -%}
+    {%- set ns2 = namespace(legacy_schema=[], slotted=[]) -%}
+    {%- for slot in required + optional -%}
+        {%- set sl = slot_to_label[slot] | slugify -%}
+        {%- for eid in (intersect(all_cabs, label_entities(sl) or []) | list) -%}
+            {%- if eid not in ns2.slotted -%}{%- set ns2.slotted = ns2.slotted + [eid] -%}{%- endif -%}
+        {%- endfor -%}
+    {%- endfor -%}
+    {%- for eid in all_cabs -%}
+        {%- if states(eid) == 'Variables' and eid in ns2.slotted -%}
+            {%- set ns2.legacy_schema = ns2.legacy_schema + [eid] -%}
+        {%- endif -%}
+    {%- endfor -%}
+    {%- if ns.missing_req | count > 0 -%}
+        Required cabinet label(s) missing from HA: {{ ns.missing_req | join(', ') }} — trigger Flynn stepgate to create them.
+    {%- elif ns.invalid_req | count > 0 -%}
+        Multiple entities claim required cabinet slot(s): {{ ns.invalid_req | join(', ') }} — remove duplicate label assignments.
+    {%- elif ns.unhealthy_req | count > 0 -%}
+        Required cabinet sensor(s) unavailable: {{ ns.unhealthy_req | join(', ') }} — check entity configuration.
+    {%- elif ns.unassigned_req | count > 0 -%}
+        Required cabinet label(s) exist but no entity assigned: {{ ns.unassigned_req | join(', ') }} — trigger Flynn stepgate to wire them.
+    {%- elif ns.unhealthy_opt | count > 0 -%}
+        Optional cabinet sensor(s) unavailable: {{ ns.unhealthy_opt | join(', ') }} — check entity configuration.
+    {%- elif ns2.legacy_schema | count > 0 -%}
+        Schema update available: {{ ns2.legacy_schema | count }} cabinet(s) on pre-RC2 schema (state: Variables). Data intact — touch to migrate to RP2 state machine (one-way). Not a gate condition.
+    {%- else -%}
+        All required cabinet slots filled and healthy.
+    {%- endif -%}
+{%- endmacro -%}
+
 {%- macro slots_all() -%}
     {{- [
         'system','dojo','kata',
@@ -213,15 +358,27 @@ Provides mapping of slots to default entities
         unassigned_req = [],
         invalid_req = [],
         unhealthy_req = [],
-        unhealthy_opt = []
+        unhealthy_opt = [],
+        legacy_req = [],
+        legacy_schema = []
     ) -%}
 
     {# REQUIRED SLOTS: strict 1:1, label + cabinet health enforced #}
+    {#
+    BOOT-SAFETY: unknown state is intentionally excluded from 'bad'.
+    Trigger-based cabinet sensors always start 'unknown' at boot — they have not
+    evaluated their homeassistant.start trigger yet. Treating unknown as unhealthy
+    would cause zen_cabinet_health to return 'error' at every boot, which would
+    cause Flynn Gate 2 to fire initialize_cabinets and WIPE live cabinet data.
+    Only 'unavailable' indicates a real hardware / integration failure.
+    DO NOT add 'unknown' back to this filter. See: boot-wipe incident 2026-03-23.
+    #}
     {%- for slot in required -%}
         {%- set label_slug = slot_to_label[slot] | slugify -%}
         {%- set label_exists = label_slug in label_index -%}
         {%- set ents = intersect(all_cabs, label_entities(label_slug) or []) | list -%}
-        {%- set bad = ents | selectattr('state','in',['unavailable','unknown']) | list -%}
+        {%- set bad = ents | selectattr('state','eq','unavailable') | list -%}
+        {%- set eid = (ents | first) if ents | count == 1 else '' -%}
 
         {%- if not label_exists -%}
             {%- set ns.missing_req = ns.missing_req + [slot] -%}
@@ -231,6 +388,8 @@ Provides mapping of slots to default entities
             {%- set ns.invalid_req = ns.invalid_req + [slot] -%}
             {%- elif bad | count > 0 -%}
             {%- set ns.unhealthy_req = ns.unhealthy_req + [slot] -%}
+            {%- elif eid != '' and states(eid) in ['Variables', 'init'] -%}
+            {%- set ns.legacy_req = ns.legacy_req + [slot] -%}
         {%- endif -%}
     {%- endfor -%}
 
@@ -239,19 +398,36 @@ Provides mapping of slots to default entities
         {%- set label_slug = slot_to_label[slot] | slugify -%}
         {%- set ents = intersect(all_cabs, label_entities(label_slug) or []) | list -%}
         {%- if ents | count > 0 -%}
-            {%- set bad = ents | selectattr('state','in',['unavailable','unknown']) | list -%}
+            {%- set bad = ents | selectattr('state','eq','unavailable') | list -%}
             {%- if bad | count > 0 -%}
                 {%- set ns.unhealthy_opt = ns.unhealthy_opt + [slot] -%}
             {%- endif -%}
         {%- endif -%}
     {%- endfor -%}
 
+    {# LEGACY SCHEMA: slot-assigned cabinets with pre-RC2 state 'Variables'. #}
+    {# Unslotted cabs (parent label only, slot label pulled) are retired stubs — excluded from warn. #}
+    {%- set ns_sl = namespace(slotted=[]) -%}
+    {%- for slot in required + optional -%}
+        {%- set sl = slot_to_label[slot] | slugify -%}
+        {%- for eid in (intersect(all_cabs, label_entities(sl) or []) | list) -%}
+            {%- if eid not in ns_sl.slotted -%}{%- set ns_sl.slotted = ns_sl.slotted + [eid] -%}{%- endif -%}
+        {%- endfor -%}
+    {%- endfor -%}
+    {%- for eid in all_cabs -%}
+        {%- if states(eid) == 'Variables' and eid in ns_sl.slotted -%}
+            {%- set ns.legacy_schema = ns.legacy_schema + [eid] -%}
+        {%- endif -%}
+    {%- endfor -%}
+
     {# Priority (labels-aligned):
-missing required  -> critical
-invalid required  -> error
-unhealthy required-> error
+missing required    -> critical
+invalid required    -> error
+unhealthy required  -> error
 unassigned required -> warn
 unhealthy optional  -> warn
+legacy required     -> warn (init/Variables on required slot — non-blocking, self-heals on touch)
+legacy schema       -> warn (non-blocking — update available, not a gate condition)
 else -> ok
     #}
     {%- if ns.missing_req | count > 0 -%}
@@ -264,8 +440,30 @@ else -> ok
         warn
         {%- elif ns.unhealthy_opt | count > 0 -%}
         warn
+        {%- elif ns.legacy_req | count > 0 -%}
+        warn
+        {%- elif ns.legacy_schema | count > 0 -%}
+        warn
     {%- else -%}
         ok
+    {%- endif -%}
+{%- endmacro -%}
+
+{#-
+is_warmup(threshold_s=300)
+Returns true if the system booted less than threshold_s seconds ago.
+Canon warmup calculation — import this everywhere warmup detection is needed.
+
+Usage:
+  {%- import 'zenos_ai/zenos_health.jinja' as HEALTH -%}
+  {%- set _in_warmup = HEALTH.is_warmup() | bool -%}
+-#}
+{%- macro is_warmup(threshold_s=300) -%}
+    {%- set _last_boot = states('sensor.system_monitor_last_boot') -%}
+    {%- if _last_boot in ['unknown', 'unavailable', ''] -%}
+        false
+    {%- else -%}
+        {{ (now() - as_datetime(_last_boot)).total_seconds() < threshold_s }}
     {%- endif -%}
 {%- endmacro -%}
 

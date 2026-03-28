@@ -1,17 +1,46 @@
 ###############################################################################
 #  ZENOS-AI — RING-0 CABINET PACKAGE
 #  File: zenos_cabinets.yaml
-#  Version: 4.0.1
+#  Version: 4.5.5
 #
-#  14 canonical Ring-0 Cabinets for ZenOS-AI.
+#  20 canonical Ring-0 Cabinets for ZenOS-AI.
+#  14 core cabinets + 6 expansion slots (v4.3.0 cabset + v4.5.1 rename/add).
 #  - Fully depersonalized
 #  - zenos_ namespace
 #  - Deterministic unique_ids
 #  - Attribute write guard: blocks set_variable if proposed JSON exceeds
-#    16,384 bytes (HA recorder hard limit — see FG-21). remove_variable and
-#    clear_variables always execute regardless of cabinet size.
+#    131,072 bytes. remove_variable and clear_variables always execute.
 #
 #  CHANGELOG
+#  v4.5.2  2026-03-23  BOOT WIPE FIX. Three changes applied to all 20 cabinets:
+#                      (1) Boot guard: action block stops on current is none (recorder
+#                      race). Invariant: none=unknown→block, {}=empty→allow. Break-
+#                      glass: force:true in event data bypasses (admin/recovery only).
+#                      (2) variables attributes template: default {} → none + guard
+#                      outputs none at boot for two-layer protection.
+#                      (3) clear_variables requires confirm:true. Unconfirmed clears
+#                      silently dropped. Also: Volume Redirector auto-init block
+#                      REMOVED. No automatic cabinet resets under any conditions.
+#                      See: bug_cabinet_boot_wipe_regression_2026-03-23.md
+#  v4.5.1  2026-03-22  Startup re-evaluation fix. All 20 cabinet sensors now
+#                      listen for zen_event kind: cabinet_boot_touch (fired by
+#                      scheduler on ha_start). Forces state re-derivation on
+#                      reload so pre-RP2 cabs with no meta drawer correctly
+#                      surface online_mounted without waiting for a write event.
+#  v4.5.0  2026-03-22  Mount-aware state machine (#97). Cabinet sensor state:
+#                      now emits init / online_mounted / online_unmounted
+#                      (was: init / online). Truth is meta.mounted in cabinet
+#                      variables. FG-38 guard on meta value. Health sensor
+#                      cabinet_states reads states() directly — no more
+#                      state_attr() recompute.
+#  v4.3.0  2026-03-20  Expansion cabinets (5): secondary_user,
+#                      tertiary_user, quaternary_user, secondary_ai_user,
+#                      vault. Volume Redirector recognized_volumes updated.
+#  v4.5.1  2026-03-23  Rename expansion slots: secondary/tertiary/quaternary_user +
+#                      secondary_ai_user → expansion_1-4. Add expansion_5.
+#                      State template sync fix (one-write-behind bug, all 20 cabs).
+#                      Redirector routes expansion_1-5; recognized_volumes updated.
+#                      Vault: mdi:safe-square icon, no resolver by design.
 #  v1.2.0  2026-03-11  CANONICAL NAMING FIX — unique_ids, event types, and all
 #                      entity ID references for Dojo, Kata, History, and
 #                      Scratchpad cabinets corrected to match display names
@@ -46,7 +75,27 @@ template:
           this_entity_id: "{{- trigger.id -}}"
           log_events: "{{- state_attr(this_entity_id, 'log_events') -}}"
           log_enabled: "{{- (log_events is none) or (log_events==true) -}}"
-          current: "{{- state_attr(this_entity_id, 'variables') or {} -}}"
+          # BOOT-SAFE: state_attr() + default(none, true) — NOT this.attributes.get().
+          # 'this' is undefined in action: variables of trigger-based template sensors
+          # (TemplateError: UndefinedError crashes every trigger silently).
+          # default(none) — NOT default(none, true). boolean=True catches {} (falsy)
+          # which conflates "unknown at boot" with "known empty". default(none) only
+          # catches Jinja2 Undefined; None passes through as None. {} stays as {}.
+          # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
+          # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
+          current: >-
+            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+      # ── BOOT GUARD ────────────────────────────────────────────────────────────
+      # current is none = recorder has not yet restored this cabinet's state.
+      # We do not know what is in it. NEVER write into unknown state.
+      # Blocks all writes: set_variable, remove_variable, clear_variables.
+      # Invariant: none = unknown (block). {} = known empty (allow). {...} = allow.
+      # Break-glass: pass force: true in event data to bypass (admin/recovery only).
+      # See: boot wipe incident 2026-03-23, bug_cabinet_boot_wipe_regression.md
+      - if: "{{ current is none and not trigger.event.data.get('force', false) }}"
+        then:
+          - stop: "Boot guard — state unconfirmed, all writes suppressed"
+      # ──────────────────────────────────────────────────────────────────────────
       - if: "{{ log_enabled }}"
         then:
           - action: logbook.log
@@ -92,12 +141,38 @@ template:
       - name: "ZenOS System Cabinet"
         unique_id: zenos_system_cabinet
         icon: mdi:file-cabinet
-        state: Variables
+        state: >-
+          {%- set current = current if current is mapping else {} -%}
+          {%- set _sevt = trigger.event.event_type if trigger.platform == 'event' else '' -%}
+          {%- set _sk = trigger.event.data.key | default('') if trigger.platform == 'event' else '' -%}
+          {%- set _sv = trigger.event.data.value | default(none) if trigger.platform == 'event' else none -%}
+          {%- set _sts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) if trigger.platform == 'event' else false -%}
+          {%- if _sevt.startswith('set_variable') and _sk and _sv is not none -%}
+            {%- set _svf = _sv.isoformat() if _sv is datetime else _sv -%}
+            {%- set _snew = {_sk: {'value': _svf, 'timestamp': now().isoformat()}} if _sts else {_sk: _svf} -%}
+            {%- set _eff = dict(current, **_snew) -%}
+          {%- elif _sevt.startswith('remove_variable') and _sk -%}
+            {%- set _eff = dict(current.items() | rejectattr('0', 'eq', _sk)) -%}
+          {%- elif _sevt.startswith('clear_variables') and trigger.event.data.get('confirm') == true -%}
+            {%- set _eff = {} -%}
+          {%- else -%}
+            {%- set _eff = current -%}
+          {%- endif -%}
+          {%- set _vi = _eff is mapping and 'AI_Cabinet_VolumeInfo' in _eff -%}
+          {%- set _mr = _eff.get('meta', {}) if _eff is mapping else {} -%}
+          {%- set _mraw = _mr if _mr is mapping else (_mr | from_json if _mr is string else {}) -%}
+          {%- set _mv = _mraw.get('value', _mraw) if _mraw is mapping else {} -%}
+          {%- set _m = _mv if _mv is mapping else (_mv | from_json if _mv is string else {}) -%}
+          {%- if not _vi -%}init{%- elif _m.get('mounted', true) != false -%}online_mounted{%- else -%}online_unmounted{%- endif -%}
         attributes:
           default_timestamp: true
           log_events: false
           variables: >
-            {% set current = this.attributes.get('variables', {}) %}
+            {% set current = this.attributes.get('variables', none) %}
+            {% if current is none and not trigger.event.data.get('force', false) %}
+              {{ none }}
+            {% else %}
+            {% set current = current if current is mapping else {} %}
             {% set evt = trigger.event.event_type %}
             {% set key = trigger.event.data.key %}
             {% set val = trigger.event.data.value %}
@@ -113,10 +188,11 @@ template:
               {{ current if proposed | tojson | length > 131072 else proposed }}
             {% elif evt.startswith('remove_variable') and key is defined %}
               {{ dict(current.items() | rejectattr('0', 'eq', key)) }}
-            {% elif evt.startswith('clear_variables') %}
+            {% elif evt.startswith('clear_variables') and trigger.event.data.get('confirm') == true %}
               {{ {} }}
             {% else %}
               {{ current }}
+            {% endif %}
             {% endif %}
 
   - trigger:
@@ -134,7 +210,27 @@ template:
           this_entity_id: "{{- trigger.id -}}"
           log_events: "{{- state_attr(this_entity_id, 'log_events') -}}"
           log_enabled: "{{- (log_events is none) or (log_events==true) -}}"
-          current: "{{- state_attr(this_entity_id, 'variables') or {} -}}"
+          # BOOT-SAFE: state_attr() + default(none, true) — NOT this.attributes.get().
+          # 'this' is undefined in action: variables of trigger-based template sensors
+          # (TemplateError: UndefinedError crashes every trigger silently).
+          # default(none) — NOT default(none, true). boolean=True catches {} (falsy)
+          # which conflates "unknown at boot" with "known empty". default(none) only
+          # catches Jinja2 Undefined; None passes through as None. {} stays as {}.
+          # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
+          # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
+          current: >-
+            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+      # ── BOOT GUARD ────────────────────────────────────────────────────────────
+      # current is none = recorder has not yet restored this cabinet's state.
+      # We do not know what is in it. NEVER write into unknown state.
+      # Blocks all writes: set_variable, remove_variable, clear_variables.
+      # Invariant: none = unknown (block). {} = known empty (allow). {...} = allow.
+      # Break-glass: pass force: true in event data to bypass (admin/recovery only).
+      # See: boot wipe incident 2026-03-23, bug_cabinet_boot_wipe_regression.md
+      - if: "{{ current is none and not trigger.event.data.get('force', false) }}"
+        then:
+          - stop: "Boot guard — state unconfirmed, all writes suppressed"
+      # ──────────────────────────────────────────────────────────────────────────
       - if: "{{ log_enabled }}"
         then:
           - action: logbook.log
@@ -180,12 +276,38 @@ template:
       - name: "ZenOS System History Cabinet"
         unique_id: zenos_system_history_cabinet
         icon: mdi:file-cabinet
-        state: Variables
+        state: >-
+          {%- set current = current if current is mapping else {} -%}
+          {%- set _sevt = trigger.event.event_type if trigger.platform == 'event' else '' -%}
+          {%- set _sk = trigger.event.data.key | default('') if trigger.platform == 'event' else '' -%}
+          {%- set _sv = trigger.event.data.value | default(none) if trigger.platform == 'event' else none -%}
+          {%- set _sts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) if trigger.platform == 'event' else false -%}
+          {%- if _sevt.startswith('set_variable') and _sk and _sv is not none -%}
+            {%- set _svf = _sv.isoformat() if _sv is datetime else _sv -%}
+            {%- set _snew = {_sk: {'value': _svf, 'timestamp': now().isoformat()}} if _sts else {_sk: _svf} -%}
+            {%- set _eff = dict(current, **_snew) -%}
+          {%- elif _sevt.startswith('remove_variable') and _sk -%}
+            {%- set _eff = dict(current.items() | rejectattr('0', 'eq', _sk)) -%}
+          {%- elif _sevt.startswith('clear_variables') and trigger.event.data.get('confirm') == true -%}
+            {%- set _eff = {} -%}
+          {%- else -%}
+            {%- set _eff = current -%}
+          {%- endif -%}
+          {%- set _vi = _eff is mapping and 'AI_Cabinet_VolumeInfo' in _eff -%}
+          {%- set _mr = _eff.get('meta', {}) if _eff is mapping else {} -%}
+          {%- set _mraw = _mr if _mr is mapping else (_mr | from_json if _mr is string else {}) -%}
+          {%- set _mv = _mraw.get('value', _mraw) if _mraw is mapping else {} -%}
+          {%- set _m = _mv if _mv is mapping else (_mv | from_json if _mv is string else {}) -%}
+          {%- if not _vi -%}init{%- elif _m.get('mounted', true) != false -%}online_mounted{%- else -%}online_unmounted{%- endif -%}
         attributes:
           default_timestamp: true
           log_events: false
           variables: >
-            {% set current = this.attributes.get('variables', {}) %}
+            {% set current = this.attributes.get('variables', none) %}
+            {% if current is none and not trigger.event.data.get('force', false) %}
+              {{ none }}
+            {% else %}
+            {% set current = current if current is mapping else {} %}
             {% set evt = trigger.event.event_type %}
             {% set key = trigger.event.data.key %}
             {% set val = trigger.event.data.value %}
@@ -201,10 +323,11 @@ template:
               {{ current if proposed | tojson | length > 131072 else proposed }}
             {% elif evt.startswith('remove_variable') and key is defined %}
               {{ dict(current.items() | rejectattr('0', 'eq', key)) }}
-            {% elif evt.startswith('clear_variables') %}
+            {% elif evt.startswith('clear_variables') and trigger.event.data.get('confirm') == true %}
               {{ {} }}
             {% else %}
               {{ current }}
+            {% endif %}
             {% endif %}
 
   - trigger:
@@ -222,7 +345,27 @@ template:
           this_entity_id: "{{- trigger.id -}}"
           log_events: "{{- state_attr(this_entity_id, 'log_events') -}}"
           log_enabled: "{{- (log_events is none) or (log_events==true) -}}"
-          current: "{{- state_attr(this_entity_id, 'variables') or {} -}}"
+          # BOOT-SAFE: state_attr() + default(none, true) — NOT this.attributes.get().
+          # 'this' is undefined in action: variables of trigger-based template sensors
+          # (TemplateError: UndefinedError crashes every trigger silently).
+          # default(none) — NOT default(none, true). boolean=True catches {} (falsy)
+          # which conflates "unknown at boot" with "known empty". default(none) only
+          # catches Jinja2 Undefined; None passes through as None. {} stays as {}.
+          # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
+          # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
+          current: >-
+            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+      # ── BOOT GUARD ────────────────────────────────────────────────────────────
+      # current is none = recorder has not yet restored this cabinet's state.
+      # We do not know what is in it. NEVER write into unknown state.
+      # Blocks all writes: set_variable, remove_variable, clear_variables.
+      # Invariant: none = unknown (block). {} = known empty (allow). {...} = allow.
+      # Break-glass: pass force: true in event data to bypass (admin/recovery only).
+      # See: boot wipe incident 2026-03-23, bug_cabinet_boot_wipe_regression.md
+      - if: "{{ current is none and not trigger.event.data.get('force', false) }}"
+        then:
+          - stop: "Boot guard — state unconfirmed, all writes suppressed"
+      # ──────────────────────────────────────────────────────────────────────────
       - if: "{{ log_enabled }}"
         then:
           - action: logbook.log
@@ -268,12 +411,38 @@ template:
       - name: "ZenOS Dojo Cabinet"
         unique_id: zenos_dojo_cabinet
         icon: mdi:file-cabinet
-        state: Variables
+        state: >-
+          {%- set current = current if current is mapping else {} -%}
+          {%- set _sevt = trigger.event.event_type if trigger.platform == 'event' else '' -%}
+          {%- set _sk = trigger.event.data.key | default('') if trigger.platform == 'event' else '' -%}
+          {%- set _sv = trigger.event.data.value | default(none) if trigger.platform == 'event' else none -%}
+          {%- set _sts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) if trigger.platform == 'event' else false -%}
+          {%- if _sevt.startswith('set_variable') and _sk and _sv is not none -%}
+            {%- set _svf = _sv.isoformat() if _sv is datetime else _sv -%}
+            {%- set _snew = {_sk: {'value': _svf, 'timestamp': now().isoformat()}} if _sts else {_sk: _svf} -%}
+            {%- set _eff = dict(current, **_snew) -%}
+          {%- elif _sevt.startswith('remove_variable') and _sk -%}
+            {%- set _eff = dict(current.items() | rejectattr('0', 'eq', _sk)) -%}
+          {%- elif _sevt.startswith('clear_variables') and trigger.event.data.get('confirm') == true -%}
+            {%- set _eff = {} -%}
+          {%- else -%}
+            {%- set _eff = current -%}
+          {%- endif -%}
+          {%- set _vi = _eff is mapping and 'AI_Cabinet_VolumeInfo' in _eff -%}
+          {%- set _mr = _eff.get('meta', {}) if _eff is mapping else {} -%}
+          {%- set _mraw = _mr if _mr is mapping else (_mr | from_json if _mr is string else {}) -%}
+          {%- set _mv = _mraw.get('value', _mraw) if _mraw is mapping else {} -%}
+          {%- set _m = _mv if _mv is mapping else (_mv | from_json if _mv is string else {}) -%}
+          {%- if not _vi -%}init{%- elif _m.get('mounted', true) != false -%}online_mounted{%- else -%}online_unmounted{%- endif -%}
         attributes:
           default_timestamp: true
           log_events: false
           variables: >
-            {% set current = this.attributes.get('variables', {}) %}
+            {% set current = this.attributes.get('variables', none) %}
+            {% if current is none and not trigger.event.data.get('force', false) %}
+              {{ none }}
+            {% else %}
+            {% set current = current if current is mapping else {} %}
             {% set evt = trigger.event.event_type %}
             {% set key = trigger.event.data.key %}
             {% set val = trigger.event.data.value %}
@@ -289,10 +458,11 @@ template:
               {{ current if proposed | tojson | length > 131072 else proposed }}
             {% elif evt.startswith('remove_variable') and key is defined %}
               {{ dict(current.items() | rejectattr('0', 'eq', key)) }}
-            {% elif evt.startswith('clear_variables') %}
+            {% elif evt.startswith('clear_variables') and trigger.event.data.get('confirm') == true %}
               {{ {} }}
             {% else %}
               {{ current }}
+            {% endif %}
             {% endif %}
 
   - trigger:
@@ -310,7 +480,27 @@ template:
           this_entity_id: "{{- trigger.id -}}"
           log_events: "{{- state_attr(this_entity_id, 'log_events') -}}"
           log_enabled: "{{- (log_events is none) or (log_events==true) -}}"
-          current: "{{- state_attr(this_entity_id, 'variables') or {} -}}"
+          # BOOT-SAFE: state_attr() + default(none, true) — NOT this.attributes.get().
+          # 'this' is undefined in action: variables of trigger-based template sensors
+          # (TemplateError: UndefinedError crashes every trigger silently).
+          # default(none) — NOT default(none, true). boolean=True catches {} (falsy)
+          # which conflates "unknown at boot" with "known empty". default(none) only
+          # catches Jinja2 Undefined; None passes through as None. {} stays as {}.
+          # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
+          # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
+          current: >-
+            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+      # ── BOOT GUARD ────────────────────────────────────────────────────────────
+      # current is none = recorder has not yet restored this cabinet's state.
+      # We do not know what is in it. NEVER write into unknown state.
+      # Blocks all writes: set_variable, remove_variable, clear_variables.
+      # Invariant: none = unknown (block). {} = known empty (allow). {...} = allow.
+      # Break-glass: pass force: true in event data to bypass (admin/recovery only).
+      # See: boot wipe incident 2026-03-23, bug_cabinet_boot_wipe_regression.md
+      - if: "{{ current is none and not trigger.event.data.get('force', false) }}"
+        then:
+          - stop: "Boot guard — state unconfirmed, all writes suppressed"
+      # ──────────────────────────────────────────────────────────────────────────
       - if: "{{ log_enabled }}"
         then:
           - action: logbook.log
@@ -356,12 +546,38 @@ template:
       - name: "ZenOS Kata Cabinet"
         unique_id: zenos_kata_cabinet
         icon: mdi:file-cabinet
-        state: Variables
+        state: >-
+          {%- set current = current if current is mapping else {} -%}
+          {%- set _sevt = trigger.event.event_type if trigger.platform == 'event' else '' -%}
+          {%- set _sk = trigger.event.data.key | default('') if trigger.platform == 'event' else '' -%}
+          {%- set _sv = trigger.event.data.value | default(none) if trigger.platform == 'event' else none -%}
+          {%- set _sts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) if trigger.platform == 'event' else false -%}
+          {%- if _sevt.startswith('set_variable') and _sk and _sv is not none -%}
+            {%- set _svf = _sv.isoformat() if _sv is datetime else _sv -%}
+            {%- set _snew = {_sk: {'value': _svf, 'timestamp': now().isoformat()}} if _sts else {_sk: _svf} -%}
+            {%- set _eff = dict(current, **_snew) -%}
+          {%- elif _sevt.startswith('remove_variable') and _sk -%}
+            {%- set _eff = dict(current.items() | rejectattr('0', 'eq', _sk)) -%}
+          {%- elif _sevt.startswith('clear_variables') and trigger.event.data.get('confirm') == true -%}
+            {%- set _eff = {} -%}
+          {%- else -%}
+            {%- set _eff = current -%}
+          {%- endif -%}
+          {%- set _vi = _eff is mapping and 'AI_Cabinet_VolumeInfo' in _eff -%}
+          {%- set _mr = _eff.get('meta', {}) if _eff is mapping else {} -%}
+          {%- set _mraw = _mr if _mr is mapping else (_mr | from_json if _mr is string else {}) -%}
+          {%- set _mv = _mraw.get('value', _mraw) if _mraw is mapping else {} -%}
+          {%- set _m = _mv if _mv is mapping else (_mv | from_json if _mv is string else {}) -%}
+          {%- if not _vi -%}init{%- elif _m.get('mounted', true) != false -%}online_mounted{%- else -%}online_unmounted{%- endif -%}
         attributes:
           default_timestamp: true
           log_events: false
           variables: >
-            {% set current = this.attributes.get('variables', {}) %}
+            {% set current = this.attributes.get('variables', none) %}
+            {% if current is none and not trigger.event.data.get('force', false) %}
+              {{ none }}
+            {% else %}
+            {% set current = current if current is mapping else {} %}
             {% set evt = trigger.event.event_type %}
             {% set key = trigger.event.data.key %}
             {% set val = trigger.event.data.value %}
@@ -377,10 +593,11 @@ template:
               {{ current if proposed | tojson | length > 131072 else proposed }}
             {% elif evt.startswith('remove_variable') and key is defined %}
               {{ dict(current.items() | rejectattr('0', 'eq', key)) }}
-            {% elif evt.startswith('clear_variables') %}
+            {% elif evt.startswith('clear_variables') and trigger.event.data.get('confirm') == true %}
               {{ {} }}
             {% else %}
               {{ current }}
+            {% endif %}
             {% endif %}
 
   - trigger:
@@ -398,7 +615,27 @@ template:
           this_entity_id: "{{- trigger.id -}}"
           log_events: "{{- state_attr(this_entity_id, 'log_events') -}}"
           log_enabled: "{{- (log_events is none) or (log_events==true) -}}"
-          current: "{{- state_attr(this_entity_id, 'variables') or {} -}}"
+          # BOOT-SAFE: state_attr() + default(none, true) — NOT this.attributes.get().
+          # 'this' is undefined in action: variables of trigger-based template sensors
+          # (TemplateError: UndefinedError crashes every trigger silently).
+          # default(none) — NOT default(none, true). boolean=True catches {} (falsy)
+          # which conflates "unknown at boot" with "known empty". default(none) only
+          # catches Jinja2 Undefined; None passes through as None. {} stays as {}.
+          # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
+          # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
+          current: >-
+            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+      # ── BOOT GUARD ────────────────────────────────────────────────────────────
+      # current is none = recorder has not yet restored this cabinet's state.
+      # We do not know what is in it. NEVER write into unknown state.
+      # Blocks all writes: set_variable, remove_variable, clear_variables.
+      # Invariant: none = unknown (block). {} = known empty (allow). {...} = allow.
+      # Break-glass: pass force: true in event data to bypass (admin/recovery only).
+      # See: boot wipe incident 2026-03-23, bug_cabinet_boot_wipe_regression.md
+      - if: "{{ current is none and not trigger.event.data.get('force', false) }}"
+        then:
+          - stop: "Boot guard — state unconfirmed, all writes suppressed"
+      # ──────────────────────────────────────────────────────────────────────────
       - if: "{{ log_enabled }}"
         then:
           - action: logbook.log
@@ -444,12 +681,38 @@ template:
       - name: "ZenOS History Cabinet"
         unique_id: zenos_history_cabinet
         icon: mdi:file-cabinet
-        state: Variables
+        state: >-
+          {%- set current = current if current is mapping else {} -%}
+          {%- set _sevt = trigger.event.event_type if trigger.platform == 'event' else '' -%}
+          {%- set _sk = trigger.event.data.key | default('') if trigger.platform == 'event' else '' -%}
+          {%- set _sv = trigger.event.data.value | default(none) if trigger.platform == 'event' else none -%}
+          {%- set _sts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) if trigger.platform == 'event' else false -%}
+          {%- if _sevt.startswith('set_variable') and _sk and _sv is not none -%}
+            {%- set _svf = _sv.isoformat() if _sv is datetime else _sv -%}
+            {%- set _snew = {_sk: {'value': _svf, 'timestamp': now().isoformat()}} if _sts else {_sk: _svf} -%}
+            {%- set _eff = dict(current, **_snew) -%}
+          {%- elif _sevt.startswith('remove_variable') and _sk -%}
+            {%- set _eff = dict(current.items() | rejectattr('0', 'eq', _sk)) -%}
+          {%- elif _sevt.startswith('clear_variables') and trigger.event.data.get('confirm') == true -%}
+            {%- set _eff = {} -%}
+          {%- else -%}
+            {%- set _eff = current -%}
+          {%- endif -%}
+          {%- set _vi = _eff is mapping and 'AI_Cabinet_VolumeInfo' in _eff -%}
+          {%- set _mr = _eff.get('meta', {}) if _eff is mapping else {} -%}
+          {%- set _mraw = _mr if _mr is mapping else (_mr | from_json if _mr is string else {}) -%}
+          {%- set _mv = _mraw.get('value', _mraw) if _mraw is mapping else {} -%}
+          {%- set _m = _mv if _mv is mapping else (_mv | from_json if _mv is string else {}) -%}
+          {%- if not _vi -%}init{%- elif _m.get('mounted', true) != false -%}online_mounted{%- else -%}online_unmounted{%- endif -%}
         attributes:
           default_timestamp: true
           log_events: false
           variables: >
-            {% set current = this.attributes.get('variables', {}) %}
+            {% set current = this.attributes.get('variables', none) %}
+            {% if current is none and not trigger.event.data.get('force', false) %}
+              {{ none }}
+            {% else %}
+            {% set current = current if current is mapping else {} %}
             {% set evt = trigger.event.event_type %}
             {% set key = trigger.event.data.key %}
             {% set val = trigger.event.data.value %}
@@ -465,10 +728,11 @@ template:
               {{ current if proposed | tojson | length > 131072 else proposed }}
             {% elif evt.startswith('remove_variable') and key is defined %}
               {{ dict(current.items() | rejectattr('0', 'eq', key)) }}
-            {% elif evt.startswith('clear_variables') %}
+            {% elif evt.startswith('clear_variables') and trigger.event.data.get('confirm') == true %}
               {{ {} }}
             {% else %}
               {{ current }}
+            {% endif %}
             {% endif %}
 
   - trigger:
@@ -486,7 +750,27 @@ template:
           this_entity_id: "{{- trigger.id -}}"
           log_events: "{{- state_attr(this_entity_id, 'log_events') -}}"
           log_enabled: "{{- (log_events is none) or (log_events==true) -}}"
-          current: "{{- state_attr(this_entity_id, 'variables') or {} -}}"
+          # BOOT-SAFE: state_attr() + default(none, true) — NOT this.attributes.get().
+          # 'this' is undefined in action: variables of trigger-based template sensors
+          # (TemplateError: UndefinedError crashes every trigger silently).
+          # default(none) — NOT default(none, true). boolean=True catches {} (falsy)
+          # which conflates "unknown at boot" with "known empty". default(none) only
+          # catches Jinja2 Undefined; None passes through as None. {} stays as {}.
+          # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
+          # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
+          current: >-
+            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+      # ── BOOT GUARD ────────────────────────────────────────────────────────────
+      # current is none = recorder has not yet restored this cabinet's state.
+      # We do not know what is in it. NEVER write into unknown state.
+      # Blocks all writes: set_variable, remove_variable, clear_variables.
+      # Invariant: none = unknown (block). {} = known empty (allow). {...} = allow.
+      # Break-glass: pass force: true in event data to bypass (admin/recovery only).
+      # See: boot wipe incident 2026-03-23, bug_cabinet_boot_wipe_regression.md
+      - if: "{{ current is none and not trigger.event.data.get('force', false) }}"
+        then:
+          - stop: "Boot guard — state unconfirmed, all writes suppressed"
+      # ──────────────────────────────────────────────────────────────────────────
       - if: "{{ log_enabled }}"
         then:
           - action: logbook.log
@@ -532,12 +816,38 @@ template:
       - name: "ZenOS Scratchpad Cabinet"
         unique_id: zenos_scratchpad_cabinet
         icon: mdi:file-cabinet
-        state: Variables
+        state: >-
+          {%- set current = current if current is mapping else {} -%}
+          {%- set _sevt = trigger.event.event_type if trigger.platform == 'event' else '' -%}
+          {%- set _sk = trigger.event.data.key | default('') if trigger.platform == 'event' else '' -%}
+          {%- set _sv = trigger.event.data.value | default(none) if trigger.platform == 'event' else none -%}
+          {%- set _sts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) if trigger.platform == 'event' else false -%}
+          {%- if _sevt.startswith('set_variable') and _sk and _sv is not none -%}
+            {%- set _svf = _sv.isoformat() if _sv is datetime else _sv -%}
+            {%- set _snew = {_sk: {'value': _svf, 'timestamp': now().isoformat()}} if _sts else {_sk: _svf} -%}
+            {%- set _eff = dict(current, **_snew) -%}
+          {%- elif _sevt.startswith('remove_variable') and _sk -%}
+            {%- set _eff = dict(current.items() | rejectattr('0', 'eq', _sk)) -%}
+          {%- elif _sevt.startswith('clear_variables') and trigger.event.data.get('confirm') == true -%}
+            {%- set _eff = {} -%}
+          {%- else -%}
+            {%- set _eff = current -%}
+          {%- endif -%}
+          {%- set _vi = _eff is mapping and 'AI_Cabinet_VolumeInfo' in _eff -%}
+          {%- set _mr = _eff.get('meta', {}) if _eff is mapping else {} -%}
+          {%- set _mraw = _mr if _mr is mapping else (_mr | from_json if _mr is string else {}) -%}
+          {%- set _mv = _mraw.get('value', _mraw) if _mraw is mapping else {} -%}
+          {%- set _m = _mv if _mv is mapping else (_mv | from_json if _mv is string else {}) -%}
+          {%- if not _vi -%}init{%- elif _m.get('mounted', true) != false -%}online_mounted{%- else -%}online_unmounted{%- endif -%}
         attributes:
           default_timestamp: true
           log_events: false
           variables: >
-            {% set current = this.attributes.get('variables', {}) %}
+            {% set current = this.attributes.get('variables', none) %}
+            {% if current is none and not trigger.event.data.get('force', false) %}
+              {{ none }}
+            {% else %}
+            {% set current = current if current is mapping else {} %}
             {% set evt = trigger.event.event_type %}
             {% set key = trigger.event.data.key %}
             {% set val = trigger.event.data.value %}
@@ -553,10 +863,11 @@ template:
               {{ current if proposed | tojson | length > 131072 else proposed }}
             {% elif evt.startswith('remove_variable') and key is defined %}
               {{ dict(current.items() | rejectattr('0', 'eq', key)) }}
-            {% elif evt.startswith('clear_variables') %}
+            {% elif evt.startswith('clear_variables') and trigger.event.data.get('confirm') == true %}
               {{ {} }}
             {% else %}
               {{ current }}
+            {% endif %}
             {% endif %}
 
   ###########################################################################
@@ -578,7 +889,27 @@ template:
           this_entity_id: "{{- trigger.id -}}"
           log_events: "{{- state_attr(this_entity_id, 'log_events') -}}"
           log_enabled: "{{- (log_events is none) or (log_events==true) -}}"
-          current: "{{- state_attr(this_entity_id, 'variables') or {} -}}"
+          # BOOT-SAFE: state_attr() + default(none, true) — NOT this.attributes.get().
+          # 'this' is undefined in action: variables of trigger-based template sensors
+          # (TemplateError: UndefinedError crashes every trigger silently).
+          # default(none) — NOT default(none, true). boolean=True catches {} (falsy)
+          # which conflates "unknown at boot" with "known empty". default(none) only
+          # catches Jinja2 Undefined; None passes through as None. {} stays as {}.
+          # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
+          # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
+          current: >-
+            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+      # ── BOOT GUARD ────────────────────────────────────────────────────────────
+      # current is none = recorder has not yet restored this cabinet's state.
+      # We do not know what is in it. NEVER write into unknown state.
+      # Blocks all writes: set_variable, remove_variable, clear_variables.
+      # Invariant: none = unknown (block). {} = known empty (allow). {...} = allow.
+      # Break-glass: pass force: true in event data to bypass (admin/recovery only).
+      # See: boot wipe incident 2026-03-23, bug_cabinet_boot_wipe_regression.md
+      - if: "{{ current is none and not trigger.event.data.get('force', false) }}"
+        then:
+          - stop: "Boot guard — state unconfirmed, all writes suppressed"
+      # ──────────────────────────────────────────────────────────────────────────
       - if: "{{ log_enabled }}"
         then:
           - action: logbook.log
@@ -624,12 +955,38 @@ template:
       - name: "ZenOS Default Household Cabinet"
         unique_id: zenos_default_household_cabinet
         icon: mdi:file-cabinet
-        state: Variables
+        state: >-
+          {%- set current = current if current is mapping else {} -%}
+          {%- set _sevt = trigger.event.event_type if trigger.platform == 'event' else '' -%}
+          {%- set _sk = trigger.event.data.key | default('') if trigger.platform == 'event' else '' -%}
+          {%- set _sv = trigger.event.data.value | default(none) if trigger.platform == 'event' else none -%}
+          {%- set _sts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) if trigger.platform == 'event' else false -%}
+          {%- if _sevt.startswith('set_variable') and _sk and _sv is not none -%}
+            {%- set _svf = _sv.isoformat() if _sv is datetime else _sv -%}
+            {%- set _snew = {_sk: {'value': _svf, 'timestamp': now().isoformat()}} if _sts else {_sk: _svf} -%}
+            {%- set _eff = dict(current, **_snew) -%}
+          {%- elif _sevt.startswith('remove_variable') and _sk -%}
+            {%- set _eff = dict(current.items() | rejectattr('0', 'eq', _sk)) -%}
+          {%- elif _sevt.startswith('clear_variables') and trigger.event.data.get('confirm') == true -%}
+            {%- set _eff = {} -%}
+          {%- else -%}
+            {%- set _eff = current -%}
+          {%- endif -%}
+          {%- set _vi = _eff is mapping and 'AI_Cabinet_VolumeInfo' in _eff -%}
+          {%- set _mr = _eff.get('meta', {}) if _eff is mapping else {} -%}
+          {%- set _mraw = _mr if _mr is mapping else (_mr | from_json if _mr is string else {}) -%}
+          {%- set _mv = _mraw.get('value', _mraw) if _mraw is mapping else {} -%}
+          {%- set _m = _mv if _mv is mapping else (_mv | from_json if _mv is string else {}) -%}
+          {%- if not _vi -%}init{%- elif _m.get('mounted', true) != false -%}online_mounted{%- else -%}online_unmounted{%- endif -%}
         attributes:
           default_timestamp: true
           log_events: false
           variables: >
-            {% set current = this.attributes.get('variables', {}) %}
+            {% set current = this.attributes.get('variables', none) %}
+            {% if current is none and not trigger.event.data.get('force', false) %}
+              {{ none }}
+            {% else %}
+            {% set current = current if current is mapping else {} %}
             {% set evt = trigger.event.event_type %}
             {% set key = trigger.event.data.key %}
             {% set val = trigger.event.data.value %}
@@ -645,10 +1002,11 @@ template:
               {{ current if proposed | tojson | length > 131072 else proposed }}
             {% elif evt.startswith('remove_variable') and key is defined %}
               {{ dict(current.items() | rejectattr('0', 'eq', key)) }}
-            {% elif evt.startswith('clear_variables') %}
+            {% elif evt.startswith('clear_variables') and trigger.event.data.get('confirm') == true %}
               {{ {} }}
             {% else %}
               {{ current }}
+            {% endif %}
             {% endif %}
 
   - trigger:
@@ -666,7 +1024,27 @@ template:
           this_entity_id: "{{- trigger.id -}}"
           log_events: "{{- state_attr(this_entity_id, 'log_events') -}}"
           log_enabled: "{{- (log_events is none) or (log_events==true) -}}"
-          current: "{{- state_attr(this_entity_id, 'variables') or {} -}}"
+          # BOOT-SAFE: state_attr() + default(none, true) — NOT this.attributes.get().
+          # 'this' is undefined in action: variables of trigger-based template sensors
+          # (TemplateError: UndefinedError crashes every trigger silently).
+          # default(none) — NOT default(none, true). boolean=True catches {} (falsy)
+          # which conflates "unknown at boot" with "known empty". default(none) only
+          # catches Jinja2 Undefined; None passes through as None. {} stays as {}.
+          # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
+          # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
+          current: >-
+            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+      # ── BOOT GUARD ────────────────────────────────────────────────────────────
+      # current is none = recorder has not yet restored this cabinet's state.
+      # We do not know what is in it. NEVER write into unknown state.
+      # Blocks all writes: set_variable, remove_variable, clear_variables.
+      # Invariant: none = unknown (block). {} = known empty (allow). {...} = allow.
+      # Break-glass: pass force: true in event data to bypass (admin/recovery only).
+      # See: boot wipe incident 2026-03-23, bug_cabinet_boot_wipe_regression.md
+      - if: "{{ current is none and not trigger.event.data.get('force', false) }}"
+        then:
+          - stop: "Boot guard — state unconfirmed, all writes suppressed"
+      # ──────────────────────────────────────────────────────────────────────────
       - if: "{{ log_enabled }}"
         then:
           - action: logbook.log
@@ -712,12 +1090,38 @@ template:
       - name: "ZenOS Default Household History Cabinet"
         unique_id: zenos_default_household_history_cabinet
         icon: mdi:file-cabinet
-        state: Variables
+        state: >-
+          {%- set current = current if current is mapping else {} -%}
+          {%- set _sevt = trigger.event.event_type if trigger.platform == 'event' else '' -%}
+          {%- set _sk = trigger.event.data.key | default('') if trigger.platform == 'event' else '' -%}
+          {%- set _sv = trigger.event.data.value | default(none) if trigger.platform == 'event' else none -%}
+          {%- set _sts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) if trigger.platform == 'event' else false -%}
+          {%- if _sevt.startswith('set_variable') and _sk and _sv is not none -%}
+            {%- set _svf = _sv.isoformat() if _sv is datetime else _sv -%}
+            {%- set _snew = {_sk: {'value': _svf, 'timestamp': now().isoformat()}} if _sts else {_sk: _svf} -%}
+            {%- set _eff = dict(current, **_snew) -%}
+          {%- elif _sevt.startswith('remove_variable') and _sk -%}
+            {%- set _eff = dict(current.items() | rejectattr('0', 'eq', _sk)) -%}
+          {%- elif _sevt.startswith('clear_variables') and trigger.event.data.get('confirm') == true -%}
+            {%- set _eff = {} -%}
+          {%- else -%}
+            {%- set _eff = current -%}
+          {%- endif -%}
+          {%- set _vi = _eff is mapping and 'AI_Cabinet_VolumeInfo' in _eff -%}
+          {%- set _mr = _eff.get('meta', {}) if _eff is mapping else {} -%}
+          {%- set _mraw = _mr if _mr is mapping else (_mr | from_json if _mr is string else {}) -%}
+          {%- set _mv = _mraw.get('value', _mraw) if _mraw is mapping else {} -%}
+          {%- set _m = _mv if _mv is mapping else (_mv | from_json if _mv is string else {}) -%}
+          {%- if not _vi -%}init{%- elif _m.get('mounted', true) != false -%}online_mounted{%- else -%}online_unmounted{%- endif -%}
         attributes:
           default_timestamp: true
           log_events: false
           variables: >
-            {% set current = this.attributes.get('variables', {}) %}
+            {% set current = this.attributes.get('variables', none) %}
+            {% if current is none and not trigger.event.data.get('force', false) %}
+              {{ none }}
+            {% else %}
+            {% set current = current if current is mapping else {} %}
             {% set evt = trigger.event.event_type %}
             {% set key = trigger.event.data.key %}
             {% set val = trigger.event.data.value %}
@@ -733,10 +1137,11 @@ template:
               {{ current if proposed | tojson | length > 131072 else proposed }}
             {% elif evt.startswith('remove_variable') and key is defined %}
               {{ dict(current.items() | rejectattr('0', 'eq', key)) }}
-            {% elif evt.startswith('clear_variables') %}
+            {% elif evt.startswith('clear_variables') and trigger.event.data.get('confirm') == true %}
               {{ {} }}
             {% else %}
               {{ current }}
+            {% endif %}
             {% endif %}
 
   ###########################################################################
@@ -758,7 +1163,27 @@ template:
           this_entity_id: "{{- trigger.id -}}"
           log_events: "{{- state_attr(this_entity_id, 'log_events') -}}"
           log_enabled: "{{- (log_events is none) or (log_events==true) -}}"
-          current: "{{- state_attr(this_entity_id, 'variables') or {} -}}"
+          # BOOT-SAFE: state_attr() + default(none, true) — NOT this.attributes.get().
+          # 'this' is undefined in action: variables of trigger-based template sensors
+          # (TemplateError: UndefinedError crashes every trigger silently).
+          # default(none) — NOT default(none, true). boolean=True catches {} (falsy)
+          # which conflates "unknown at boot" with "known empty". default(none) only
+          # catches Jinja2 Undefined; None passes through as None. {} stays as {}.
+          # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
+          # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
+          current: >-
+            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+      # ── BOOT GUARD ────────────────────────────────────────────────────────────
+      # current is none = recorder has not yet restored this cabinet's state.
+      # We do not know what is in it. NEVER write into unknown state.
+      # Blocks all writes: set_variable, remove_variable, clear_variables.
+      # Invariant: none = unknown (block). {} = known empty (allow). {...} = allow.
+      # Break-glass: pass force: true in event data to bypass (admin/recovery only).
+      # See: boot wipe incident 2026-03-23, bug_cabinet_boot_wipe_regression.md
+      - if: "{{ current is none and not trigger.event.data.get('force', false) }}"
+        then:
+          - stop: "Boot guard — state unconfirmed, all writes suppressed"
+      # ──────────────────────────────────────────────────────────────────────────
       - if: "{{ log_enabled }}"
         then:
           - action: logbook.log
@@ -804,12 +1229,38 @@ template:
       - name: "ZenOS Default Family Cabinet"
         unique_id: zenos_default_family_cabinet
         icon: mdi:file-cabinet
-        state: Variables
+        state: >-
+          {%- set current = current if current is mapping else {} -%}
+          {%- set _sevt = trigger.event.event_type if trigger.platform == 'event' else '' -%}
+          {%- set _sk = trigger.event.data.key | default('') if trigger.platform == 'event' else '' -%}
+          {%- set _sv = trigger.event.data.value | default(none) if trigger.platform == 'event' else none -%}
+          {%- set _sts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) if trigger.platform == 'event' else false -%}
+          {%- if _sevt.startswith('set_variable') and _sk and _sv is not none -%}
+            {%- set _svf = _sv.isoformat() if _sv is datetime else _sv -%}
+            {%- set _snew = {_sk: {'value': _svf, 'timestamp': now().isoformat()}} if _sts else {_sk: _svf} -%}
+            {%- set _eff = dict(current, **_snew) -%}
+          {%- elif _sevt.startswith('remove_variable') and _sk -%}
+            {%- set _eff = dict(current.items() | rejectattr('0', 'eq', _sk)) -%}
+          {%- elif _sevt.startswith('clear_variables') and trigger.event.data.get('confirm') == true -%}
+            {%- set _eff = {} -%}
+          {%- else -%}
+            {%- set _eff = current -%}
+          {%- endif -%}
+          {%- set _vi = _eff is mapping and 'AI_Cabinet_VolumeInfo' in _eff -%}
+          {%- set _mr = _eff.get('meta', {}) if _eff is mapping else {} -%}
+          {%- set _mraw = _mr if _mr is mapping else (_mr | from_json if _mr is string else {}) -%}
+          {%- set _mv = _mraw.get('value', _mraw) if _mraw is mapping else {} -%}
+          {%- set _m = _mv if _mv is mapping else (_mv | from_json if _mv is string else {}) -%}
+          {%- if not _vi -%}init{%- elif _m.get('mounted', true) != false -%}online_mounted{%- else -%}online_unmounted{%- endif -%}
         attributes:
           default_timestamp: true
           log_events: false
           variables: >
-            {% set current = this.attributes.get('variables', {}) %}
+            {% set current = this.attributes.get('variables', none) %}
+            {% if current is none and not trigger.event.data.get('force', false) %}
+              {{ none }}
+            {% else %}
+            {% set current = current if current is mapping else {} %}
             {% set evt = trigger.event.event_type %}
             {% set key = trigger.event.data.key %}
             {% set val = trigger.event.data.value %}
@@ -825,10 +1276,11 @@ template:
               {{ current if proposed | tojson | length > 131072 else proposed }}
             {% elif evt.startswith('remove_variable') and key is defined %}
               {{ dict(current.items() | rejectattr('0', 'eq', key)) }}
-            {% elif evt.startswith('clear_variables') %}
+            {% elif evt.startswith('clear_variables') and trigger.event.data.get('confirm') == true %}
               {{ {} }}
             {% else %}
               {{ current }}
+            {% endif %}
             {% endif %}
 
   - trigger:
@@ -846,7 +1298,27 @@ template:
           this_entity_id: "{{- trigger.id -}}"
           log_events: "{{- state_attr(this_entity_id, 'log_events') -}}"
           log_enabled: "{{- (log_events is none) or (log_events==true) -}}"
-          current: "{{- state_attr(this_entity_id, 'variables') or {} -}}"
+          # BOOT-SAFE: state_attr() + default(none, true) — NOT this.attributes.get().
+          # 'this' is undefined in action: variables of trigger-based template sensors
+          # (TemplateError: UndefinedError crashes every trigger silently).
+          # default(none) — NOT default(none, true). boolean=True catches {} (falsy)
+          # which conflates "unknown at boot" with "known empty". default(none) only
+          # catches Jinja2 Undefined; None passes through as None. {} stays as {}.
+          # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
+          # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
+          current: >-
+            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+      # ── BOOT GUARD ────────────────────────────────────────────────────────────
+      # current is none = recorder has not yet restored this cabinet's state.
+      # We do not know what is in it. NEVER write into unknown state.
+      # Blocks all writes: set_variable, remove_variable, clear_variables.
+      # Invariant: none = unknown (block). {} = known empty (allow). {...} = allow.
+      # Break-glass: pass force: true in event data to bypass (admin/recovery only).
+      # See: boot wipe incident 2026-03-23, bug_cabinet_boot_wipe_regression.md
+      - if: "{{ current is none and not trigger.event.data.get('force', false) }}"
+        then:
+          - stop: "Boot guard — state unconfirmed, all writes suppressed"
+      # ──────────────────────────────────────────────────────────────────────────
       - if: "{{ log_enabled }}"
         then:
           - action: logbook.log
@@ -892,12 +1364,38 @@ template:
       - name: "ZenOS Default Family History Cabinet"
         unique_id: zenos_default_family_history_cabinet
         icon: mdi:file-cabinet
-        state: Variables
+        state: >-
+          {%- set current = current if current is mapping else {} -%}
+          {%- set _sevt = trigger.event.event_type if trigger.platform == 'event' else '' -%}
+          {%- set _sk = trigger.event.data.key | default('') if trigger.platform == 'event' else '' -%}
+          {%- set _sv = trigger.event.data.value | default(none) if trigger.platform == 'event' else none -%}
+          {%- set _sts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) if trigger.platform == 'event' else false -%}
+          {%- if _sevt.startswith('set_variable') and _sk and _sv is not none -%}
+            {%- set _svf = _sv.isoformat() if _sv is datetime else _sv -%}
+            {%- set _snew = {_sk: {'value': _svf, 'timestamp': now().isoformat()}} if _sts else {_sk: _svf} -%}
+            {%- set _eff = dict(current, **_snew) -%}
+          {%- elif _sevt.startswith('remove_variable') and _sk -%}
+            {%- set _eff = dict(current.items() | rejectattr('0', 'eq', _sk)) -%}
+          {%- elif _sevt.startswith('clear_variables') and trigger.event.data.get('confirm') == true -%}
+            {%- set _eff = {} -%}
+          {%- else -%}
+            {%- set _eff = current -%}
+          {%- endif -%}
+          {%- set _vi = _eff is mapping and 'AI_Cabinet_VolumeInfo' in _eff -%}
+          {%- set _mr = _eff.get('meta', {}) if _eff is mapping else {} -%}
+          {%- set _mraw = _mr if _mr is mapping else (_mr | from_json if _mr is string else {}) -%}
+          {%- set _mv = _mraw.get('value', _mraw) if _mraw is mapping else {} -%}
+          {%- set _m = _mv if _mv is mapping else (_mv | from_json if _mv is string else {}) -%}
+          {%- if not _vi -%}init{%- elif _m.get('mounted', true) != false -%}online_mounted{%- else -%}online_unmounted{%- endif -%}
         attributes:
           default_timestamp: true
           log_events: false
           variables: >
-            {% set current = this.attributes.get('variables', {}) %}
+            {% set current = this.attributes.get('variables', none) %}
+            {% if current is none and not trigger.event.data.get('force', false) %}
+              {{ none }}
+            {% else %}
+            {% set current = current if current is mapping else {} %}
             {% set evt = trigger.event.event_type %}
             {% set key = trigger.event.data.key %}
             {% set val = trigger.event.data.value %}
@@ -913,10 +1411,11 @@ template:
               {{ current if proposed | tojson | length > 131072 else proposed }}
             {% elif evt.startswith('remove_variable') and key is defined %}
               {{ dict(current.items() | rejectattr('0', 'eq', key)) }}
-            {% elif evt.startswith('clear_variables') %}
+            {% elif evt.startswith('clear_variables') and trigger.event.data.get('confirm') == true %}
               {{ {} }}
             {% else %}
               {{ current }}
+            {% endif %}
             {% endif %}
 
   ###########################################################################
@@ -938,7 +1437,27 @@ template:
           this_entity_id: "{{- trigger.id -}}"
           log_events: "{{- state_attr(this_entity_id, 'log_events') -}}"
           log_enabled: "{{- (log_events is none) or (log_events==true) -}}"
-          current: "{{- state_attr(this_entity_id, 'variables') or {} -}}"
+          # BOOT-SAFE: state_attr() + default(none, true) — NOT this.attributes.get().
+          # 'this' is undefined in action: variables of trigger-based template sensors
+          # (TemplateError: UndefinedError crashes every trigger silently).
+          # default(none) — NOT default(none, true). boolean=True catches {} (falsy)
+          # which conflates "unknown at boot" with "known empty". default(none) only
+          # catches Jinja2 Undefined; None passes through as None. {} stays as {}.
+          # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
+          # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
+          current: >-
+            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+      # ── BOOT GUARD ────────────────────────────────────────────────────────────
+      # current is none = recorder has not yet restored this cabinet's state.
+      # We do not know what is in it. NEVER write into unknown state.
+      # Blocks all writes: set_variable, remove_variable, clear_variables.
+      # Invariant: none = unknown (block). {} = known empty (allow). {...} = allow.
+      # Break-glass: pass force: true in event data to bypass (admin/recovery only).
+      # See: boot wipe incident 2026-03-23, bug_cabinet_boot_wipe_regression.md
+      - if: "{{ current is none and not trigger.event.data.get('force', false) }}"
+        then:
+          - stop: "Boot guard — state unconfirmed, all writes suppressed"
+      # ──────────────────────────────────────────────────────────────────────────
       - if: "{{ log_enabled }}"
         then:
           - action: logbook.log
@@ -984,12 +1503,38 @@ template:
       - name: "ZenOS Default User Cabinet"
         unique_id: zenos_default_user_cabinet
         icon: mdi:file-cabinet
-        state: Variables
+        state: >-
+          {%- set current = current if current is mapping else {} -%}
+          {%- set _sevt = trigger.event.event_type if trigger.platform == 'event' else '' -%}
+          {%- set _sk = trigger.event.data.key | default('') if trigger.platform == 'event' else '' -%}
+          {%- set _sv = trigger.event.data.value | default(none) if trigger.platform == 'event' else none -%}
+          {%- set _sts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) if trigger.platform == 'event' else false -%}
+          {%- if _sevt.startswith('set_variable') and _sk and _sv is not none -%}
+            {%- set _svf = _sv.isoformat() if _sv is datetime else _sv -%}
+            {%- set _snew = {_sk: {'value': _svf, 'timestamp': now().isoformat()}} if _sts else {_sk: _svf} -%}
+            {%- set _eff = dict(current, **_snew) -%}
+          {%- elif _sevt.startswith('remove_variable') and _sk -%}
+            {%- set _eff = dict(current.items() | rejectattr('0', 'eq', _sk)) -%}
+          {%- elif _sevt.startswith('clear_variables') and trigger.event.data.get('confirm') == true -%}
+            {%- set _eff = {} -%}
+          {%- else -%}
+            {%- set _eff = current -%}
+          {%- endif -%}
+          {%- set _vi = _eff is mapping and 'AI_Cabinet_VolumeInfo' in _eff -%}
+          {%- set _mr = _eff.get('meta', {}) if _eff is mapping else {} -%}
+          {%- set _mraw = _mr if _mr is mapping else (_mr | from_json if _mr is string else {}) -%}
+          {%- set _mv = _mraw.get('value', _mraw) if _mraw is mapping else {} -%}
+          {%- set _m = _mv if _mv is mapping else (_mv | from_json if _mv is string else {}) -%}
+          {%- if not _vi -%}init{%- elif _m.get('mounted', true) != false -%}online_mounted{%- else -%}online_unmounted{%- endif -%}
         attributes:
           default_timestamp: true
           log_events: false
           variables: >
-            {% set current = this.attributes.get('variables', {}) %}
+            {% set current = this.attributes.get('variables', none) %}
+            {% if current is none and not trigger.event.data.get('force', false) %}
+              {{ none }}
+            {% else %}
+            {% set current = current if current is mapping else {} %}
             {% set evt = trigger.event.event_type %}
             {% set key = trigger.event.data.key %}
             {% set val = trigger.event.data.value %}
@@ -1005,10 +1550,11 @@ template:
               {{ current if proposed | tojson | length > 131072 else proposed }}
             {% elif evt.startswith('remove_variable') and key is defined %}
               {{ dict(current.items() | rejectattr('0', 'eq', key)) }}
-            {% elif evt.startswith('clear_variables') %}
+            {% elif evt.startswith('clear_variables') and trigger.event.data.get('confirm') == true %}
               {{ {} }}
             {% else %}
               {{ current }}
+            {% endif %}
             {% endif %}
 
   - trigger:
@@ -1026,7 +1572,27 @@ template:
           this_entity_id: "{{- trigger.id -}}"
           log_events: "{{- state_attr(this_entity_id, 'log_events') -}}"
           log_enabled: "{{- (log_events is none) or (log_events==true) -}}"
-          current: "{{- state_attr(this_entity_id, 'variables') or {} -}}"
+          # BOOT-SAFE: state_attr() + default(none, true) — NOT this.attributes.get().
+          # 'this' is undefined in action: variables of trigger-based template sensors
+          # (TemplateError: UndefinedError crashes every trigger silently).
+          # default(none) — NOT default(none, true). boolean=True catches {} (falsy)
+          # which conflates "unknown at boot" with "known empty". default(none) only
+          # catches Jinja2 Undefined; None passes through as None. {} stays as {}.
+          # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
+          # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
+          current: >-
+            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+      # ── BOOT GUARD ────────────────────────────────────────────────────────────
+      # current is none = recorder has not yet restored this cabinet's state.
+      # We do not know what is in it. NEVER write into unknown state.
+      # Blocks all writes: set_variable, remove_variable, clear_variables.
+      # Invariant: none = unknown (block). {} = known empty (allow). {...} = allow.
+      # Break-glass: pass force: true in event data to bypass (admin/recovery only).
+      # See: boot wipe incident 2026-03-23, bug_cabinet_boot_wipe_regression.md
+      - if: "{{ current is none and not trigger.event.data.get('force', false) }}"
+        then:
+          - stop: "Boot guard — state unconfirmed, all writes suppressed"
+      # ──────────────────────────────────────────────────────────────────────────
       - if: "{{ log_enabled }}"
         then:
           - action: logbook.log
@@ -1072,12 +1638,38 @@ template:
       - name: "ZenOS Default User History Cabinet"
         unique_id: zenos_default_user_history_cabinet
         icon: mdi:file-cabinet
-        state: Variables
+        state: >-
+          {%- set current = current if current is mapping else {} -%}
+          {%- set _sevt = trigger.event.event_type if trigger.platform == 'event' else '' -%}
+          {%- set _sk = trigger.event.data.key | default('') if trigger.platform == 'event' else '' -%}
+          {%- set _sv = trigger.event.data.value | default(none) if trigger.platform == 'event' else none -%}
+          {%- set _sts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) if trigger.platform == 'event' else false -%}
+          {%- if _sevt.startswith('set_variable') and _sk and _sv is not none -%}
+            {%- set _svf = _sv.isoformat() if _sv is datetime else _sv -%}
+            {%- set _snew = {_sk: {'value': _svf, 'timestamp': now().isoformat()}} if _sts else {_sk: _svf} -%}
+            {%- set _eff = dict(current, **_snew) -%}
+          {%- elif _sevt.startswith('remove_variable') and _sk -%}
+            {%- set _eff = dict(current.items() | rejectattr('0', 'eq', _sk)) -%}
+          {%- elif _sevt.startswith('clear_variables') and trigger.event.data.get('confirm') == true -%}
+            {%- set _eff = {} -%}
+          {%- else -%}
+            {%- set _eff = current -%}
+          {%- endif -%}
+          {%- set _vi = _eff is mapping and 'AI_Cabinet_VolumeInfo' in _eff -%}
+          {%- set _mr = _eff.get('meta', {}) if _eff is mapping else {} -%}
+          {%- set _mraw = _mr if _mr is mapping else (_mr | from_json if _mr is string else {}) -%}
+          {%- set _mv = _mraw.get('value', _mraw) if _mraw is mapping else {} -%}
+          {%- set _m = _mv if _mv is mapping else (_mv | from_json if _mv is string else {}) -%}
+          {%- if not _vi -%}init{%- elif _m.get('mounted', true) != false -%}online_mounted{%- else -%}online_unmounted{%- endif -%}
         attributes:
           default_timestamp: true
           log_events: false
           variables: >
-            {% set current = this.attributes.get('variables', {}) %}
+            {% set current = this.attributes.get('variables', none) %}
+            {% if current is none and not trigger.event.data.get('force', false) %}
+              {{ none }}
+            {% else %}
+            {% set current = current if current is mapping else {} %}
             {% set evt = trigger.event.event_type %}
             {% set key = trigger.event.data.key %}
             {% set val = trigger.event.data.value %}
@@ -1093,10 +1685,11 @@ template:
               {{ current if proposed | tojson | length > 131072 else proposed }}
             {% elif evt.startswith('remove_variable') and key is defined %}
               {{ dict(current.items() | rejectattr('0', 'eq', key)) }}
-            {% elif evt.startswith('clear_variables') %}
+            {% elif evt.startswith('clear_variables') and trigger.event.data.get('confirm') == true %}
               {{ {} }}
             {% else %}
               {{ current }}
+            {% endif %}
             {% endif %}
 
   ###########################################################################
@@ -1118,7 +1711,27 @@ template:
           this_entity_id: "{{- trigger.id -}}"
           log_events: "{{- state_attr(this_entity_id, 'log_events') -}}"
           log_enabled: "{{- (log_events is none) or (log_events==true) -}}"
-          current: "{{- state_attr(this_entity_id, 'variables') or {} -}}"
+          # BOOT-SAFE: state_attr() + default(none, true) — NOT this.attributes.get().
+          # 'this' is undefined in action: variables of trigger-based template sensors
+          # (TemplateError: UndefinedError crashes every trigger silently).
+          # default(none) — NOT default(none, true). boolean=True catches {} (falsy)
+          # which conflates "unknown at boot" with "known empty". default(none) only
+          # catches Jinja2 Undefined; None passes through as None. {} stays as {}.
+          # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
+          # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
+          current: >-
+            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+      # ── BOOT GUARD ────────────────────────────────────────────────────────────
+      # current is none = recorder has not yet restored this cabinet's state.
+      # We do not know what is in it. NEVER write into unknown state.
+      # Blocks all writes: set_variable, remove_variable, clear_variables.
+      # Invariant: none = unknown (block). {} = known empty (allow). {...} = allow.
+      # Break-glass: pass force: true in event data to bypass (admin/recovery only).
+      # See: boot wipe incident 2026-03-23, bug_cabinet_boot_wipe_regression.md
+      - if: "{{ current is none and not trigger.event.data.get('force', false) }}"
+        then:
+          - stop: "Boot guard — state unconfirmed, all writes suppressed"
+      # ──────────────────────────────────────────────────────────────────────────
       - if: "{{ log_enabled }}"
         then:
           - action: logbook.log
@@ -1164,12 +1777,38 @@ template:
       - name: "ZenOS Default AI User Cabinet"
         unique_id: zenos_default_ai_user_cabinet
         icon: mdi:file-cabinet
-        state: Variables
+        state: >-
+          {%- set current = current if current is mapping else {} -%}
+          {%- set _sevt = trigger.event.event_type if trigger.platform == 'event' else '' -%}
+          {%- set _sk = trigger.event.data.key | default('') if trigger.platform == 'event' else '' -%}
+          {%- set _sv = trigger.event.data.value | default(none) if trigger.platform == 'event' else none -%}
+          {%- set _sts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) if trigger.platform == 'event' else false -%}
+          {%- if _sevt.startswith('set_variable') and _sk and _sv is not none -%}
+            {%- set _svf = _sv.isoformat() if _sv is datetime else _sv -%}
+            {%- set _snew = {_sk: {'value': _svf, 'timestamp': now().isoformat()}} if _sts else {_sk: _svf} -%}
+            {%- set _eff = dict(current, **_snew) -%}
+          {%- elif _sevt.startswith('remove_variable') and _sk -%}
+            {%- set _eff = dict(current.items() | rejectattr('0', 'eq', _sk)) -%}
+          {%- elif _sevt.startswith('clear_variables') and trigger.event.data.get('confirm') == true -%}
+            {%- set _eff = {} -%}
+          {%- else -%}
+            {%- set _eff = current -%}
+          {%- endif -%}
+          {%- set _vi = _eff is mapping and 'AI_Cabinet_VolumeInfo' in _eff -%}
+          {%- set _mr = _eff.get('meta', {}) if _eff is mapping else {} -%}
+          {%- set _mraw = _mr if _mr is mapping else (_mr | from_json if _mr is string else {}) -%}
+          {%- set _mv = _mraw.get('value', _mraw) if _mraw is mapping else {} -%}
+          {%- set _m = _mv if _mv is mapping else (_mv | from_json if _mv is string else {}) -%}
+          {%- if not _vi -%}init{%- elif _m.get('mounted', true) != false -%}online_mounted{%- else -%}online_unmounted{%- endif -%}
         attributes:
           default_timestamp: true
           log_events: false
           variables: >
-            {% set current = this.attributes.get('variables', {}) %}
+            {% set current = this.attributes.get('variables', none) %}
+            {% if current is none and not trigger.event.data.get('force', false) %}
+              {{ none }}
+            {% else %}
+            {% set current = current if current is mapping else {} %}
             {% set evt = trigger.event.event_type %}
             {% set key = trigger.event.data.key %}
             {% set val = trigger.event.data.value %}
@@ -1185,10 +1824,11 @@ template:
               {{ current if proposed | tojson | length > 131072 else proposed }}
             {% elif evt.startswith('remove_variable') and key is defined %}
               {{ dict(current.items() | rejectattr('0', 'eq', key)) }}
-            {% elif evt.startswith('clear_variables') %}
+            {% elif evt.startswith('clear_variables') and trigger.event.data.get('confirm') == true %}
               {{ {} }}
             {% else %}
               {{ current }}
+            {% endif %}
             {% endif %}
 
   - trigger:
@@ -1206,7 +1846,27 @@ template:
           this_entity_id: "{{- trigger.id -}}"
           log_events: "{{- state_attr(this_entity_id, 'log_events') -}}"
           log_enabled: "{{- (log_events is none) or (log_events==true) -}}"
-          current: "{{- state_attr(this_entity_id, 'variables') or {} -}}"
+          # BOOT-SAFE: state_attr() + default(none, true) — NOT this.attributes.get().
+          # 'this' is undefined in action: variables of trigger-based template sensors
+          # (TemplateError: UndefinedError crashes every trigger silently).
+          # default(none) — NOT default(none, true). boolean=True catches {} (falsy)
+          # which conflates "unknown at boot" with "known empty". default(none) only
+          # catches Jinja2 Undefined; None passes through as None. {} stays as {}.
+          # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
+          # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
+          current: >-
+            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+      # ── BOOT GUARD ────────────────────────────────────────────────────────────
+      # current is none = recorder has not yet restored this cabinet's state.
+      # We do not know what is in it. NEVER write into unknown state.
+      # Blocks all writes: set_variable, remove_variable, clear_variables.
+      # Invariant: none = unknown (block). {} = known empty (allow). {...} = allow.
+      # Break-glass: pass force: true in event data to bypass (admin/recovery only).
+      # See: boot wipe incident 2026-03-23, bug_cabinet_boot_wipe_regression.md
+      - if: "{{ current is none and not trigger.event.data.get('force', false) }}"
+        then:
+          - stop: "Boot guard — state unconfirmed, all writes suppressed"
+      # ──────────────────────────────────────────────────────────────────────────
       - if: "{{ log_enabled }}"
         then:
           - action: logbook.log
@@ -1252,12 +1912,38 @@ template:
       - name: "ZenOS Default AI User History Cabinet"
         unique_id: zenos_default_ai_user_history_cabinet
         icon: mdi:file-cabinet
-        state: Variables
+        state: >-
+          {%- set current = current if current is mapping else {} -%}
+          {%- set _sevt = trigger.event.event_type if trigger.platform == 'event' else '' -%}
+          {%- set _sk = trigger.event.data.key | default('') if trigger.platform == 'event' else '' -%}
+          {%- set _sv = trigger.event.data.value | default(none) if trigger.platform == 'event' else none -%}
+          {%- set _sts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) if trigger.platform == 'event' else false -%}
+          {%- if _sevt.startswith('set_variable') and _sk and _sv is not none -%}
+            {%- set _svf = _sv.isoformat() if _sv is datetime else _sv -%}
+            {%- set _snew = {_sk: {'value': _svf, 'timestamp': now().isoformat()}} if _sts else {_sk: _svf} -%}
+            {%- set _eff = dict(current, **_snew) -%}
+          {%- elif _sevt.startswith('remove_variable') and _sk -%}
+            {%- set _eff = dict(current.items() | rejectattr('0', 'eq', _sk)) -%}
+          {%- elif _sevt.startswith('clear_variables') and trigger.event.data.get('confirm') == true -%}
+            {%- set _eff = {} -%}
+          {%- else -%}
+            {%- set _eff = current -%}
+          {%- endif -%}
+          {%- set _vi = _eff is mapping and 'AI_Cabinet_VolumeInfo' in _eff -%}
+          {%- set _mr = _eff.get('meta', {}) if _eff is mapping else {} -%}
+          {%- set _mraw = _mr if _mr is mapping else (_mr | from_json if _mr is string else {}) -%}
+          {%- set _mv = _mraw.get('value', _mraw) if _mraw is mapping else {} -%}
+          {%- set _m = _mv if _mv is mapping else (_mv | from_json if _mv is string else {}) -%}
+          {%- if not _vi -%}init{%- elif _m.get('mounted', true) != false -%}online_mounted{%- else -%}online_unmounted{%- endif -%}
         attributes:
           default_timestamp: true
           log_events: false
           variables: >
-            {% set current = this.attributes.get('variables', {}) %}
+            {% set current = this.attributes.get('variables', none) %}
+            {% if current is none and not trigger.event.data.get('force', false) %}
+              {{ none }}
+            {% else %}
+            {% set current = current if current is mapping else {} %}
             {% set evt = trigger.event.event_type %}
             {% set key = trigger.event.data.key %}
             {% set val = trigger.event.data.value %}
@@ -1273,10 +1959,825 @@ template:
               {{ current if proposed | tojson | length > 131072 else proposed }}
             {% elif evt.startswith('remove_variable') and key is defined %}
               {{ dict(current.items() | rejectattr('0', 'eq', key)) }}
-            {% elif evt.startswith('clear_variables') %}
+            {% elif evt.startswith('clear_variables') and trigger.event.data.get('confirm') == true %}
               {{ {} }}
             {% else %}
               {{ current }}
+            {% endif %}
+            {% endif %}
+
+  ###########################################################################
+  # 6. EXPANSION CABINETS (6)
+  #    expansion_1-5 + vault. Type-agnostic slots — cab_type is applied by
+  #    the provisioner via label, not encoded in the entity name. Optional
+  #    slots present when the cabset is fully provisioned.
+  #    No history cabinets for expansion slots (added on demand per install).
+  #    Vault is structurally absent from all knowledge-pipeline traversals
+  #    by design; it stores data but is never traversed by the summarizer.
+  ###########################################################################
+
+  - trigger:
+      - trigger: event
+        event_type: set_variable_zenos_expansion_cabinet_1
+        id: sensor.zenos_expansion_cabinet_1
+      - trigger: event
+        event_type: remove_variable_zenos_expansion_cabinet_1
+        id: sensor.zenos_expansion_cabinet_1
+      - trigger: event
+        event_type: clear_variables_zenos_expansion_cabinet_1
+        id: sensor.zenos_expansion_cabinet_1
+    action:
+      - variables:
+          this_entity_id: "{{- trigger.id -}}"
+          log_events: "{{- state_attr(this_entity_id, 'log_events') -}}"
+          log_enabled: "{{- (log_events is none) or (log_events==true) -}}"
+          # BOOT-SAFE: state_attr() + default(none, true) — NOT this.attributes.get().
+          # 'this' is undefined in action: variables of trigger-based template sensors
+          # (TemplateError: UndefinedError crashes every trigger silently).
+          # default(none) — NOT default(none, true). boolean=True catches {} (falsy)
+          # which conflates "unknown at boot" with "known empty". default(none) only
+          # catches Jinja2 Undefined; None passes through as None. {} stays as {}.
+          # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
+          # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
+          current: >-
+            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+      # ── BOOT GUARD ────────────────────────────────────────────────────────────
+      # current is none = recorder has not yet restored this cabinet's state.
+      # We do not know what is in it. NEVER write into unknown state.
+      # Blocks all writes: set_variable, remove_variable, clear_variables.
+      # Invariant: none = unknown (block). {} = known empty (allow). {...} = allow.
+      # Break-glass: pass force: true in event data to bypass (admin/recovery only).
+      # See: boot wipe incident 2026-03-23, bug_cabinet_boot_wipe_regression.md
+      - if: "{{ current is none and not trigger.event.data.get('force', false) }}"
+        then:
+          - stop: "Boot guard — state unconfirmed, all writes suppressed"
+      # ──────────────────────────────────────────────────────────────────────────
+      - if: "{{ log_enabled }}"
+        then:
+          - action: logbook.log
+            data:
+              name: "{{ trigger.event.event_type }}"
+              message: >
+                {{ trigger.event.data.key | default('-') }}
+                {% if trigger.event.event_type.startswith('set_variable') -%}
+                  : {{ trigger.event.data.value | default('not defined!') }}
+                {%- endif %}
+              entity_id: "{{- this_entity_id -}}"
+              domain: sensor
+      - if:
+          condition: template
+          value_template: >
+            {% set evt = trigger.event.event_type %}
+            {% set key = trigger.event.data.key %}
+            {% set val = trigger.event.data.value %}
+            {% if evt.startswith('set_variable') and key is defined and val is defined %}
+              {% set value = val.isoformat() if val is datetime else val %}
+              {% set use_ts = trigger.event.data.get('set_timestamp', state_attr(this_entity_id, 'default_timestamp') | default(false)) %}
+              {% if use_ts %}
+                {% set new = { key: { 'value': value, 'timestamp': now().isoformat() } } %}
+              {% else %}
+                {% set new = { key: value } %}
+              {% endif %}
+              {{ dict(current, **new) | tojson | length > 131072 }}
+            {% else %}
+              false
+            {% endif %}
+        then:
+          - action: logbook.log
+            data:
+              name: "{{ state_attr(this_entity_id, 'friendly_name') | default('Cabinet') }} — WRITE BLOCKED"
+              message: >
+                Cabinet full ({{ current | tojson | length }}/131072 bytes).
+                Key '{{ trigger.event.data.key }}' was NOT written.
+                Delete or move keys out before writing more.
+              entity_id: "{{- this_entity_id -}}"
+              domain: sensor
+    sensor:
+      - name: "ZenOS Expansion Cabinet 1"
+        unique_id: zenos_expansion_cabinet_1
+        icon: mdi:file-cabinet
+        state: >-
+          {%- set current = current if current is mapping else {} -%}
+          {%- set _sevt = trigger.event.event_type if trigger.platform == 'event' else '' -%}
+          {%- set _sk = trigger.event.data.key | default('') if trigger.platform == 'event' else '' -%}
+          {%- set _sv = trigger.event.data.value | default(none) if trigger.platform == 'event' else none -%}
+          {%- set _sts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) if trigger.platform == 'event' else false -%}
+          {%- if _sevt.startswith('set_variable') and _sk and _sv is not none -%}
+            {%- set _svf = _sv.isoformat() if _sv is datetime else _sv -%}
+            {%- set _snew = {_sk: {'value': _svf, 'timestamp': now().isoformat()}} if _sts else {_sk: _svf} -%}
+            {%- set _eff = dict(current, **_snew) -%}
+          {%- elif _sevt.startswith('remove_variable') and _sk -%}
+            {%- set _eff = dict(current.items() | rejectattr('0', 'eq', _sk)) -%}
+          {%- elif _sevt.startswith('clear_variables') and trigger.event.data.get('confirm') == true -%}
+            {%- set _eff = {} -%}
+          {%- else -%}
+            {%- set _eff = current -%}
+          {%- endif -%}
+          {%- set _vi = _eff is mapping and 'AI_Cabinet_VolumeInfo' in _eff -%}
+          {%- set _mr = _eff.get('meta', {}) if _eff is mapping else {} -%}
+          {%- set _mraw = _mr if _mr is mapping else (_mr | from_json if _mr is string else {}) -%}
+          {%- set _mv = _mraw.get('value', _mraw) if _mraw is mapping else {} -%}
+          {%- set _m = _mv if _mv is mapping else (_mv | from_json if _mv is string else {}) -%}
+          {%- if not _vi -%}init{%- elif _m.get('mounted', true) != false -%}online_mounted{%- else -%}online_unmounted{%- endif -%}
+        attributes:
+          default_timestamp: true
+          log_events: false
+          variables: >
+            {% set current = this.attributes.get('variables', none) %}
+            {% if current is none and not trigger.event.data.get('force', false) %}
+              {{ none }}
+            {% else %}
+            {% set current = current if current is mapping else {} %}
+            {% set evt = trigger.event.event_type %}
+            {% set key = trigger.event.data.key %}
+            {% set val = trigger.event.data.value %}
+            {% set use_ts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) %}
+            {% if evt.startswith('set_variable') and key is defined and val is defined %}
+              {% set value = val.isoformat() if val is datetime else val %}
+              {% if use_ts %}
+                {% set new = { key: { 'value': value, 'timestamp': now().isoformat() } } %}
+              {% else %}
+                {% set new = { key: value } %}
+              {% endif %}
+              {% set proposed = dict(current, **new) %}
+              {{ current if proposed | tojson | length > 131072 else proposed }}
+            {% elif evt.startswith('remove_variable') and key is defined %}
+              {{ dict(current.items() | rejectattr('0', 'eq', key)) }}
+            {% elif evt.startswith('clear_variables') and trigger.event.data.get('confirm') == true %}
+              {{ {} }}
+            {% else %}
+              {{ current }}
+            {% endif %}
+            {% endif %}
+
+  - trigger:
+      - trigger: event
+        event_type: set_variable_zenos_expansion_cabinet_2
+        id: sensor.zenos_expansion_cabinet_2
+      - trigger: event
+        event_type: remove_variable_zenos_expansion_cabinet_2
+        id: sensor.zenos_expansion_cabinet_2
+      - trigger: event
+        event_type: clear_variables_zenos_expansion_cabinet_2
+        id: sensor.zenos_expansion_cabinet_2
+    action:
+      - variables:
+          this_entity_id: "{{- trigger.id -}}"
+          log_events: "{{- state_attr(this_entity_id, 'log_events') -}}"
+          log_enabled: "{{- (log_events is none) or (log_events==true) -}}"
+          # BOOT-SAFE: state_attr() + default(none, true) — NOT this.attributes.get().
+          # 'this' is undefined in action: variables of trigger-based template sensors
+          # (TemplateError: UndefinedError crashes every trigger silently).
+          # default(none) — NOT default(none, true). boolean=True catches {} (falsy)
+          # which conflates "unknown at boot" with "known empty". default(none) only
+          # catches Jinja2 Undefined; None passes through as None. {} stays as {}.
+          # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
+          # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
+          current: >-
+            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+      # ── BOOT GUARD ────────────────────────────────────────────────────────────
+      # current is none = recorder has not yet restored this cabinet's state.
+      # We do not know what is in it. NEVER write into unknown state.
+      # Blocks all writes: set_variable, remove_variable, clear_variables.
+      # Invariant: none = unknown (block). {} = known empty (allow). {...} = allow.
+      # Break-glass: pass force: true in event data to bypass (admin/recovery only).
+      # See: boot wipe incident 2026-03-23, bug_cabinet_boot_wipe_regression.md
+      - if: "{{ current is none and not trigger.event.data.get('force', false) }}"
+        then:
+          - stop: "Boot guard — state unconfirmed, all writes suppressed"
+      # ──────────────────────────────────────────────────────────────────────────
+      - if: "{{ log_enabled }}"
+        then:
+          - action: logbook.log
+            data:
+              name: "{{ trigger.event.event_type }}"
+              message: >
+                {{ trigger.event.data.key | default('-') }}
+                {% if trigger.event.event_type.startswith('set_variable') -%}
+                  : {{ trigger.event.data.value | default('not defined!') }}
+                {%- endif %}
+              entity_id: "{{- this_entity_id -}}"
+              domain: sensor
+      - if:
+          condition: template
+          value_template: >
+            {% set evt = trigger.event.event_type %}
+            {% set key = trigger.event.data.key %}
+            {% set val = trigger.event.data.value %}
+            {% if evt.startswith('set_variable') and key is defined and val is defined %}
+              {% set value = val.isoformat() if val is datetime else val %}
+              {% set use_ts = trigger.event.data.get('set_timestamp', state_attr(this_entity_id, 'default_timestamp') | default(false)) %}
+              {% if use_ts %}
+                {% set new = { key: { 'value': value, 'timestamp': now().isoformat() } } %}
+              {% else %}
+                {% set new = { key: value } %}
+              {% endif %}
+              {{ dict(current, **new) | tojson | length > 131072 }}
+            {% else %}
+              false
+            {% endif %}
+        then:
+          - action: logbook.log
+            data:
+              name: "{{ state_attr(this_entity_id, 'friendly_name') | default('Cabinet') }} — WRITE BLOCKED"
+              message: >
+                Cabinet full ({{ current | tojson | length }}/131072 bytes).
+                Key '{{ trigger.event.data.key }}' was NOT written.
+                Delete or move keys out before writing more.
+              entity_id: "{{- this_entity_id -}}"
+              domain: sensor
+    sensor:
+      - name: "ZenOS Expansion Cabinet 2"
+        unique_id: zenos_expansion_cabinet_2
+        icon: mdi:file-cabinet
+        state: >-
+          {%- set current = current if current is mapping else {} -%}
+          {%- set _sevt = trigger.event.event_type if trigger.platform == 'event' else '' -%}
+          {%- set _sk = trigger.event.data.key | default('') if trigger.platform == 'event' else '' -%}
+          {%- set _sv = trigger.event.data.value | default(none) if trigger.platform == 'event' else none -%}
+          {%- set _sts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) if trigger.platform == 'event' else false -%}
+          {%- if _sevt.startswith('set_variable') and _sk and _sv is not none -%}
+            {%- set _svf = _sv.isoformat() if _sv is datetime else _sv -%}
+            {%- set _snew = {_sk: {'value': _svf, 'timestamp': now().isoformat()}} if _sts else {_sk: _svf} -%}
+            {%- set _eff = dict(current, **_snew) -%}
+          {%- elif _sevt.startswith('remove_variable') and _sk -%}
+            {%- set _eff = dict(current.items() | rejectattr('0', 'eq', _sk)) -%}
+          {%- elif _sevt.startswith('clear_variables') and trigger.event.data.get('confirm') == true -%}
+            {%- set _eff = {} -%}
+          {%- else -%}
+            {%- set _eff = current -%}
+          {%- endif -%}
+          {%- set _vi = _eff is mapping and 'AI_Cabinet_VolumeInfo' in _eff -%}
+          {%- set _mr = _eff.get('meta', {}) if _eff is mapping else {} -%}
+          {%- set _mraw = _mr if _mr is mapping else (_mr | from_json if _mr is string else {}) -%}
+          {%- set _mv = _mraw.get('value', _mraw) if _mraw is mapping else {} -%}
+          {%- set _m = _mv if _mv is mapping else (_mv | from_json if _mv is string else {}) -%}
+          {%- if not _vi -%}init{%- elif _m.get('mounted', true) != false -%}online_mounted{%- else -%}online_unmounted{%- endif -%}
+        attributes:
+          default_timestamp: true
+          log_events: false
+          variables: >
+            {% set current = this.attributes.get('variables', none) %}
+            {% if current is none and not trigger.event.data.get('force', false) %}
+              {{ none }}
+            {% else %}
+            {% set current = current if current is mapping else {} %}
+            {% set evt = trigger.event.event_type %}
+            {% set key = trigger.event.data.key %}
+            {% set val = trigger.event.data.value %}
+            {% set use_ts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) %}
+            {% if evt.startswith('set_variable') and key is defined and val is defined %}
+              {% set value = val.isoformat() if val is datetime else val %}
+              {% if use_ts %}
+                {% set new = { key: { 'value': value, 'timestamp': now().isoformat() } } %}
+              {% else %}
+                {% set new = { key: value } %}
+              {% endif %}
+              {% set proposed = dict(current, **new) %}
+              {{ current if proposed | tojson | length > 131072 else proposed }}
+            {% elif evt.startswith('remove_variable') and key is defined %}
+              {{ dict(current.items() | rejectattr('0', 'eq', key)) }}
+            {% elif evt.startswith('clear_variables') and trigger.event.data.get('confirm') == true %}
+              {{ {} }}
+            {% else %}
+              {{ current }}
+            {% endif %}
+            {% endif %}
+
+  - trigger:
+      - trigger: event
+        event_type: set_variable_zenos_expansion_cabinet_3
+        id: sensor.zenos_expansion_cabinet_3
+      - trigger: event
+        event_type: remove_variable_zenos_expansion_cabinet_3
+        id: sensor.zenos_expansion_cabinet_3
+      - trigger: event
+        event_type: clear_variables_zenos_expansion_cabinet_3
+        id: sensor.zenos_expansion_cabinet_3
+    action:
+      - variables:
+          this_entity_id: "{{- trigger.id -}}"
+          log_events: "{{- state_attr(this_entity_id, 'log_events') -}}"
+          log_enabled: "{{- (log_events is none) or (log_events==true) -}}"
+          # BOOT-SAFE: state_attr() + default(none, true) — NOT this.attributes.get().
+          # 'this' is undefined in action: variables of trigger-based template sensors
+          # (TemplateError: UndefinedError crashes every trigger silently).
+          # default(none) — NOT default(none, true). boolean=True catches {} (falsy)
+          # which conflates "unknown at boot" with "known empty". default(none) only
+          # catches Jinja2 Undefined; None passes through as None. {} stays as {}.
+          # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
+          # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
+          current: >-
+            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+      # ── BOOT GUARD ────────────────────────────────────────────────────────────
+      # current is none = recorder has not yet restored this cabinet's state.
+      # We do not know what is in it. NEVER write into unknown state.
+      # Blocks all writes: set_variable, remove_variable, clear_variables.
+      # Invariant: none = unknown (block). {} = known empty (allow). {...} = allow.
+      # Break-glass: pass force: true in event data to bypass (admin/recovery only).
+      # See: boot wipe incident 2026-03-23, bug_cabinet_boot_wipe_regression.md
+      - if: "{{ current is none and not trigger.event.data.get('force', false) }}"
+        then:
+          - stop: "Boot guard — state unconfirmed, all writes suppressed"
+      # ──────────────────────────────────────────────────────────────────────────
+      - if: "{{ log_enabled }}"
+        then:
+          - action: logbook.log
+            data:
+              name: "{{ trigger.event.event_type }}"
+              message: >
+                {{ trigger.event.data.key | default('-') }}
+                {% if trigger.event.event_type.startswith('set_variable') -%}
+                  : {{ trigger.event.data.value | default('not defined!') }}
+                {%- endif %}
+              entity_id: "{{- this_entity_id -}}"
+              domain: sensor
+      - if:
+          condition: template
+          value_template: >
+            {% set evt = trigger.event.event_type %}
+            {% set key = trigger.event.data.key %}
+            {% set val = trigger.event.data.value %}
+            {% if evt.startswith('set_variable') and key is defined and val is defined %}
+              {% set value = val.isoformat() if val is datetime else val %}
+              {% set use_ts = trigger.event.data.get('set_timestamp', state_attr(this_entity_id, 'default_timestamp') | default(false)) %}
+              {% if use_ts %}
+                {% set new = { key: { 'value': value, 'timestamp': now().isoformat() } } %}
+              {% else %}
+                {% set new = { key: value } %}
+              {% endif %}
+              {{ dict(current, **new) | tojson | length > 131072 }}
+            {% else %}
+              false
+            {% endif %}
+        then:
+          - action: logbook.log
+            data:
+              name: "{{ state_attr(this_entity_id, 'friendly_name') | default('Cabinet') }} — WRITE BLOCKED"
+              message: >
+                Cabinet full ({{ current | tojson | length }}/131072 bytes).
+                Key '{{ trigger.event.data.key }}' was NOT written.
+                Delete or move keys out before writing more.
+              entity_id: "{{- this_entity_id -}}"
+              domain: sensor
+    sensor:
+      - name: "ZenOS Expansion Cabinet 3"
+        unique_id: zenos_expansion_cabinet_3
+        icon: mdi:file-cabinet
+        state: >-
+          {%- set current = current if current is mapping else {} -%}
+          {%- set _sevt = trigger.event.event_type if trigger.platform == 'event' else '' -%}
+          {%- set _sk = trigger.event.data.key | default('') if trigger.platform == 'event' else '' -%}
+          {%- set _sv = trigger.event.data.value | default(none) if trigger.platform == 'event' else none -%}
+          {%- set _sts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) if trigger.platform == 'event' else false -%}
+          {%- if _sevt.startswith('set_variable') and _sk and _sv is not none -%}
+            {%- set _svf = _sv.isoformat() if _sv is datetime else _sv -%}
+            {%- set _snew = {_sk: {'value': _svf, 'timestamp': now().isoformat()}} if _sts else {_sk: _svf} -%}
+            {%- set _eff = dict(current, **_snew) -%}
+          {%- elif _sevt.startswith('remove_variable') and _sk -%}
+            {%- set _eff = dict(current.items() | rejectattr('0', 'eq', _sk)) -%}
+          {%- elif _sevt.startswith('clear_variables') and trigger.event.data.get('confirm') == true -%}
+            {%- set _eff = {} -%}
+          {%- else -%}
+            {%- set _eff = current -%}
+          {%- endif -%}
+          {%- set _vi = _eff is mapping and 'AI_Cabinet_VolumeInfo' in _eff -%}
+          {%- set _mr = _eff.get('meta', {}) if _eff is mapping else {} -%}
+          {%- set _mraw = _mr if _mr is mapping else (_mr | from_json if _mr is string else {}) -%}
+          {%- set _mv = _mraw.get('value', _mraw) if _mraw is mapping else {} -%}
+          {%- set _m = _mv if _mv is mapping else (_mv | from_json if _mv is string else {}) -%}
+          {%- if not _vi -%}init{%- elif _m.get('mounted', true) != false -%}online_mounted{%- else -%}online_unmounted{%- endif -%}
+        attributes:
+          default_timestamp: true
+          log_events: false
+          variables: >
+            {% set current = this.attributes.get('variables', none) %}
+            {% if current is none and not trigger.event.data.get('force', false) %}
+              {{ none }}
+            {% else %}
+            {% set current = current if current is mapping else {} %}
+            {% set evt = trigger.event.event_type %}
+            {% set key = trigger.event.data.key %}
+            {% set val = trigger.event.data.value %}
+            {% set use_ts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) %}
+            {% if evt.startswith('set_variable') and key is defined and val is defined %}
+              {% set value = val.isoformat() if val is datetime else val %}
+              {% if use_ts %}
+                {% set new = { key: { 'value': value, 'timestamp': now().isoformat() } } %}
+              {% else %}
+                {% set new = { key: value } %}
+              {% endif %}
+              {% set proposed = dict(current, **new) %}
+              {{ current if proposed | tojson | length > 131072 else proposed }}
+            {% elif evt.startswith('remove_variable') and key is defined %}
+              {{ dict(current.items() | rejectattr('0', 'eq', key)) }}
+            {% elif evt.startswith('clear_variables') and trigger.event.data.get('confirm') == true %}
+              {{ {} }}
+            {% else %}
+              {{ current }}
+            {% endif %}
+            {% endif %}
+
+  - trigger:
+      - trigger: event
+        event_type: set_variable_zenos_expansion_cabinet_4
+        id: sensor.zenos_expansion_cabinet_4
+      - trigger: event
+        event_type: remove_variable_zenos_expansion_cabinet_4
+        id: sensor.zenos_expansion_cabinet_4
+      - trigger: event
+        event_type: clear_variables_zenos_expansion_cabinet_4
+        id: sensor.zenos_expansion_cabinet_4
+    action:
+      - variables:
+          this_entity_id: "{{- trigger.id -}}"
+          log_events: "{{- state_attr(this_entity_id, 'log_events') -}}"
+          log_enabled: "{{- (log_events is none) or (log_events==true) -}}"
+          # BOOT-SAFE: state_attr() + default(none, true) — NOT this.attributes.get().
+          # 'this' is undefined in action: variables of trigger-based template sensors
+          # (TemplateError: UndefinedError crashes every trigger silently).
+          # default(none) — NOT default(none, true). boolean=True catches {} (falsy)
+          # which conflates "unknown at boot" with "known empty". default(none) only
+          # catches Jinja2 Undefined; None passes through as None. {} stays as {}.
+          # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
+          # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
+          current: >-
+            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+      # ── BOOT GUARD ────────────────────────────────────────────────────────────
+      # current is none = recorder has not yet restored this cabinet's state.
+      # We do not know what is in it. NEVER write into unknown state.
+      # Blocks all writes: set_variable, remove_variable, clear_variables.
+      # Invariant: none = unknown (block). {} = known empty (allow). {...} = allow.
+      # Break-glass: pass force: true in event data to bypass (admin/recovery only).
+      # See: boot wipe incident 2026-03-23, bug_cabinet_boot_wipe_regression.md
+      - if: "{{ current is none and not trigger.event.data.get('force', false) }}"
+        then:
+          - stop: "Boot guard — state unconfirmed, all writes suppressed"
+      # ──────────────────────────────────────────────────────────────────────────
+      - if: "{{ log_enabled }}"
+        then:
+          - action: logbook.log
+            data:
+              name: "{{ trigger.event.event_type }}"
+              message: >
+                {{ trigger.event.data.key | default('-') }}
+                {% if trigger.event.event_type.startswith('set_variable') -%}
+                  : {{ trigger.event.data.value | default('not defined!') }}
+                {%- endif %}
+              entity_id: "{{- this_entity_id -}}"
+              domain: sensor
+      - if:
+          condition: template
+          value_template: >
+            {% set evt = trigger.event.event_type %}
+            {% set key = trigger.event.data.key %}
+            {% set val = trigger.event.data.value %}
+            {% if evt.startswith('set_variable') and key is defined and val is defined %}
+              {% set value = val.isoformat() if val is datetime else val %}
+              {% set use_ts = trigger.event.data.get('set_timestamp', state_attr(this_entity_id, 'default_timestamp') | default(false)) %}
+              {% if use_ts %}
+                {% set new = { key: { 'value': value, 'timestamp': now().isoformat() } } %}
+              {% else %}
+                {% set new = { key: value } %}
+              {% endif %}
+              {{ dict(current, **new) | tojson | length > 131072 }}
+            {% else %}
+              false
+            {% endif %}
+        then:
+          - action: logbook.log
+            data:
+              name: "{{ state_attr(this_entity_id, 'friendly_name') | default('Cabinet') }} — WRITE BLOCKED"
+              message: >
+                Cabinet full ({{ current | tojson | length }}/131072 bytes).
+                Key '{{ trigger.event.data.key }}' was NOT written.
+                Delete or move keys out before writing more.
+              entity_id: "{{- this_entity_id -}}"
+              domain: sensor
+    sensor:
+      - name: "ZenOS Expansion Cabinet 4"
+        unique_id: zenos_expansion_cabinet_4
+        icon: mdi:file-cabinet
+        state: >-
+          {%- set current = current if current is mapping else {} -%}
+          {%- set _sevt = trigger.event.event_type if trigger.platform == 'event' else '' -%}
+          {%- set _sk = trigger.event.data.key | default('') if trigger.platform == 'event' else '' -%}
+          {%- set _sv = trigger.event.data.value | default(none) if trigger.platform == 'event' else none -%}
+          {%- set _sts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) if trigger.platform == 'event' else false -%}
+          {%- if _sevt.startswith('set_variable') and _sk and _sv is not none -%}
+            {%- set _svf = _sv.isoformat() if _sv is datetime else _sv -%}
+            {%- set _snew = {_sk: {'value': _svf, 'timestamp': now().isoformat()}} if _sts else {_sk: _svf} -%}
+            {%- set _eff = dict(current, **_snew) -%}
+          {%- elif _sevt.startswith('remove_variable') and _sk -%}
+            {%- set _eff = dict(current.items() | rejectattr('0', 'eq', _sk)) -%}
+          {%- elif _sevt.startswith('clear_variables') and trigger.event.data.get('confirm') == true -%}
+            {%- set _eff = {} -%}
+          {%- else -%}
+            {%- set _eff = current -%}
+          {%- endif -%}
+          {%- set _vi = _eff is mapping and 'AI_Cabinet_VolumeInfo' in _eff -%}
+          {%- set _mr = _eff.get('meta', {}) if _eff is mapping else {} -%}
+          {%- set _mraw = _mr if _mr is mapping else (_mr | from_json if _mr is string else {}) -%}
+          {%- set _mv = _mraw.get('value', _mraw) if _mraw is mapping else {} -%}
+          {%- set _m = _mv if _mv is mapping else (_mv | from_json if _mv is string else {}) -%}
+          {%- if not _vi -%}init{%- elif _m.get('mounted', true) != false -%}online_mounted{%- else -%}online_unmounted{%- endif -%}
+        attributes:
+          default_timestamp: true
+          log_events: false
+          variables: >
+            {% set current = this.attributes.get('variables', none) %}
+            {% if current is none and not trigger.event.data.get('force', false) %}
+              {{ none }}
+            {% else %}
+            {% set current = current if current is mapping else {} %}
+            {% set evt = trigger.event.event_type %}
+            {% set key = trigger.event.data.key %}
+            {% set val = trigger.event.data.value %}
+            {% set use_ts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) %}
+            {% if evt.startswith('set_variable') and key is defined and val is defined %}
+              {% set value = val.isoformat() if val is datetime else val %}
+              {% if use_ts %}
+                {% set new = { key: { 'value': value, 'timestamp': now().isoformat() } } %}
+              {% else %}
+                {% set new = { key: value } %}
+              {% endif %}
+              {% set proposed = dict(current, **new) %}
+              {{ current if proposed | tojson | length > 131072 else proposed }}
+            {% elif evt.startswith('remove_variable') and key is defined %}
+              {{ dict(current.items() | rejectattr('0', 'eq', key)) }}
+            {% elif evt.startswith('clear_variables') and trigger.event.data.get('confirm') == true %}
+              {{ {} }}
+            {% else %}
+              {{ current }}
+            {% endif %}
+            {% endif %}
+
+  - trigger:
+      - trigger: event
+        event_type: set_variable_zenos_expansion_cabinet_5
+        id: sensor.zenos_expansion_cabinet_5
+      - trigger: event
+        event_type: remove_variable_zenos_expansion_cabinet_5
+        id: sensor.zenos_expansion_cabinet_5
+      - trigger: event
+        event_type: clear_variables_zenos_expansion_cabinet_5
+        id: sensor.zenos_expansion_cabinet_5
+    action:
+      - variables:
+          this_entity_id: "{{- trigger.id -}}"
+          log_events: "{{- state_attr(this_entity_id, 'log_events') -}}"
+          log_enabled: "{{- (log_events is none) or (log_events==true) -}}"
+          # BOOT-SAFE: state_attr() + default(none, true) — NOT this.attributes.get().
+          # 'this' is undefined in action: variables of trigger-based template sensors
+          # (TemplateError: UndefinedError crashes every trigger silently).
+          # default(none) — NOT default(none, true). boolean=True catches {} (falsy)
+          # which conflates "unknown at boot" with "known empty". default(none) only
+          # catches Jinja2 Undefined; None passes through as None. {} stays as {}.
+          # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
+          # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
+          current: >-
+            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+      # ── BOOT GUARD ────────────────────────────────────────────────────────────
+      # current is none = recorder has not yet restored this cabinet's state.
+      # We do not know what is in it. NEVER write into unknown state.
+      # Blocks all writes: set_variable, remove_variable, clear_variables.
+      # Invariant: none = unknown (block). {} = known empty (allow). {...} = allow.
+      # Break-glass: pass force: true in event data to bypass (admin/recovery only).
+      # See: boot wipe incident 2026-03-23, bug_cabinet_boot_wipe_regression.md
+      - if: "{{ current is none and not trigger.event.data.get('force', false) }}"
+        then:
+          - stop: "Boot guard — state unconfirmed, all writes suppressed"
+      # ──────────────────────────────────────────────────────────────────────────
+      - if: "{{ log_enabled }}"
+        then:
+          - action: logbook.log
+            data:
+              name: "{{ trigger.event.event_type }}"
+              message: >
+                {{ trigger.event.data.key | default('-') }}
+                {% if trigger.event.event_type.startswith('set_variable') -%}
+                  : {{ trigger.event.data.value | default('not defined!') }}
+                {%- endif %}
+              entity_id: "{{- this_entity_id -}}"
+              domain: sensor
+      - if:
+          condition: template
+          value_template: >
+            {% set evt = trigger.event.event_type %}
+            {% set key = trigger.event.data.key %}
+            {% set val = trigger.event.data.value %}
+            {% if evt.startswith('set_variable') and key is defined and val is defined %}
+              {% set value = val.isoformat() if val is datetime else val %}
+              {% set use_ts = trigger.event.data.get('set_timestamp', state_attr(this_entity_id, 'default_timestamp') | default(false)) %}
+              {% if use_ts %}
+                {% set new = { key: { 'value': value, 'timestamp': now().isoformat() } } %}
+              {% else %}
+                {% set new = { key: value } %}
+              {% endif %}
+              {{ dict(current, **new) | tojson | length > 131072 }}
+            {% else %}
+              false
+            {% endif %}
+        then:
+          - action: logbook.log
+            data:
+              name: "{{ state_attr(this_entity_id, 'friendly_name') | default('Cabinet') }} — WRITE BLOCKED"
+              message: >
+                Cabinet full ({{ current | tojson | length }}/131072 bytes).
+                Key '{{ trigger.event.data.key }}' was NOT written.
+                Delete or move keys out before writing more.
+              entity_id: "{{- this_entity_id -}}"
+              domain: sensor
+    sensor:
+      - name: "ZenOS Expansion Cabinet 5"
+        unique_id: zenos_expansion_cabinet_5
+        icon: mdi:file-cabinet
+        state: >-
+          {%- set current = current if current is mapping else {} -%}
+          {%- set _sevt = trigger.event.event_type if trigger.platform == 'event' else '' -%}
+          {%- set _sk = trigger.event.data.key | default('') if trigger.platform == 'event' else '' -%}
+          {%- set _sv = trigger.event.data.value | default(none) if trigger.platform == 'event' else none -%}
+          {%- set _sts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) if trigger.platform == 'event' else false -%}
+          {%- if _sevt.startswith('set_variable') and _sk and _sv is not none -%}
+            {%- set _svf = _sv.isoformat() if _sv is datetime else _sv -%}
+            {%- set _snew = {_sk: {'value': _svf, 'timestamp': now().isoformat()}} if _sts else {_sk: _svf} -%}
+            {%- set _eff = dict(current, **_snew) -%}
+          {%- elif _sevt.startswith('remove_variable') and _sk -%}
+            {%- set _eff = dict(current.items() | rejectattr('0', 'eq', _sk)) -%}
+          {%- elif _sevt.startswith('clear_variables') and trigger.event.data.get('confirm') == true -%}
+            {%- set _eff = {} -%}
+          {%- else -%}
+            {%- set _eff = current -%}
+          {%- endif -%}
+          {%- set _vi = _eff is mapping and 'AI_Cabinet_VolumeInfo' in _eff -%}
+          {%- set _mr = _eff.get('meta', {}) if _eff is mapping else {} -%}
+          {%- set _mraw = _mr if _mr is mapping else (_mr | from_json if _mr is string else {}) -%}
+          {%- set _mv = _mraw.get('value', _mraw) if _mraw is mapping else {} -%}
+          {%- set _m = _mv if _mv is mapping else (_mv | from_json if _mv is string else {}) -%}
+          {%- if not _vi -%}init{%- elif _m.get('mounted', true) != false -%}online_mounted{%- else -%}online_unmounted{%- endif -%}
+        attributes:
+          default_timestamp: true
+          log_events: false
+          variables: >
+            {% set current = this.attributes.get('variables', none) %}
+            {% if current is none and not trigger.event.data.get('force', false) %}
+              {{ none }}
+            {% else %}
+            {% set current = current if current is mapping else {} %}
+            {% set evt = trigger.event.event_type %}
+            {% set key = trigger.event.data.key %}
+            {% set val = trigger.event.data.value %}
+            {% set use_ts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) %}
+            {% if evt.startswith('set_variable') and key is defined and val is defined %}
+              {% set value = val.isoformat() if val is datetime else val %}
+              {% if use_ts %}
+                {% set new = { key: { 'value': value, 'timestamp': now().isoformat() } } %}
+              {% else %}
+                {% set new = { key: value } %}
+              {% endif %}
+              {% set proposed = dict(current, **new) %}
+              {{ current if proposed | tojson | length > 131072 else proposed }}
+            {% elif evt.startswith('remove_variable') and key is defined %}
+              {{ dict(current.items() | rejectattr('0', 'eq', key)) }}
+            {% elif evt.startswith('clear_variables') and trigger.event.data.get('confirm') == true %}
+              {{ {} }}
+            {% else %}
+              {{ current }}
+            {% endif %}
+            {% endif %}
+
+  - trigger:
+      - trigger: event
+        event_type: set_variable_zenos_vault_cabinet
+        id: sensor.zenos_vault_cabinet
+      - trigger: event
+        event_type: remove_variable_zenos_vault_cabinet
+        id: sensor.zenos_vault_cabinet
+      - trigger: event
+        event_type: clear_variables_zenos_vault_cabinet
+        id: sensor.zenos_vault_cabinet
+    action:
+      - variables:
+          this_entity_id: "{{- trigger.id -}}"
+          log_events: "{{- state_attr(this_entity_id, 'log_events') -}}"
+          log_enabled: "{{- (log_events is none) or (log_events==true) -}}"
+          # BOOT-SAFE: state_attr() + default(none, true) — NOT this.attributes.get().
+          # 'this' is undefined in action: variables of trigger-based template sensors
+          # (TemplateError: UndefinedError crashes every trigger silently).
+          # default(none) — NOT default(none, true). boolean=True catches {} (falsy)
+          # which conflates "unknown at boot" with "known empty". default(none) only
+          # catches Jinja2 Undefined; None passes through as None. {} stays as {}.
+          # none = unknown at boot (block). {} = known empty (allow). {...} = allow.
+          # See: FG this_in_trigger_sensor_action, incident 2026-03-23.
+          current: >-
+            {{- state_attr(this_entity_id, 'variables') | default(none) -}}
+      # ── BOOT GUARD ────────────────────────────────────────────────────────────
+      # current is none = recorder has not yet restored this cabinet's state.
+      # We do not know what is in it. NEVER write into unknown state.
+      # Blocks all writes: set_variable, remove_variable, clear_variables.
+      # Invariant: none = unknown (block). {} = known empty (allow). {...} = allow.
+      # Break-glass: pass force: true in event data to bypass (admin/recovery only).
+      # See: boot wipe incident 2026-03-23, bug_cabinet_boot_wipe_regression.md
+      - if: "{{ current is none and not trigger.event.data.get('force', false) }}"
+        then:
+          - stop: "Boot guard — state unconfirmed, all writes suppressed"
+      # ──────────────────────────────────────────────────────────────────────────
+      - if: "{{ log_enabled }}"
+        then:
+          - action: logbook.log
+            data:
+              name: "{{ trigger.event.event_type }}"
+              message: >
+                {{ trigger.event.data.key | default('-') }}
+                {% if trigger.event.event_type.startswith('set_variable') -%}
+                  : {{ trigger.event.data.value | default('not defined!') }}
+                {%- endif %}
+              entity_id: "{{- this_entity_id -}}"
+              domain: sensor
+      - if:
+          condition: template
+          value_template: >
+            {% set evt = trigger.event.event_type %}
+            {% set key = trigger.event.data.key %}
+            {% set val = trigger.event.data.value %}
+            {% if evt.startswith('set_variable') and key is defined and val is defined %}
+              {% set value = val.isoformat() if val is datetime else val %}
+              {% set use_ts = trigger.event.data.get('set_timestamp', state_attr(this_entity_id, 'default_timestamp') | default(false)) %}
+              {% if use_ts %}
+                {% set new = { key: { 'value': value, 'timestamp': now().isoformat() } } %}
+              {% else %}
+                {% set new = { key: value } %}
+              {% endif %}
+              {{ dict(current, **new) | tojson | length > 131072 }}
+            {% else %}
+              false
+            {% endif %}
+        then:
+          - action: logbook.log
+            data:
+              name: "{{ state_attr(this_entity_id, 'friendly_name') | default('Cabinet') }} — WRITE BLOCKED"
+              message: >
+                Cabinet full ({{ current | tojson | length }}/131072 bytes).
+                Key '{{ trigger.event.data.key }}' was NOT written.
+                Delete or move keys out before writing more.
+              entity_id: "{{- this_entity_id -}}"
+              domain: sensor
+    sensor:
+      - name: "ZenOS Vault Cabinet"
+        unique_id: zenos_vault_cabinet
+        icon: mdi:safe-square
+        state: >-
+          {%- set current = current if current is mapping else {} -%}
+          {%- set _sevt = trigger.event.event_type if trigger.platform == 'event' else '' -%}
+          {%- set _sk = trigger.event.data.key | default('') if trigger.platform == 'event' else '' -%}
+          {%- set _sv = trigger.event.data.value | default(none) if trigger.platform == 'event' else none -%}
+          {%- set _sts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) if trigger.platform == 'event' else false -%}
+          {%- if _sevt.startswith('set_variable') and _sk and _sv is not none -%}
+            {%- set _svf = _sv.isoformat() if _sv is datetime else _sv -%}
+            {%- set _snew = {_sk: {'value': _svf, 'timestamp': now().isoformat()}} if _sts else {_sk: _svf} -%}
+            {%- set _eff = dict(current, **_snew) -%}
+          {%- elif _sevt.startswith('remove_variable') and _sk -%}
+            {%- set _eff = dict(current.items() | rejectattr('0', 'eq', _sk)) -%}
+          {%- elif _sevt.startswith('clear_variables') and trigger.event.data.get('confirm') == true -%}
+            {%- set _eff = {} -%}
+          {%- else -%}
+            {%- set _eff = current -%}
+          {%- endif -%}
+          {%- set _vi = _eff is mapping and 'AI_Cabinet_VolumeInfo' in _eff -%}
+          {%- set _mr = _eff.get('meta', {}) if _eff is mapping else {} -%}
+          {%- set _mraw = _mr if _mr is mapping else (_mr | from_json if _mr is string else {}) -%}
+          {%- set _mv = _mraw.get('value', _mraw) if _mraw is mapping else {} -%}
+          {%- set _m = _mv if _mv is mapping else (_mv | from_json if _mv is string else {}) -%}
+          {%- if not _vi -%}init{%- elif _m.get('mounted', true) != false -%}online_mounted{%- else -%}online_unmounted{%- endif -%}
+        attributes:
+          default_timestamp: true
+          log_events: false
+          variables: >
+            {% set current = this.attributes.get('variables', none) %}
+            {% if current is none and not trigger.event.data.get('force', false) %}
+              {{ none }}
+            {% else %}
+            {% set current = current if current is mapping else {} %}
+            {% set evt = trigger.event.event_type %}
+            {% set key = trigger.event.data.key %}
+            {% set val = trigger.event.data.value %}
+            {% set use_ts = trigger.event.data.get('set_timestamp', this.attributes.get('default_timestamp', false)) %}
+            {% if evt.startswith('set_variable') and key is defined and val is defined %}
+              {% set value = val.isoformat() if val is datetime else val %}
+              {% if use_ts %}
+                {% set new = { key: { 'value': value, 'timestamp': now().isoformat() } } %}
+              {% else %}
+                {% set new = { key: value } %}
+              {% endif %}
+              {% set proposed = dict(current, **new) %}
+              {{ current if proposed | tojson | length > 131072 else proposed }}
+            {% elif evt.startswith('remove_variable') and key is defined %}
+              {{ dict(current.items() | rejectattr('0', 'eq', key)) }}
+            {% elif evt.startswith('clear_variables') and trigger.event.data.get('confirm') == true %}
+              {{ {} }}
+            {% else %}
+              {{ current }}
+            {% endif %}
             {% endif %}
 
 
@@ -1284,9 +2785,12 @@ automation:
 - alias: Zen DojoTools Volume Redirector
   id: zen_dojotools_volume_redirector
   description: >
-    DojoTools Volume Redirector — ZENOS Edition (v4.0.0 RC2)
+    DojoTools Volume Redirector — ZENOS Edition (v4.5.x)
     Clean switchboard redirector for canonical Ring-0 ZENOS cabinets only.
     No legacy handling. No cross-namespace routing. Strict ZENOS core volumes.
+
+  mode: queued
+  max: 40
 
   triggers:
     - trigger: event
@@ -1296,7 +2800,7 @@ automation:
       event_type: remove_variable_legacy
       id: remove
     - trigger: event
-      event_type: clear_variable_legacy
+      event_type: clear_variables_legacy
       id: clear
     - trigger: event
       event_type: dojo_volume_redirector_probe
@@ -1334,6 +2838,14 @@ automation:
         vol_ai_user: sensor.zenos_default_ai_user_cabinet
         vol_ai_user_history: sensor.zenos_default_ai_user_history_cabinet
 
+        # EXPANSION CABINETS (6)
+        vol_expansion_1: sensor.zenos_expansion_cabinet_1
+        vol_expansion_2: sensor.zenos_expansion_cabinet_2
+        vol_expansion_3: sensor.zenos_expansion_cabinet_3
+        vol_expansion_4: sensor.zenos_expansion_cabinet_4
+        vol_expansion_5: sensor.zenos_expansion_cabinet_5
+        vol_vault: sensor.zenos_vault_cabinet
+
         # RECOGNIZED RING-0 ZENOS VOLUMES
         recognized_volumes: |
           {{
@@ -1351,7 +2863,13 @@ automation:
               vol_user,
               vol_user_history,
               vol_ai_user,
-              vol_ai_user_history
+              vol_ai_user_history,
+              vol_expansion_1,
+              vol_expansion_2,
+              vol_expansion_3,
+              vol_expansion_4,
+              vol_expansion_5,
+              vol_vault
             ]
           }}
 
@@ -1359,12 +2877,9 @@ automation:
         manifest_key: zen_library_manifest
         manifest_entity: sensor.zenos_default_household_cabinet
         manifest_data: >
-          {{
-            (
-              state_attr(manifest_entity, 'variables') or {}
-            ).get(manifest_key, {})
-            .get('value', {})
-          }}
+          {% set vars = state_attr(manifest_entity, 'variables') | default({}, true) %}
+          {% set slot = vars.get(manifest_key, {}) if vars is mapping else {} %}
+          {{ slot.get('value', {}) if slot is mapping else {} }}
 
         # Incoming event data
         event_type: "{{ trigger.event.event_type }}"
@@ -1372,19 +2887,26 @@ automation:
         value: "{{ trigger.event.data.value | default('') }}"
         volume_entity: "{{ trigger.event.data.volume_entity | default('') }}"
         set_timestamp: "{{ trigger.event.data.set_timestamp | default(false) }}"
+        force: "{{ trigger.event.data.get('force', false) }}"
         log_events: "{{ trigger.event.data.log_events | default(false) }}"
         is_cabinetadmin_init: "{{ trigger.event.data._cabinetadmin_init | default(false) }}"
 
         # Manifest → volume entry
         manifest_volume_entry: >
-          {% set md = manifest_data if manifest_data is mapping else {} %}
-          {{ md.get(volume_entity | string, {}) }}
+          {% set md = manifest_data if manifest_data is mapping else (manifest_data | from_json if manifest_data is string else {}) %}
+          {% set entry = md.get(volume_entity | string, {}) %}
+          {{ entry if entry is mapping else (entry | from_json if entry is string else {}) }}
 
-        manifest_metadata: "{{ manifest_volume_entry.get('metadata', {}) }}"
-        manifest_flags: "{{ manifest_metadata.get('flags', {}) }}"
+        manifest_metadata: >
+          {% set mve = manifest_volume_entry if manifest_volume_entry is mapping else (manifest_volume_entry | from_json if manifest_volume_entry is string else {}) %}
+          {{ mve.get('metadata', {}) }}
+        manifest_flags: >
+          {% set mm = manifest_metadata if manifest_metadata is mapping else (manifest_metadata | from_json if manifest_metadata is string else {}) %}
+          {{ mm.get('flags', {}) }}
         manifest_guid: >
-          {% if manifest_metadata.get('id') %}
-            {{ manifest_metadata.get('id') }}
+          {% set mm = manifest_metadata if manifest_metadata is mapping else (manifest_metadata | from_json if manifest_metadata is string else {}) %}
+          {% if mm.get('id') %}
+            {{ mm.get('id') }}
           {% else %}
             ''
           {% endif %}
@@ -1395,10 +2917,13 @@ automation:
           {% set entry = vars.get('AI_Cabinet_VolumeInfo', {}) %}
           {{ entry if entry is mapping else {} }}
 
-        cabinet_info_value: "{{ cabinet_info.get('value', {}) }}"
+        cabinet_info_value: >
+          {% set val = cabinet_info.get('value', {}) if cabinet_info is mapping else {} %}
+          {{ val if val is mapping else (val | from_json if val is string else {}) }}
         cabinet_guid: >
-          {% if cabinet_info_value.get('id') %}
-            {{ cabinet_info_value.get('id') }}
+          {% set civ = cabinet_info_value if cabinet_info_value is mapping else (cabinet_info_value | from_json if cabinet_info_value is string else {}) %}
+          {% if civ.get('id') %}
+            {{ civ.get('id') }}
           {% else %}
             ''
           {% endif %}
@@ -1532,54 +3057,7 @@ automation:
             - stop: Validation Failed
 
     # -------------------------------------------------------------
-    # AUTO-INIT: detect unformatted cabinets and initialize
-    # Only on SET events, only when NOT already a CabinetAdmin init,
-    # and only when VolumeInfo is missing (cabinet is unformatted).
-    # -------------------------------------------------------------
-    - variables:
-        cabinet_needs_init: >-
-          {{
-            volume_entity in recognized_volumes
-            and cabinet_info == {}
-            and not is_cabinetadmin_init
-            and trigger.id == 'set'
-          }}
-        cabinet_type_for_init: >-
-          {% if volume_entity in [vol_system, vol_system_history] %}System Cabinet
-          {% elif volume_entity in [vol_household, vol_household_history] %}Household Cabinet
-          {% elif volume_entity in [vol_family, vol_family_history] %}Family Cabinet
-          {% elif volume_entity in [vol_user, vol_user_history] %}User Cabinet
-          {% elif volume_entity in [vol_ai_user, vol_ai_user_history] %}AI User Cabinet
-          {% elif volume_entity == vol_dojo %}Zen Dojo Cabinet
-          {% elif volume_entity == vol_kata %}Zen Kata Cabinet
-          {% elif volume_entity == vol_history %}AI Data Storage Cabinet
-          {% elif volume_entity == vol_scratch %}AI Data Storage Cabinet
-          {% else %}AI Data Storage Cabinet{% endif %}
-
-    - alias: Auto-init unformatted cabinet
-      choose:
-        - conditions:
-            - condition: template
-              value_template: "{{ cabinet_needs_init }}"
-          sequence:
-            - action: script.zen_admintools_cabinetadmin
-              data:
-                mode: initialize
-                confirm_action: true
-                cabinet_entity: "{{ volume_entity }}"
-                cabinet_type: "{{ cabinet_type_for_init | trim }}"
-                skip_auto_init: true
-            - event: dojo_volume_redirector_result
-              event_data:
-                status: info
-                action: auto_initialized
-                volume_entity: "{{ volume_entity }}"
-                volume_name: "{{ canonical_volume_name }}"
-                cabinet_type: "{{ cabinet_type_for_init | trim }}"
-                key: "{{ key }}"
-
-    # -------------------------------------------------------------
-    # ROUTING LOGIC BLOCKS FOR ALL 14 ZENOS CABINETS
+    # ROUTING LOGIC BLOCKS FOR ALL 20 ZENOS CABINETS
     # (unchanged structure; only event names updated)
     # -------------------------------------------------------------
     - choose:
@@ -1596,6 +3074,7 @@ automation:
                         key: "{{ key }}"
                         value: "{{ value }}"
                         set_timestamp: "{{ set_timestamp }}"
+                        force: "{{ force }}"
                 - conditions: "{{ trigger.id == 'remove' }}"
                   sequence:
                     - event: remove_variable_zenos_system_cabinet
@@ -1606,6 +3085,7 @@ automation:
                     - event: clear_variables_zenos_system_cabinet
                       event_data:
                         key: "{{ key }}"
+                        confirm: true
             - variables:
                 routing_status: success
                 routing_action: "{{ trigger.id }}"
@@ -1621,6 +3101,7 @@ automation:
                         key: "{{ key }}"
                         value: "{{ value }}"
                         set_timestamp: "{{ set_timestamp }}"
+                        force: "{{ force }}"
                 - conditions: "{{ trigger.id == 'remove' }}"
                   sequence:
                     - event: remove_variable_zenos_system_history_cabinet
@@ -1631,6 +3112,7 @@ automation:
                     - event: clear_variables_zenos_system_history_cabinet
                       event_data:
                         key: "{{ key }}"
+                        confirm: true
             - variables:
                 routing_status: success
                 routing_action: "{{ trigger.id }}"
@@ -1649,6 +3131,7 @@ automation:
                         key: "{{ key }}"
                         value: "{{ value }}"
                         set_timestamp: "{{ set_timestamp }}"
+                        force: "{{ force }}"
                 - conditions: "{{ trigger.id == 'remove' }}"
                   sequence:
                     - event: remove_variable_zenos_dojo_cabinet
@@ -1659,6 +3142,7 @@ automation:
                     - event: clear_variables_zenos_dojo_cabinet
                       event_data:
                         key: "{{ key }}"
+                        confirm: true
             - variables:
                 routing_status: success
                 routing_action: "{{ trigger.id }}"
@@ -1674,6 +3158,7 @@ automation:
                         key: "{{ key }}"
                         value: "{{ value }}"
                         set_timestamp: "{{ set_timestamp }}"
+                        force: "{{ force }}"
                 - conditions: "{{ trigger.id == 'remove' }}"
                   sequence:
                     - event: remove_variable_zenos_kata_cabinet
@@ -1684,6 +3169,7 @@ automation:
                     - event: clear_variables_zenos_kata_cabinet
                       event_data:
                         key: "{{ key }}"
+                        confirm: true
             - variables:
                 routing_status: success
                 routing_action: "{{ trigger.id }}"
@@ -1699,6 +3185,7 @@ automation:
                         key: "{{ key }}"
                         value: "{{ value }}"
                         set_timestamp: "{{ set_timestamp }}"
+                        force: "{{ force }}"
                 - conditions: "{{ trigger.id == 'remove' }}"
                   sequence:
                     - event: remove_variable_zenos_history_cabinet
@@ -1709,6 +3196,7 @@ automation:
                     - event: clear_variables_zenos_history_cabinet
                       event_data:
                         key: "{{ key }}"
+                        confirm: true
             - variables:
                 routing_status: success
                 routing_action: "{{ trigger.id }}"
@@ -1724,6 +3212,7 @@ automation:
                         key: "{{ key }}"
                         value: "{{ value }}"
                         set_timestamp: "{{ set_timestamp }}"
+                        force: "{{ force }}"
                 - conditions: "{{ trigger.id == 'remove' }}"
                   sequence:
                     - event: remove_variable_zenos_scratchpad_cabinet
@@ -1734,6 +3223,7 @@ automation:
                     - event: clear_variables_zenos_scratchpad_cabinet
                       event_data:
                         key: "{{ key }}"
+                        confirm: true
             - variables:
                 routing_status: success
                 routing_action: "{{ trigger.id }}"
@@ -1752,6 +3242,7 @@ automation:
                         key: "{{ key }}"
                         value: "{{ value }}"
                         set_timestamp: "{{ set_timestamp }}"
+                        force: "{{ force }}"
                 - conditions: "{{ trigger.id == 'remove' }}"
                   sequence:
                     - event: remove_variable_zenos_default_household_cabinet
@@ -1762,6 +3253,7 @@ automation:
                     - event: clear_variables_zenos_default_household_cabinet
                       event_data:
                         key: "{{ key }}"
+                        confirm: true
             - variables:
                 routing_status: success
                 routing_action: "{{ trigger.id }}"
@@ -1777,6 +3269,7 @@ automation:
                         key: "{{ key }}"
                         value: "{{ value }}"
                         set_timestamp: "{{ set_timestamp }}"
+                        force: "{{ force }}"
                 - conditions: "{{ trigger.id == 'remove' }}"
                   sequence:
                     - event: remove_variable_zenos_default_household_history_cabinet
@@ -1787,6 +3280,7 @@ automation:
                     - event: clear_variables_zenos_default_household_history_cabinet
                       event_data:
                         key: "{{ key }}"
+                        confirm: true
             - variables:
                 routing_status: success
                 routing_action: "{{ trigger.id }}"
@@ -1805,6 +3299,7 @@ automation:
                         key: "{{ key }}"
                         value: "{{ value }}"
                         set_timestamp: "{{ set_timestamp }}"
+                        force: "{{ force }}"
                 - conditions: "{{ trigger.id == 'remove' }}"
                   sequence:
                     - event: remove_variable_zenos_default_family_cabinet
@@ -1815,6 +3310,7 @@ automation:
                     - event: clear_variables_zenos_default_family_cabinet
                       event_data:
                         key: "{{ key }}"
+                        confirm: true
             - variables:
                 routing_status: success
                 routing_action: "{{ trigger.id }}"
@@ -1830,6 +3326,7 @@ automation:
                         key: "{{ key }}"
                         value: "{{ value }}"
                         set_timestamp: "{{ set_timestamp }}"
+                        force: "{{ force }}"
                 - conditions: "{{ trigger.id == 'remove' }}"
                   sequence:
                     - event: remove_variable_zenos_default_family_history_cabinet
@@ -1840,6 +3337,7 @@ automation:
                     - event: clear_variables_zenos_default_family_history_cabinet
                       event_data:
                         key: "{{ key }}"
+                        confirm: true
             - variables:
                 routing_status: success
                 routing_action: "{{ trigger.id }}"
@@ -1858,6 +3356,7 @@ automation:
                         key: "{{ key }}"
                         value: "{{ value }}"
                         set_timestamp: "{{ set_timestamp }}"
+                        force: "{{ force }}"
                 - conditions: "{{ trigger.id == 'remove' }}"
                   sequence:
                     - event: remove_variable_zenos_default_user_cabinet
@@ -1868,6 +3367,7 @@ automation:
                     - event: clear_variables_zenos_default_user_cabinet
                       event_data:
                         key: "{{ key }}"
+                        confirm: true
             - variables:
                 routing_status: success
                 routing_action: "{{ trigger.id }}"
@@ -1883,6 +3383,7 @@ automation:
                         key: "{{ key }}"
                         value: "{{ value }}"
                         set_timestamp: "{{ set_timestamp }}"
+                        force: "{{ force }}"
                 - conditions: "{{ trigger.id == 'remove' }}"
                   sequence:
                     - event: remove_variable_zenos_default_user_history_cabinet
@@ -1893,6 +3394,7 @@ automation:
                     - event: clear_variables_zenos_default_user_history_cabinet
                       event_data:
                         key: "{{ key }}"
+                        confirm: true
             - variables:
                 routing_status: success
                 routing_action: "{{ trigger.id }}"
@@ -1911,6 +3413,7 @@ automation:
                         key: "{{ key }}"
                         value: "{{ value }}"
                         set_timestamp: "{{ set_timestamp }}"
+                        force: "{{ force }}"
                 - conditions: "{{ trigger.id == 'remove' }}"
                   sequence:
                     - event: remove_variable_zenos_default_ai_user_cabinet
@@ -1921,6 +3424,7 @@ automation:
                     - event: clear_variables_zenos_default_ai_user_cabinet
                       event_data:
                         key: "{{ key }}"
+                        confirm: true
             - variables:
                 routing_status: success
                 routing_action: "{{ trigger.id }}"
@@ -1936,6 +3440,7 @@ automation:
                         key: "{{ key }}"
                         value: "{{ value }}"
                         set_timestamp: "{{ set_timestamp }}"
+                        force: "{{ force }}"
                 - conditions: "{{ trigger.id == 'remove' }}"
                   sequence:
                     - event: remove_variable_zenos_default_ai_user_history_cabinet
@@ -1946,6 +3451,145 @@ automation:
                     - event: clear_variables_zenos_default_ai_user_history_cabinet
                       event_data:
                         key: "{{ key }}"
+                        confirm: true
+            - variables:
+                routing_status: success
+                routing_action: "{{ trigger.id }}"
+                routed_volume: "{{ volume_entity }}"
+
+        # ============================
+        # EXPANSION (5)
+        # ============================
+        - conditions: "{{ volume_entity == vol_expansion_1 }}"
+          sequence:
+            - choose:
+                - conditions: "{{ trigger.id == 'set' }}"
+                  sequence:
+                    - event: set_variable_zenos_expansion_cabinet_1
+                      event_data:
+                        key: "{{ key }}"
+                        value: "{{ value }}"
+                        set_timestamp: "{{ set_timestamp }}"
+                        force: "{{ force }}"
+                - conditions: "{{ trigger.id == 'remove' }}"
+                  sequence:
+                    - event: remove_variable_zenos_expansion_cabinet_1
+                      event_data:
+                        key: "{{ key }}"
+                - conditions: "{{ trigger.id == 'clear' }}"
+                  sequence:
+                    - event: clear_variables_zenos_expansion_cabinet_1
+                      event_data:
+                        key: "{{ key }}"
+                        confirm: true
+            - variables:
+                routing_status: success
+                routing_action: "{{ trigger.id }}"
+                routed_volume: "{{ volume_entity }}"
+
+        - conditions: "{{ volume_entity == vol_expansion_2 }}"
+          sequence:
+            - choose:
+                - conditions: "{{ trigger.id == 'set' }}"
+                  sequence:
+                    - event: set_variable_zenos_expansion_cabinet_2
+                      event_data:
+                        key: "{{ key }}"
+                        value: "{{ value }}"
+                        set_timestamp: "{{ set_timestamp }}"
+                        force: "{{ force }}"
+                - conditions: "{{ trigger.id == 'remove' }}"
+                  sequence:
+                    - event: remove_variable_zenos_expansion_cabinet_2
+                      event_data:
+                        key: "{{ key }}"
+                - conditions: "{{ trigger.id == 'clear' }}"
+                  sequence:
+                    - event: clear_variables_zenos_expansion_cabinet_2
+                      event_data:
+                        key: "{{ key }}"
+                        confirm: true
+            - variables:
+                routing_status: success
+                routing_action: "{{ trigger.id }}"
+                routed_volume: "{{ volume_entity }}"
+
+        - conditions: "{{ volume_entity == vol_expansion_3 }}"
+          sequence:
+            - choose:
+                - conditions: "{{ trigger.id == 'set' }}"
+                  sequence:
+                    - event: set_variable_zenos_expansion_cabinet_3
+                      event_data:
+                        key: "{{ key }}"
+                        value: "{{ value }}"
+                        set_timestamp: "{{ set_timestamp }}"
+                        force: "{{ force }}"
+                - conditions: "{{ trigger.id == 'remove' }}"
+                  sequence:
+                    - event: remove_variable_zenos_expansion_cabinet_3
+                      event_data:
+                        key: "{{ key }}"
+                - conditions: "{{ trigger.id == 'clear' }}"
+                  sequence:
+                    - event: clear_variables_zenos_expansion_cabinet_3
+                      event_data:
+                        key: "{{ key }}"
+                        confirm: true
+            - variables:
+                routing_status: success
+                routing_action: "{{ trigger.id }}"
+                routed_volume: "{{ volume_entity }}"
+
+        - conditions: "{{ volume_entity == vol_expansion_4 }}"
+          sequence:
+            - choose:
+                - conditions: "{{ trigger.id == 'set' }}"
+                  sequence:
+                    - event: set_variable_zenos_expansion_cabinet_4
+                      event_data:
+                        key: "{{ key }}"
+                        value: "{{ value }}"
+                        set_timestamp: "{{ set_timestamp }}"
+                        force: "{{ force }}"
+                - conditions: "{{ trigger.id == 'remove' }}"
+                  sequence:
+                    - event: remove_variable_zenos_expansion_cabinet_4
+                      event_data:
+                        key: "{{ key }}"
+                - conditions: "{{ trigger.id == 'clear' }}"
+                  sequence:
+                    - event: clear_variables_zenos_expansion_cabinet_4
+                      event_data:
+                        key: "{{ key }}"
+                        confirm: true
+            - variables:
+                routing_status: success
+                routing_action: "{{ trigger.id }}"
+                routed_volume: "{{ volume_entity }}"
+
+        - conditions: "{{ volume_entity == vol_expansion_5 }}"
+          sequence:
+            - choose:
+                - conditions: "{{ trigger.id == 'set' }}"
+                  sequence:
+                    - event: set_variable_zenos_expansion_cabinet_5
+                      event_data:
+                        key: "{{ key }}"
+                        value: "{{ value }}"
+                        set_timestamp: "{{ set_timestamp }}"
+                        force: "{{ force }}"
+                - conditions: "{{ trigger.id == 'remove' }}"
+                  sequence:
+                    - event: remove_variable_zenos_expansion_cabinet_5
+                      event_data:
+                        key: "{{ key }}"
+                - conditions: "{{ trigger.id == 'clear' }}"
+                  sequence:
+                    - event: clear_variables_zenos_expansion_cabinet_5
+                      event_data:
+                        key: "{{ key }}"
+                        confirm: true
             - variables:
                 routing_status: success
                 routing_action: "{{ trigger.id }}"
@@ -2019,6 +3663,3 @@ automation:
               }}
         - stop: Redirect Complete
           response_variable: final_response
-
-  mode: parallel
-  max: 10

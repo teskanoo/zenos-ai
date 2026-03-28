@@ -1,9 +1,9 @@
 ###############################################################################
 # ZenOS-AI DojoTools: Library
-# Version: 4.0.0 RC2
+# Version: 4.5.5
 #
 # Scripts:
-#   zen_dojotools_library — Unified system utility runner (v4.0.0 RC2)
+#   zen_dojotools_library — Unified system utility runner (v4.5.x)
 #
 # MIGRATED FROM: scripts.yaml (2026-03-06)
 #
@@ -50,7 +50,19 @@ script:
         selector:
           text:
             multiline: false
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
+
     - variables:
         tool_call: '{{ tool | lower }}'
         result: []
@@ -67,6 +79,8 @@ script:
               {{ command_interpreter.interpreter( query ) }}
 
               '
+        - variables:
+            result: "{{ result | combine({'caller_token': caller_token | default('')}) if result is mapping else result }}"
         - stop: Return Variable {{ result }}
           response_variable: result
       - conditions:
@@ -78,6 +92,8 @@ script:
             result: "{%- import 'zenos_ai/command_interpreter.jinja' as command_interpreter
               %} {{\n  {\n    \"query\": query,\n    \"output\": command_interpreter.interpreter(\
               \ query )\n  }\n}}\n"
+        - variables:
+            result: "{{ result | combine({'caller_token': caller_token | default('')}) if result is mapping else result }}"
         - stop: Return Variable {{ result }}
           response_variable: result
       - conditions:
@@ -89,6 +105,8 @@ script:
             result: "{%- import 'zenos_ai/command_interpreter.jinja' as command_interpreter
               %} {{\n  {\n    \"tool\": 'md5',\n    \"query\": query,\n    \"output\"\
               :  query | md5 | default('')\n  }\n}}\n"
+        - variables:
+            result: "{{ result | combine({'caller_token': caller_token | default('')}) if result is mapping else result }}"
         - stop: Return Variable {{ result }}
           response_variable: result
       - conditions:
@@ -100,10 +118,13 @@ script:
             result: "{%- import 'zenos_ai/command_interpreter.jinja' as command_interpreter
               %} {{\n  {\n    \"tool\": 'slugify',\n    \"query\": query,\n    \"output\"\
               :  query | slugify() | default('')\n  }\n}}\n"
+        - variables:
+            result: "{{ result | combine({'caller_token': caller_token | default('')}) if result is mapping else result }}"
         - stop: Return Variable {{ result }}
           response_variable: result
+    - variables:
+        result: "{{ result | combine({'caller_token': caller_token | default('')}) if result is mapping else result }}"
     - stop: Return Variable {{ result }}
       response_variable: result
-    - set_conversation_response: '{{ result }}'
     mode: parallel
     icon: mdi:desktop-classic

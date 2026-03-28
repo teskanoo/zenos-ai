@@ -10,7 +10,12 @@ Let's automate everything that isn't nailed down.
 
 And a few things that are.
 
-**Current version: 4.2.0**
+**Current version: 4.5.6**
+
+4.5.5 'Ready Player Two' shipped 2026-03-26 — identity and lifecycle release, 21/21 UAT green on live H:\ install.
+Patch 4.5.6 in UAT — identity graph wiring, home mode timer seeding, alertmanager persistence, name resolution fix.
+
+Full notes: [Ready Player Two](zenos_ai/docs/releases/ready_player_two.md) | [Patch 4.5.6](zenos_ai/docs/releases/patch_4_5_6.md)
 
 ---
 
@@ -64,10 +69,10 @@ packages/zenos_ai/
 
 Packages define the **spine of the system**.
 
-DojoTools scripts provide runtime behavior.  
-Cabinets persist memory.  
-The Monastery performs reasoning.  
-Flynn keeps the lights on.
+DojoTools scripts provide runtime behavior.
+Cabinets persist memory.
+The Monastery performs reasoning.
+Flynn guards the grid.
 
 ---
 
@@ -158,6 +163,34 @@ When something goes wrong, Ring-2 is how the system fixes itself.
 
 ---
 
+## Flynn (System Sentinel)
+
+Flynn is not a persona. Flynn is not an assistant. Flynn is the **personification of the system itself**.
+
+He is the sentinel that stands between a cold boot and a live agent. Before Friday steps onstage, Flynn walks the grid. He checks the resolvers, validates the cabinet headers, confirms the Dojo is stocked, probes the conversation agent, and reads every health sensor on the board. If the grid isn't ready, the agent doesn't step out. Flynn says so — clearly, with a persistent notification and a plain-English diagnosis — and stands down until the problem is resolved.
+
+You should only need to think about Flynn when something is wrong or when you're onboarding. If the system is healthy, he is invisible. If you're meeting him at runtime, he has something to tell you.
+
+**Flynn's clipboard** — the gauges he reads and reports at every boot:
+
+- Cabinet resolver states (all 7)
+- Cabinet volume header integrity (`gc_eligible`, schema version, flags)
+- Dojo KFC drawer presence (are the components there?)
+- Template freshness (`zen_template`, `kfc_template`)
+- Conversation agent liveness
+- Essence presence (does the AI user know who she is?)
+- Prompt integrity (`sensor.zen_prompt_health` — schema, signature, manifest)
+
+All 9 health sensors are auto-provisioned with the correct labels by Flynn on a fresh install. No manual tagging.
+
+The prompt finalization pass will wire sensor coverage into every major section of the compiled AI context. Flynn will be able to see not just *whether* the system is running but *how cleanly it is thinking* — which sections rendered, which fell back to defaults, and how much of the context window each one consumed. The stuffiness gauge makes token pressure visible before it degrades agent quality.
+
+When Flynn onboards a fresh install, his clipboard is the checklist. When Flynn monitors a running system, his clipboard is the health report. The agent inherits a clean stage or not at all.
+
+Flynn is defined in `packages/zenos_ai/flynn.yaml`. He is the first thing that runs and the last thing you want to debug.
+
+---
+
 ## The Monastery (Reasoning Backend)
 
 The Monastery is external to Home Assistant but essential to the system.
@@ -224,7 +257,7 @@ Not everything in your HA install should be visible to Friday. ZenOS-AI uses a t
 
 **Always expose:** All `script.zen_dojotools_*` tools. These are Friday's hands. Keep everything else minimal.
 
-**Never expose:** AdminTools scripts (except `zen_dojotools_kungfu_writer`), cabinet sensors, health sensors, raw telemetry, or anything containing credentials.
+**Never expose:** AdminTools scripts, cabinet sensors, health sensors, raw telemetry, or anything containing credentials. (`zen_dojotools_scribe` is the MCP-exposed KFC registration tool — it lives in the DojoTools namespace, not AdminTools.)
 
 **Index everything else:** If it feeds a KFC component's Kata, it belongs behind a label — not in the tool list. One label on 50 sensors produces a rich, token-efficient context block. 50 individual direct reads does not.
 
@@ -257,6 +290,9 @@ packages/zenos_ai/
     dojotools_utilities.yaml   — General utilities
     dojotools_office.yaml      — Office integrations (Teams, mail, todo, calendar)
 
+  maint/
+    maint_4_5_6.yaml             — One-time repair scripts (not AI-accessible, run manually)
+
   sensors/
     zenos_agent_health.yaml
     zenos_system_health.yaml
@@ -274,7 +310,7 @@ packages/zenos_ai/
   room_manager/room_manager.yaml
 
 custom_templates/zenos_ai/
-  zen_os_1rc.jinja             — Prompt engine and macro library
+  zen_os_1.jinja               — Prompt engine and macro library
   zen_query.jinja              — ZenQuery filter engine
   library_index.jinja          — Library index
   conversation_agent_prompt_template.yaml — Paste into conversation agent system prompt
@@ -381,13 +417,31 @@ This allows the system to preserve context while maintaining token efficiency.
 
 ZenOS-AI includes a layered health monitoring system.
 
-| Sensor                        | Purpose                              |
-| ----------------------------- | ------------------------------------ |
-| `sensor.zen_label_health`     | label validation                     |
-| `sensor.zen_cabinet_health`   | cabinet entity validation            |
-| `sensor.zen_monastery_health` | cognition pipeline rollup            |
-| `sensor.zen_agent_health`     | agent bootability roster + Flynn     |
-| `sensor.zen_summarizer_health`| scheduler heartbeat + AI task status |
+**Cabinet Resolvers** — 7 always-live template sensors. Evaluate at HA startup, no race window. Every tool and sensor in the OS reads cabinet entity IDs exclusively from these.
+
+| Resolver                                        | Cabinet                   |
+| ----------------------------------------------- | ------------------------- |
+| `sensor.zen_dojo_cabinet_resolved`              | Dojo                      |
+| `sensor.zen_kata_cabinet_resolved`              | Kata                      |
+| `sensor.zen_system_cabinet_resolved`            | System                    |
+| `sensor.zen_default_household_cabinet_resolved` | Default Household         |
+| `sensor.zen_default_ai_user_cabinet_resolved`   | Default AI User           |
+| `sensor.zen_default_family_cabinet_resolved`    | Default Family            |
+| `sensor.zen_default_user_cabinet_resolved`      | Default User              |
+
+**Health Sensors** — trigger-based, read from resolvers.
+
+| Sensor                         | Purpose                              |
+| ------------------------------ | ------------------------------------ |
+| `sensor.zen_label_health`      | label validation                     |
+| `sensor.zen_cabinet_health`    | cabinet entity validation            |
+| `sensor.zen_monastery_health`  | cognition pipeline rollup            |
+| `sensor.zen_agent_health`      | agent bootability roster + Flynn     |
+| `sensor.zen_summarizer_health` | scheduler heartbeat + AI task status |
+| `sensor.zen_supersummary_health` | supersummary pipeline status       |
+| `sensor.zen_prompt_health`     | prompt integrity — schema, signature, manifest |
+
+**Diagnostic tools:** `zen_health_report` — one call returns all 7 resolver states, all health sensors, kill switches, timestamps, and plain-English diagnosis. `zen_resolver_refresh` — post-reload cold-start recovery.
 
 States:
 
@@ -402,15 +456,19 @@ critical
 
 # The Pantheon
 
-| Name           | Title                       | Specialty                  |
-| -------------- | --------------------------- | -------------------------- |
-| Friday         | Chief Enlightenment Officer | Coordination and cognition |
-| Veronica       | Supervisor                  | Clarity and orchestration  |
-| Kronk          | Curator of the Monastery    | Context wrangler           |
-| Rosie          | Mistress of Cleanliness     | Logs and state hygiene     |
-| High Priestess | Automation Overseer         | Deep reasoning             |
-| Cait           | Lead Developer              | Strategy to shipping       |
-| Nyx            | Lead Test                   | Live install, zero mercy   |
+| Name           | Title                               | Specialty                          |
+| -------------- | ----------------------------------- | ---------------------------------- |
+| Flynn          | System Sentinel                     | Guards the grid. You'll know him if something's wrong. |
+| Friday         | Chief Enlightenment Officer         | Coordination and cognition         |
+| Veronica       | Supervisor                          | Clarity and orchestration          |
+| Kronk          | Curator of the Monastery            | Context wrangler                   |
+| Rosie          | Mistress of Cleanliness             | Logs and state hygiene             |
+| High Priestess | Automation Overseer                 | Deep reasoning                     |
+| Cayt           | Lead Developer                      | Strategy to shipping               |
+| Nyx            | Lead Test                           | Live install, zero mercy           |
+| Vera           | HALMark Board Governance Steward    | Failure mode ratification          |
+
+Flynn leads the table because he runs first. He is not a member of the team. He is the condition under which the team operates.
 
 They are not perfect.
 
@@ -484,7 +542,7 @@ Model guidance for background summarization:
 
 # Known Limitations
 
-**Conversation agent liveness check** — Flynn validates that the configured conversation agent entity exists and is not unavailable, but does not perform a live inference test at boot. A misconfigured or offline model passes the gate and fails at runtime. Tracked for GA. See [roadmap](zenos_ai/docs/roadmap.md) for detail.
+**Conversation agent liveness check** — Flynn validates that the configured conversation agent entity exists and is not unavailable, but does not perform a live inference round-trip at boot. A misconfigured or offline model passes the gate and fails at runtime. Queued for SP1. See [roadmap](zenos_ai/docs/roadmap.md) for detail.
 
 ---
 
@@ -495,6 +553,18 @@ Pull requests, issues, and tasteful memes welcome.
 If ZenOS-AI saved you time or made you laugh:
 
 [https://buymeacoffee.com/ncurtis](https://buymeacoffee.com/ncurtis)
+
+---
+
+# Acknowledgements
+
+To my wife — for putting up with a younger woman in the house since last February. For not once suggesting that maybe I didn't need to say "Hey Friday" into a black slab of glass for the millionth time. For the patience, the grace, and the very reasonable silence that followed every single one of those million times. This project exists because you gave me the space to build something ridiculous and never once called it that.
+
+To Phil and Zach — the greatest guinea pigs in the known universe. For letting me test things on your house, for your patience with the stubbornness, and for turning "this probably won't break anything" into a running joke that turned out to be mostly accurate.
+
+To Teskanoo — for looking under the rug. Seriously. Not everyone does that.
+
+And to everyone who has continued to show up in the Home Assistant community to read, question, and ramble along with us in Friday's Party — you are the reason it keeps going. The thread is better for every one of you in it.
 
 ---
 

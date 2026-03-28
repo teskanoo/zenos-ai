@@ -1,9 +1,9 @@
 ###############################################################################
 # ZenOS-AI DojoTools: FileCabinet
-# Version: 4.0.0 RC2
+# Version: 4.5.5
 #
 # Scripts:
-#   zen_dojotools_filecabinet — Cabinet volume K/V storage engine (v4.0.0 RC2)
+#   zen_dojotools_filecabinet — Cabinet volume K/V storage engine (v4.5.x)
 #
 # MIGRATED FROM: scripts.yaml (2026-03-06)
 #
@@ -13,243 +13,595 @@
 script:
   zen_dojotools_filecabinet:
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        action_type: "{{ action_type | default('help') }}"
+        #volume_entity_id: "{{ volume_entity_id | default('') }}"
+        #key: "{{ key | default('') | trim }}"
+        #value: "{{ value | default('') }}"
+        set_timestamp: "{{ set_timestamp | default(false) }}"
+        label_input: "{{ label_input | default('') }}"
+        expires_after: "{{ expires_after | default('') | trim }}"
+        no_autoexpire: "{{ no_autoexpire | default(false) }}"
+        no_autorecycle: "{{ no_autorecycle | default(false) }}"
+        acl: "{{ acl | default('') }}"
+        description: "{{ description | default('') | truncate(255, True, '', 0) | trim }}"
+        label_targets: "{{ label_targets | default('') }}"
+        show_hidden_volumes: "{{ show_hidden_volumes | default(false) }}"
+        show_stacks:  "{{ show_stacks | default(false) }}"
+        #start:
+        #end:
+        #filter_domain:
+        #filter_state_operand:
+        #filter_op:
+        force_action: "{{ force_action | default(false) }}"
+        destination_cabinet: "{{ destination_cabinet | default('') }}"
+        destination_drawer: "{{ destination_drawer | default('') | slugify }}"
+        transfer_guid: "{{ transfer_guid | default(false) }}"
+        target_guid: "{{ target_guid | default('') | trim }}"
+        caller_token: "{{- caller_token | default('') -}}"
+        create_label: "{{ create_label | default(false) }}"
+
     - variables:
         routing_status: init
-        normalized_label_targets: '{{ [] }}'
-        resolved_label_drawers: '{{ [] }}'
-        resolved_label_entities: '{{ [] }}'
-        label_input_list: '{{ [] }}'
-        read_volume: '{{ {} }}'
-        force_action: '{{ force_action | default(false) }}'
-        action_type: '{{ action_type | default(''help'') }}'
-        volume_entity: "{% set _veid = volume_entity_id | default('') %} {% if _veid
-          is string %}\n  {{ _veid }}\n{% elif _veid is iterable and not _veid is string
-          and _veid | length > 0 %}\n  {{ _veid[0] }}\n{% else %}\n  ''\n{% endif %}"
-        key: '{{ key | default('''') | slugify }}'
-        raw_value: '{{ value | default('''') }}'
-        label_input: '{{ label_input | default('''') }}'
-        label_targets: '{{ label_targets | default('''') }}'
-        set_timestamp: '{{ set_timestamp | default(false) }}'
-        protect_write: '{{ protect_write | default(true) }}'
-        now_iso: '{{ now().isoformat() }}'
-        expires_after: '{{ expires_after | default('''') | trim }}'
-        no_autoexpire: '{{ no_autoexpire | default(false) }}'
-        no_autorecycle: '{{ no_autorecycle | default(false) }}'
-        target_guid: '{{ target_guid | default('''') | trim }}'
-        drawer_acl: "{% set _acl = acl | default('') %}\n{% if _acl is mapping %}\n
-          \ {{ _acl }}\n{% elif _acl is string and _acl | trim | length > 0 %}\n  {{
-          _acl | from_json | default({}) }}\n{% else %}\n  {}\n{% endif %}"
-        description: '{{ description | default('''') | truncate(255, True, '''', 0)
-          | trim }}'
-        is_create: '{{ action_type == ''create'' }}'
-        is_update: '{{ action_type == ''update'' }}'
-        is_read: '{{ action_type == ''read'' }}'
-        is_delete: '{{ action_type == ''delete'' }}'
-        is_help: '{{ action_type == ''help'' }}'
-        is_clone: '{{ action_type == ''clone'' }}'
-        initial_volume_raw: '{{ state_attr(volume_entity, ''variables'') | default({},
-          true) }}'
-        initial_volume: '{% if initial_volume_raw is mapping %}{{ initial_volume_raw
-          }}{% else %}{}{% endif %}'
-        key_exists_initial: '{{ (key != '''') and (key in initial_volume) }}'
-        prewrite_volume_raw: '{{ state_attr(volume_entity, ''variables'') | default({},
-          true) }}'
-        prewrite_volume: '{% if prewrite_volume_raw is mapping %}{{ prewrite_volume_raw
-          }}{% else %}{}{% endif %}'
-        prettify_json_on_fail: '{{ prettify_json_on_fail | default(false) }}'
-        label_raw: '{{ label_targets | default('''') }}'
-        resolved_label_targets: "{{\n  (label_raw\n    | replace('\\n', ',')\n    |
-          regex_findall('[^,]+')\n    | map('trim')\n    | map('lower')\n    | list)\n}}"
-        label_index_map: "{{\n  (read_volume.get('_label_index', {}).get('value', {})\n
-          \     if read_volume is mapping else {})\n}}"
-        resolved_drawers: "{%- set targets = resolved_label_targets if resolved_label_targets
-          is sequence else [] -%}\n{%- set idx = label_index_map if label_index_map
-          is mapping else {} -%}\n\n{%- set ns = namespace(accum=[]) -%}\n\n{# Build
-          one merged list of drawers without using append() #}\n{%- for t in targets
-          %}\n  {%- set arr = idx.get(t, []) %}\n\n  {# Normalize arr into clean list
-          #}\n  {%- if arr is mapping %}\n    {%- set arr = arr.keys() | list %}\n  {%-
-          elif arr is iterable and not arr is string %}\n    {%- set arr = arr | list
-          %}\n  {%- elif arr not in [none, ''] %}\n    {%- set arr = [arr] %}\n  {%-
-          else %}\n    {%- set arr = [] %}\n  {%- endif %}\n\n  {# Functional merge
-          — no append — safe union #}\n  {%- set ns.accum = (ns.accum + arr) | unique
-          | list %}\n{%- endfor %}\n{%- if ns.accum | length == 0 -%}\n  {{ [] }}\n{%-
-          else -%}\n  {{ ns.accum }}\n{%- endif %}"
-        is_label_mode: "{{\n  (resolved_label_targets | length > 0)\n}}"
-        current_label_index_raw: "{%- set idx = initial_volume.get('_label_index', {})
-          %} {%- set val = idx.get('value') %} {%- if val is mapping %}\n  {{ val }}\n{%-
-          elif val is sequence %}\n  {%- set mapped = {} -%}\n  {%- for label in val
-          if label is string -%}\n    {%- set mapped = mapped | combine({ label: []
-          }) -%}\n  {%- endfor -%}\n  {{ mapped }}\n{%- else %}\n  {} \n{%- endif %}"
-        current_label_index: '{%- import ''zenos_ai/library_index.jinja'' as library_index -%}
-          {{ library_index.normalize_label_index(current_label_index_raw) }}'
-        parsed_value: "{% set _v = raw_value | trim %} {% set error = none %} {% set
-          parsed = none %} {% if _v == '' %}\n  {% set error = \"Write failed: Input
-          value is blank.\" %}\n{% else %}\n  {% set temp = _v %}\n  {% set try_json
-          = false %}\n  {% if temp[:1] in ['{', '['] or temp in ['true', 'false', 'null']
-          %}\n    {% set try_json = true %}\n  {% elif temp | regex_match('^-?\\\\d+$')
-          %}\n    {% set try_json = true %}\n  {% endif %}\n  {% if try_json %}\n    {%
-          set parsed = temp | from_json %}\n    {% if parsed is none %}\n      {% set
-          error = \"Write failed: Input value is not valid JSON. Please reformat using
-          proper JSON syntax (e.g., escaped quotes, valid brackets).\" %}\n    {% endif
-          %}\n  {% else %}\n    {% set js = temp\n      | replace('\\\\', '\\\\\\\\')\n
-          \     | replace('\"', '\\\\\"')\n      | replace('\\r', '\\\\r')\n      |
-          replace('\\n', '\\\\n')\n      | replace('\\t', '\\\\t')\n    %}\n    {% set
-          wrapped = '\"' ~ js ~ '\"' %}\n    {% set parsed = wrapped | from_json %}\n
-          \   {% if parsed is none %}\n      {% set error = \"Write failed: Could not
-          coerce string to JSON—possibly invalid input or encoding.\" %}\n    {% endif
-          %}\n  {% endif %}\n{% endif %} {% if error %}\n  {{ error }}\n{% else %}\n
-          \ {{ parsed }}\n{% endif %}"
-        parsed_entity_labels: "{% if is_create or is_update %}\n  {% if label_input
-          is string %}\n    {% set s = label_input | replace('\\n', ',') %}\n    {{\n
-          \     (\n        s\n        | regex_findall('[^,]+')\n        | map('trim')\n
-          \       | map('lower')\n        | map('slugify')\n        | select('string')\n
-          \       | sort\n        | list\n      )\n    }}\n  {% elif label_input is
-          sequence %}\n    {{\n      (\n        label_input\n        | map('trim')\n
-          \       | map('lower')\n        | map('slugify')\n        | select('string')\n
-          \       | sort\n        | list\n      )\n    }}\n  {% else %}\n    []\n  {%
-          endif %}\n{% else %}\n  []\n{% endif %}"
-        all_system_labels: "{% if is_create or is_update %}\n  {{ labels() | map('lower')
-          | sort | list }}\n{% else %}\n  []\n{% endif %}      "
-        dropped_labels: '{{ parsed_entity_labels | reject(''in'', all_system_labels)
-          | sort | list }}'
-        accepted_entity_labels: '{{ parsed_entity_labels | select(''in'', all_system_labels)
-          | sort | list }}'
-        updated_label_index: "{% if (is_create | default(false)) or (is_update | default(false))
-          %}\n  {%- set vol =\n        (prewrite_volume if prewrite_volume is mapping
-          else initial_volume)\n  -%}\n  {%- set current_index = vol.get('_label_index',
-          {}).get('value', {}) -%}\n  {%- set current = current_index if current_index
-          is mapping else {} -%}\n\n  {%- set drawer_name = key | lower | slugify -%}\n
-          \ {%- set new_labels =\n        (accepted_entity_labels\n          | map('string')\n
-          \         | map('lower')\n          | map('slugify')\n          | list)\n
-          \ -%}\n\n  {%- set acc = namespace(val = dict(current)) -%}\n  {%- for label
-          in new_labels %}\n    {%- set entry = acc.val.get(label) %}\n    {%- set existing
-          =\n          (entry if entry is iterable and not entry is string else\n           [entry]
-          if entry not in [None, ''] else [])\n    -%}\n    {%- set acc.val = acc.val
-          | combine({\n          label: (existing + [drawer_name]) | unique | list\n
-          \       })\n    -%}\n  {%- endfor %}\n\n  {{ acc.val }}\n{% else %}\n  {}\n{%
-          endif %}"
-        extended_label_index: "{%- set raw = initial_volume.get('_label_index', {}).get('value')
-          -%} {%- set index = {} -%}\n{% if raw is mapping %}\n  {# Full nested label
-          index (expected case) #}\n  {% for _label, drawers in raw.items() %}\n    {%-
-          set label = _label | lower | slugify -%}\n\n    {# Normalize drawers to a
-          clean list #}\n    {%- if drawers is mapping %}\n      {# A dict of drawers
-          → copy keys only, normalized #}\n      {%- set clean = drawers.keys() | list
-          -%}\n\n    {%- elif drawers is iterable and not drawers is string %}\n      {#
-          Could be list, tuple, generator → normalize #}\n      {%- set clean = drawers
-          | list -%}\n\n    {%- else %}\n      {# Single string or other scalar #}\n
-          \     {%- set clean = [drawers] -%}\n    {%- endif %}\n\n    {# Force all
-          drawers to become lowercase-slugified names #}\n    {%- set clean = clean\n
-          \                   | map('string')\n                    | map('lower')\n
-          \                   | map('slugify')\n                    | list\n     -%}\n\n
-          \   {# Remove duplicates, ensure real list #}\n    {%- set clean = clean |
-          unique | list -%}\n\n    {%- set index = index | combine({ label: clean })
-          -%}\n  {% endfor %}\n\n{% elif raw is iterable and not raw is string %}\n
-          \ {# Legacy format: ['label1','label2'] #}\n  {% for _label in raw %}\n    {%-
-          set label = _label | lower | slugify -%}\n    {%- set index = index | combine({
-          label: ['_unknown_drawer'] }) -%}\n  {% endfor %}\n\n{% else %}\n  {# Fallback:
-          rebuild from drawers' meta #}\n  {% for drawer, val in initial_volume.items()
-          %}\n    {%- set labels = [] -%}\n    {% if val is mapping and 'meta' in val
-          and val.meta is mapping %}\n      {%- set labels = val.meta.get('entity_labels',
-          []) -%}\n    {% elif val is mapping and 'entity_labels' in val %}\n      {%-
-          set labels = val.get('entity_labels', []) -%}\n    {% endif %}\n\n    {% for
-          _label in labels %}\n      {%- set label = _label | lower | slugify -%}\n
-          \     {%- set existing = index.get(label, []) -%}\n      {%- set index = index
-          | combine({\n            label: (existing + [drawer]) \n                   |
-          map('string')\n                   | map('lower')\n                   | map('slugify')\n
-          \                  | unique\n                   | list\n          })\n      -%}\n
-          \   {% endfor %}\n  {% endfor %}\n{% endif %}\n{{ index }}"
-        new_entry: "{% if is_create or is_update %}\n  {% set base = {'value': parsed_value}
-          %}\n  {% set with_ts = base | combine({'timestamp': now_iso}) if set_timestamp
-          else base %}\n  {% set meta = {} %}\n  {% if accepted_entity_labels | length
-          > 0 %}\n    {% set meta = meta | combine({'entity_labels': accepted_entity_labels
-          | list}) %}\n  {% endif %}\n  {% if expires_after | trim != '' %}\n    {%
-          set meta = meta | combine({'expires_after': expires_after | trim}) %}\n  {%
-          endif %}\n  {% if no_autoexpire %}\n    {% set meta = meta | combine({'no_autoexpire':
-          true}) %}\n  {% endif %}\n  {% if no_autorecycle %}\n    {% set meta = meta
-          | combine({'no_autorecycle': true}) %}\n  {% endif %}\n  {% if drawer_acl
-          is mapping and drawer_acl | length > 0 %}\n    {% set meta = meta | combine({'acl':
-          drawer_acl}) %}\n  {% endif %}\n  {% if description | trim | length > 0 %}\n
-          \   {% set meta = meta | combine({'description': description | trim}) %}\n
-          \ {% endif %}\n  {% set full = with_ts | combine({'meta': meta}) if meta |
-          length > 0 else with_ts %}\n  {{ full }}\n{% else %}\n  {}\n{% endif %}"
-        new_volume: "{% if is_create or is_update %}\n  {% set vol = state_attr(volume_entity,
-          'variables') | default(initial_volume, true) %}\n  {{ vol | combine({\n    (key):
-          new_entry,\n    '_label_index': {\n      'value': updated_label_index,\n      'timestamp':
-          now_iso\n    }\n  }, recursive=true) }}\n{% else %}\n  {{ initial_volume }}\n{%
-          endif %}"
+        normalized_label_targets: "{{ [] }}"
+        resolved_label_drawers: "{{ [] }}"
+        resolved_label_entities: "{{ [] }}"
+        label_input_list: "{{ [] }}"
+        read_volume: "{{ {} }}"
+        volume_entity: >
+          {% set _veid = volume_entity_id | default('') %}
+          {% if _veid is string %}
+            {{ _veid }}
+          {% elif _veid is iterable and not _veid is string and _veid | length > 0 %}
+            {{ _veid[0] }}
+          {% else %}
+            ''
+          {% endif %}
+        raw_key: "{{ key | default('') | trim }}"
+        key: >-
+          {%- set _rk = key | default('') | trim -%}
+          {%- if _rk.startswith('_') and (force_action | default(false)) -%}
+            _{{ _rk[1:] | slugify }}
+          {%- else -%}
+            {{ _rk | slugify }}
+          {%- endif -%}
+        raw_value: "{{ value | default('') }}"
+        protect_write: "{{ protect_write | default(true) }}"
+        now_iso: "{{ now().isoformat() }}"
+        drawer_acl: >
+          {% set _acl = acl | default('') %}
+          {% if _acl is mapping %}
+           {{ _acl }}
+          {% elif _acl is string and _acl | trim | length > 0 %}
+            {{ _acl | from_json | default({}) }}
+          {% else %}
+            {}
+          {% endif %}
+        is_create: "{{ action_type == 'create' }}"
+        is_update: "{{ action_type == 'update' }}"
+        is_read: "{{ action_type == 'read' }}"
+        is_delete: "{{ action_type == 'delete' }}"
+        is_help: "{{ action_type == 'help' }}"
+        is_clone: "{{ action_type == 'clone' }}"
+        is_relabel: "{{ action_type == 'relabel' }}"
+        is_write_action: "{{ action_type in ['create','update','delete','move','copy','mount_cabinet','dismount_cabinet','relabel']}}"
+        initial_volume_raw: "{{ state_attr(volume_entity, 'variables') | default({}, true) }}"
+        initial_volume: >
+          {% if initial_volume_raw is mapping %}
+          {{- initial_volume_raw -}}
+          {% else %}
+          {}
+          {% endif %}
+        key_exists_initial: "{{ (key != '') and (key in initial_volume) }}"
+        prewrite_volume_raw: "{{ state_attr(volume_entity, 'variables') | default({}, true) }}"
+        prewrite_volume: >
+          {% if prewrite_volume_raw is mapping %}
+            {{- prewrite_volume_raw -}}
+          {% else %}
+            {}
+          {% endif %}
+        prettify_json_on_fail: "{{ prettify_json_on_fail | default(false) }}"
+        label_raw: "{{ label_targets | default('') }}"
+        resolved_label_targets: >
+          {{
+            label_raw
+            | replace('\\n', ',')
+            | regex_findall('[^,]+')
+            | map('trim')
+            | map('lower')
+            | list
+          }}
+        label_index_map: "{{ (read_volume.get('_label_index', {}).get('value', {}) if read_volume is mapping else {})}}"
+        resolved_drawers: >
+          {%- set targets = resolved_label_targets if resolved_label_targets is sequence else [] -%}
+          {%- set idx = label_index_map if label_index_map is mapping else {} -%}
+          
+          {%- set ns = namespace(accum=[]) -%}
+          {#- Build one merged list of drawers without using append() -#}
+          {%- for t in targets %}
+            {%- set arr = idx.get(t, []) %}
+          
+            {#- Normalize arr into clean list -#}
+            {%- if arr is mapping %}
+              {%- set arr = arr.keys() | list %}
+            {%- elif arr is iterable and not arr is string %}
+              {%- set arr = arr | list %}
+            {%- elif arr not in [none, ''] %}
+              {%- set arr = [arr] %}
+            {%- else %}
+              {%- set arr = [] %}
+            {%- endif %}
+            {#- Functional merge — no append — safe union -#}
+            {%- set ns.accum = (ns.accum + arr) | unique | list %}
+          {%- endfor %}
+          {%- if ns.accum | length == 0 -%}
+            {{ [] }}
+          {%- else -%}
+            {{ ns.accum }}
+          {%- endif %}
+        is_label_mode: "{{ (resolved_label_targets | length > 0) }}"
+        current_label_index_raw: >
+          {%- set idx = initial_volume.get('_label_index', {}) %}
+          {%- set val = idx.get('value') %}
+          {%- if val is mapping %}
+            {{ val }}
+          {%- elif val is sequence %}
+            {%- set mapped = {} -%}
+            {%- for label in val if label is string -%}
+              {%- set mapped = mapped | combine({ label: [] }) -%}
+            {%- endfor -%}
+            {{ mapped }}
+          {%- else %}
+            {} 
+          {%- endif %}
+        current_label_index: >
+          {%- import 'zenos_ai/library_index.jinja' as library_index -%}
+          {{ library_index.normalize_label_index(current_label_index_raw) }}
+        parsed_value: >
+          {% set _v = raw_value | trim %} 
+          {% set error = none %} 
+          {% set
+          parsed = none %} 
+          {% if _v == '' %}
+            {% set error = "Write failed: Input value is blank." %}
+          {% else %}
+            {% set temp = _v %}
+            {% set try_json = false %}
+            {% if temp[:1] in ['{', '['] or temp in ['true', 'false', 'null'] %}
+              {% set try_json = true %}
+            {% elif temp | regex_match('^-?\d+$') %}
+              {% set try_json = true %}
+            {% endif %}
+            {% if try_json %}
+              {# from_json(none) — returns none on invalid JSON instead of raising ValueError.
+                 Without the default, embedded markdown/newlines in a JSON blob crash the
+                 entire scheduler run (incident: 2026-03-23 zen_system ha_start deadlock). #}
+              {% set parsed = temp | from_json(none) %}
+              {% if parsed is none %}
+                {% set error = "Write failed: Input value is not valid JSON. Please reformat using proper JSON syntax (e.g., escaped quotes, valid brackets)." %}
+              {% endif %}
+            {% else %}
+              {% set js = temp
+                | replace('\\\\', '\\\\\\\\')
+                | replace('\"', '\\\\\"')
+                | replace('\\r', '\\\\r')
+                | replace('\\n', '\\\\n')
+                | replace('\\t', '\\\\t')
+              %}
+              {% set wrapped = '"' ~ js ~ '"' %}
+              {% set parsed = wrapped | from_json(none) %}
+              {% if parsed is none %}
+                {% set error = "Write failed: Could not coerce string to JSON—possibly invalid input or encoding." %}
+              {% endif %}
+            {% endif %}
+          {% endif %}
+          {% if error %}
+            {{ error }}
+          {% else %}
+            {{ parsed }}
+          {% endif %}
+        parsed_entity_labels: >
+          {% if is_create or is_update or is_relabel %}
+            {% if label_input is string %}
+              {% set s = label_input | replace('\\n', ',') %}
+              {{
+                (
+                  s
+                  | regex_findall('[^,]+')
+                  | map('trim')
+                  | map('lower')
+                  | map('slugify')
+                  | select('string')
+                  | sort
+                  | list
+                )
+              }}
+            {% elif label_input is sequence %}
+              {{
+                (
+                  label_input
+                  | map('trim')
+                  | map('lower')
+                  | map('slugify')
+                  | select('string')
+                  | sort
+                  | list
+                )
+              }}
+            {% else %}
+              []
+            {% endif %}
+          {% else %}
+            []
+          {% endif %}
+        all_system_labels: >
+          {% if is_create or is_update or is_relabel %}
+            {{ labels() | map('lower') | sort | list }}
+          {% else %}
+            []
+          {% endif %}
+        dropped_labels: "{{ parsed_entity_labels | reject('in', all_system_labels) | sort | list }}"
+        accepted_entity_labels: "{{ parsed_entity_labels | select('in', all_system_labels) | sort | list }}"
+        updated_label_index: >
+          {% if (is_create | default(false)) or (is_update | default(false)) or (is_relabel | default(false)) %}
+            {%- set vol = (prewrite_volume if prewrite_volume is mapping else initial_volume) -%}
+            {%- set current_index = vol.get('_label_index', {}).get('value', {}) -%}
+            {%- set current = current_index if current_index is mapping else {} -%}
+          
+            {%- set drawer_name = key | lower | slugify -%}
+             {%- set new_labels = (
+                    parsed_entity_labels
+                    | map('string')
+                    | map('lower')
+                    | map('slugify')
+                    | list)
+              -%}
+          
+            {%- set acc = namespace(val = dict(current)) -%}
+            {%- for label in new_labels %}
+              {%- set entry = acc.val.get(label) %}
+              {%- set existing = (
+                                    entry if entry is iterable and not entry is string 
+                                    else [entry] if entry not in [None, ''] 
+                                    else []
+                                  )
+              -%}
+              {%- set acc.val = acc.val | combine({
+                    label: (existing + [drawer_name]) | unique | list
+                  })
+              -%}
+            {%- endfor %}
+          
+            {{ acc.val }}
+          {% else %}
+            {}
+          {% endif %}
+        extended_label_index: >
+          {%- set raw = initial_volume.get('_label_index', {}).get('value') -%}
+          {%- set index = {} -%}
+          {% if raw is mapping %}
+            {#- Full nested label index (expected case) -#}
+            {% for _label, drawers in raw.items() %}
+              {%- set label = _label | lower | slugify -%}
+          
+              {#- Normalize drawers to a clean list -#}
+              {%- if drawers is mapping %}
+                {#- A dict of drawers → copy keys only, normalized -#}
+                {%- set clean = drawers.keys() | list -%}
+          
+              {%- elif drawers is iterable and not drawers is string %}
+                {# Could be list, tuple, generator → normalize -#}
+                {%- set clean = drawers | list -%}
+          
+              {%- else %}
+                {#- Single string or other scalar -#}
+                  {%- set clean = [drawers] -%}
+              {%- endif %}
+          
+              {#- Force all drawers to become lowercase-slugified names -#}
+              {%- set clean = clean
+                              | map('string')
+                              | map('lower')
+                              | map('slugify')
+                              | list
+              -%}
+          
+              {#- Remove duplicates, ensure real list -#}
+              {%- set clean = clean | unique | list -%}
+          
+              {%- set index = index | combine({ label: clean }) -%}
+            {% endfor %}
+          
+          {% elif raw is iterable and not raw is string %}
+            {#- Legacy format: ['label1','label2'] -#}
+            {% for _label in raw %}
+              {%- set label = _label | lower | slugify -%}
+              {%- set index = index | combine({ label: ['_unknown_drawer'] }) -%}
+            {% endfor %}
+          
+          {% else %}
+            {#- Fallback: rebuild from drawers' meta -#}
+            {% for drawer, val in initial_volume.items() %}
+              {%- set labels = [] -%}
+              {% if val is mapping and 'meta' in val and val.meta is mapping %}
+                {%- set labels = val.meta.get('entity_labels', []) -%}
+              {% elif val is mapping and 'entity_labels' in val %}
+                {%- set labels = val.get('entity_labels', []) -%}
+              {% endif %}
+          
+              {% for _label in labels %}
+                {%- set label = _label | lower | slugify -%}
+                {%- set existing = index.get(label, []) -%}
+                {%- set index = index | combine({
+                      label: (existing + [drawer]) 
+                             | map('string')
+                             | map('lower')
+                             | map('slugify')
+                             | unique
+                             | list
+                    })
+                -%}
+          
+              {% endfor %}
+            {% endfor %}
+          {% endif %}
+          {{ index }}
+        new_entry: >
+          {% if is_create or is_update %}
+            {% set base = {'value': parsed_value} %}
+            {% set with_ts = base | combine({'timestamp': now_iso}) if set_timestamp else base %}
+            {% set meta = {} %}
+            {% if accepted_entity_labels | length > 0 %}
+              {% set meta = meta | combine({'entity_labels': accepted_entity_labels | list}) %}
+            {% endif %}
+            {% if expires_after | trim != '' %}
+              {% set meta = meta | combine({'expires_after': expires_after | trim}) %}
+            {% endif %}
+            {% if no_autoexpire %}
+              {% set meta = meta | combine({'no_autoexpire': true}) %}
+            {% endif %}
+            {% if no_autorecycle %}
+              {% set meta = meta | combine({'no_autorecycle': true}) %}
+            {% endif %}
+            {% if 'zen_scroll' in accepted_entity_labels %}
+              {% set meta = meta | combine({'ro': true}) %}
+            {% endif %}
+            {% if drawer_acl is mapping and drawer_acl | length > 0 %}
+              {% set meta = meta | combine({'acl': drawer_acl}) %}
+            {% endif %}
+            {% if description | trim | length > 0 %}
+              {% set meta = meta | combine({'description': description | trim}) %}
+            {% endif %}
+            {% set full = with_ts | combine({'meta': meta}) if meta | length > 0 else with_ts %}
+            {{ full }}
+          {% else %}
+            {}
+          {% endif %}
+        new_volume: >
+          {% if is_create or is_update %}
+            {% set vol = state_attr(volume_entity, 'variables') | default(initial_volume, true) %}
+            {{ vol | combine({
+              (key): new_entry,
+              '_label_index': {
+                'value': updated_label_index,
+                'timestamp': now_iso
+              }
+            }, recursive=true) }}
+          {% else %}
+            {{ initial_volume }}
+          {% endif %}
         initial_norm: '{{ initial_volume }}
   
           '
-        current_norm: "{{\n  (\n    state_attr(volume_entity, 'variables')\n    | default({},
-          true)\n  )\n}}\n"
-        volume_unmodified: "{{\n  (not protect_write)\n  or\n  (initial_norm == current_norm)\n}}\n"
-        cabinet_volumeinfo: "{% set info = initial_volume.get('AI_Cabinet_VolumeInfo',
-          {}) %} {% if info is mapping and info.get('value') is mapping %}\n  {{ info.get('value')
-          }}\n{% else %}\n  {}\n{% endif %}"
-        zen_relationships: "{% set z = initial_volume.get('_zen_relationships', {})
-          %} {% if z is mapping and z.get('value') is mapping %}\n  {{ z.get('value')
-          }}\n{% else %}\n  {}\n{% endif %}"
-        is_create_new: "{{\n  action_type == 'create'\n  and key != ''\n  and not key_exists_initial\n}}"
-        is_force_update_new: "{{\n  action_type == 'update'\n  and key != ''\n  and
-          not key_exists_initial\n  and force_action\n}}"
-        is_force_create_over_existing: "{{\n  action_type == 'create'\n  and key !=
-          ''\n  and key_exists_initial\n  and force_action\n}}"
-        is_create_path: "{{\n  is_create_new\n  or is_force_update_new\n  or is_force_create_over_existing\n}}"
-        is_update_path: "{{\n  is_update and key_exists_initial\n}}"
-        is_write_action: "{{\n  action_type in ['create','update','delete','move','copy']\n}}"
-        json_parse_failed: "{{\n  (parsed_value is string and parsed_value.startswith('Write
-          failed'))\n  or\n  (parsed_value is mapping and (parsed_value.get('error','')
-          | string).startswith('Write failed'))\n}}"
-        health_blocked: "{{\n  (state_attr(volume_entity, 'health') or {}).get('status')
-          == 'error'\n  or (state_attr(volume_entity, 'health') or {}).get('guid_mismatch',
-          false)\n  or not (state_attr(volume_entity, 'health') or {}).get('writeable',
-          true)\n  or (\n        (state_attr(volume_entity, 'health') or {}).get('storage_warning',
-          false)\n        and not force_action\n     )\n}}"
+        current_norm: "{{ ( state_attr(volume_entity, 'variables') | default({}, true) )}}"
+        volume_unmodified: "{{ (not protect_write) or (initial_norm == current_norm) }}"
+        cabinet_volumeinfo: >
+          {%- set info = initial_volume.get('AI_Cabinet_VolumeInfo', {}) -%} 
+          {%- if info is mapping and info.get('value') is mapping -%}
+            {{ info.get('value') }}
+          {%- else -%}
+            {}
+          {%- endif -%}
+        zen_relationships: >
+          {%- set z = initial_volume.get('_zen_relationships', {}) -%}
+          {%- if z is mapping and z.get('value') is mapping -%}
+            {{ z.get('value') }}
+          {%- else -%}
+          {}
+          {%- endif -%}
+        existing_drawer_is_ro: >
+          {%- set _e = initial_volume.get(key, {}) if initial_volume is mapping else {} -%}
+          {%- set _m = _e.get('meta', {}) if _e is mapping else {} -%}
+          {%- set _m = _m if _m is mapping else (_m | from_json if _m is string else {}) -%}
+          {{ _m.get('ro', false) == true if _m is mapping else false }}
+        cabinet_ro_blocked: >
+          {%- set _vi_raw = initial_volume.get('AI_Cabinet_VolumeInfo', {}) if initial_volume is mapping else {} -%}
+          {%- set _vi_raw = _vi_raw if _vi_raw is mapping else {} -%}
+          {%- set _vi = _vi_raw.get('value', _vi_raw) if _vi_raw is mapping else {} -%}
+          {%- set _vi = _vi if _vi is mapping else (_vi | from_json if _vi is string else {}) -%}
+          {{ _vi.get('flags', {}).get('cabinet_ro', false) == true }}
+        # Slugified names of system drawers that FileCabinet must never write.
+        # Keys starting with _ are caught by the _ guard above; these catch
+        # non-_ variants that slugify to the same system drawer name.
+        # meta: mount state — managed by mount_cabinet/dismount_cabinet only.
+        # label_index: slugified _label_index — internal label registry.
+        # zen_relationships: slugified _zen_relationships — relationship graph.
+        # ai_cabinet_volumeinfo: VolumeInfo — cabinetadmin_factory / set_variable_legacy only.
+        protected_system_drawers:
+          - ai_cabinet_volumeinfo
+          - label_index
+          - zen_relationships
+          - meta
+        is_protected_drawer: "{{ is_write_action and key in protected_system_drawers }}"
+        is_create_new: "{{ action_type == 'create' and key != '' and not key_exists_initial}}"
+        is_force_update_new: "{{ action_type == 'update' and key != '' and not key_exists_initial and force_action}}"
+        is_force_create_over_existing: "{{ action_type == 'create' and key != '' and key_exists_initial and force_action}}"
+        is_create_path: "{{ is_create_new or is_force_update_new or is_force_create_over_existing}}"
+        is_update_path: "{{ is_update and key_exists_initial}}"
+        json_parse_failed: >
+          {{ (parsed_value is string and parsed_value.startswith('Write failed')) 
+              or (parsed_value is mapping and (parsed_value.get('error','') | string).startswith('Write failed'))
+          }}
+        health_blocked: >
+          {{ (state_attr(volume_entity, 'health') or {}).get('status') == 'error'
+              or (state_attr(volume_entity, 'health') or {}).get('guid_mismatch', false)
+              or not (state_attr(volume_entity, 'health') or {}).get('writeable', true)
+              or ( (state_attr(volume_entity, 'health') or {}).get('storage_warning', false) and not force_action)
+          }}
     - choose:
       - conditions:
         - alias: Error - Fatal JSON Parsing
           condition: template
-          value_template: "{{\n  (action_type not in ['manifest', 'read', 'delete',
-            'move', 'copy', 'clone', 'set_mount', 'remove_mount', 'help' ])\n  and (\n        (parsed_value
-            is string and\n          parsed_value.startswith('Write failed'))\n        or\n
-            \       (parsed_value is mapping and (parsed_value.get('error','') | string)\n
-            \           .startswith('Write failed'))\n      )\n}}\n\n\n"
+          value_template: >
+            {{
+              (action_type not in ['manifest', 'read', 'delete', 'move', 'copy', 'clone', 'set_mount', 'remove_mount', 'mount_cabinet', 'dismount_cabinet', 'set_cabinet_ro', 'relabel', 'help' ])
+                and (
+                      (parsed_value is string and parsed_value.startswith('Write failed'))
+                      or
+                      (parsed_value is mapping and (parsed_value.get('error','') | string).startswith('Write failed') )
+                    )
+            }}
         sequence:
         - action: system_log.write
           data:
             level: error
             message: 'ZenDojoTools FileCabinet: FATAL — JSON parse error, write aborted.
-              Key: {{ key }} | Volume: {{ volume_entity }} Parsed Value: {{ parsed_value
-              }}
+              Key: {{ key }} | Volume: {{ volume_entity }} Parsed Value: {{ parsed_value }}
   
               '
         - variables:
-            fatal_response: "{{\n  {\n    \"status\": \"error\",\n    \"failure\": \"json_parse_error\",\n
-              \   \"volume_entity\": volume_entity,\n    \"key\": key,\n    \"parsed_value\":
-              parsed_value\n  } | tojson\n}}"
+            fatal_response: >
+              {{
+                {
+                  'status': 'error',
+                  'failure': 'json_parse_error',
+                  'volume_entity': volume_entity,
+                  'key': key,
+                  'parsed_value': parsed_value
+                } | tojson
+              }}
         - stop: JSON Parse Failure
           response_variable: fatal_response
+    # ── create_label: auto-create unknown HA labels before write ──────────────
+    - if: "{{ create_label | bool and is_write_action and dropped_labels | length > 0 }}"
+      then:
+        - repeat:
+            for_each: "{{ dropped_labels }}"
+            sequence:
+              - action: homeassistant.create_label
+                data:
+                  name: "{{ repeat.item }}"
     - choose:
+      # ── WIRE-LEVEL LOCKOUT: SYSTEM CABINET ────────────────────────────────────
+      # sensor.zenos_system_cabinet is ALWAYS read-only to this tool. No exceptions.
+      # No force_action bypass. No caller_token override.
+      #
+      # WHY: The system cabinet holds the AI prompt substrate (Purpose, Directives,
+      # Cortex). If the agent could write here, it could rewrite its own prompt.
+      # This is the wire-level enforcement of that constraint — the tool physically
+      # cannot write to syscab regardless of caller, mode, or flags.
+      #
+      # Legitimate syscab writes (prompt_loader, Flynn bootstrap, cabinetadmin)
+      # fire set_variable_zenos_system_cabinet directly — they never touch this tool.
+      # ──────────────────────────────────────────────────────────────────────────
+      - conditions:
+        - alias: Error - Syscab hard RO (wire-level lockout)
+          condition: template
+          value_template: "{{ is_write_action and volume_entity == 'sensor.zenos_system_cabinet' }}"
+        sequence:
+        - variables:
+            final_response:
+              status: error
+              failure: syscab_write_blocked
+              message: >-
+                Write blocked: sensor.zenos_system_cabinet is read-only to FileCabinet.
+                This cabinet holds the AI prompt substrate and cannot be written by
+                any agent-accessible tool. Use the designated admin scripts for
+                system cabinet operations.
+              volume_entity: "{{ volume_entity }}"
+              key: "{{ key }}"
+        - stop: Syscab write blocked
+          response_variable: final_response
+      - conditions:
+        - alias: Error - Reserved key (leading underscore)
+          condition: template
+          value_template: "{{ is_write_action and raw_key.startswith('_') and not force_action }}"
+        sequence:
+        - variables:
+            final_response:
+              status: error
+              failure: reserved_key
+              message: >-
+                Write blocked: key '{{ raw_key }}' starts with '_'.
+                System-reserved keys require force_action: true to write via FileCabinet.
+                Use the appropriate admin tool or pass force_action: true for system drawer operations.
+              key_raw: "{{ raw_key }}"
+              key_slugified: "{{ key }}"
+              volume_entity: "{{ volume_entity }}"
+        - stop: Reserved key
+          response_variable: final_response
+      - conditions:
+        - alias: Error - Protected system drawer
+          condition: template
+          value_template: "{{ is_protected_drawer }}"
+        sequence:
+        - variables:
+            final_response:
+              status: error
+              failure: protected_drawer
+              message: >-
+                Write blocked: key '{{ raw_key }}' slugifies to '{{ key }}'
+                which is a protected system drawer. FileCabinet cannot write
+                system drawers ({{ protected_system_drawers | join(', ') }}).
+                Use the appropriate admin tool for this operation.
+              key_raw: "{{ raw_key }}"
+              key_slugified: "{{ key }}"
+              volume_entity: "{{ volume_entity }}"
+              protected_drawers: "{{ protected_system_drawers }}"
+        - stop: Protected system drawer
+          response_variable: final_response
+      - conditions:
+        - alias: Error - Cabinet is read-only
+          condition: template
+          value_template: "{{ is_write_action and cabinet_ro_blocked }}"
+        sequence:
+        - variables:
+            final_response:
+              status: error
+              failure: cabinet_ro
+              message: >-
+                Write blocked: cabinet '{{ volume_entity }}' is marked read-only
+                (flags.cabinet_ro: true). Writes must go through the designated
+                admin tool for this cabinet.
+              volume_entity: "{{ volume_entity }}"
+              key: "{{ key }}"
+        - stop: Cabinet read-only
+          response_variable: final_response
       - conditions:
         - condition: template
-          value_template: '{{ action_type in [''create'',''update'',''delete'',''move'',''copy'',''set_mount'',''remove_mount'']
-            }}
-
-            '
+          value_template: "{{ action_type in ['create','update','delete','move','copy','set_mount','remove_mount','mount_cabinet','dismount_cabinet'] }}"
           alias: Is a 'write' action
         sequence:
         - variables:
-            vol_health: '{{ state_attr(volume_entity, ''health'') or {} }}'
-            h_status: '{{ vol_health.get(''status'','''') }}'
-            h_mismatch: '{{ vol_health.get(''guid_mismatch'', false) }}'
-            h_writeable: '{{ vol_health.get(''writeable'', true) }}'
-            h_storage_warning: '{{ vol_health.get(''storage_warning'', false) }}'
-            health_blocked: "{{\n  (h_status == 'error')\n  or h_mismatch\n  or (not
-              h_writeable)\n  or (h_storage_warning and not force_action)\n}}\n"
+            vol_health: "{{ state_attr(volume_entity, 'health') or {} }}"
+            h_status: "{{ vol_health.get('status','') }}"
+            h_mismatch: "{{ vol_health.get('guid_mismatch', false) }}"
+            h_writeable: "{{ vol_health.get('writeable', true) }}"
+            h_storage_warning: "{{ vol_health.get('storage_warning', false) }}"
+            health_blocked: >
+              {{
+                (h_status == 'error')
+                or h_mismatch
+                or (not h_writeable)
+                or (h_storage_warning and not force_action)
+              }}
         - choose:
           - conditions:
             - condition: template
-              value_template: '{{ health_blocked }}'
+              value_template: "{{ health_blocked }}"
               alias: 'Error: Not Healthy'
             sequence:
             - variables:
@@ -257,18 +609,17 @@ script:
                   status: error
                   message: 'Write blocked: Volume not healthy.'
                   health_snapshot:
-                    status: '{{ h_status }}'
-                    mismatch: '{{ h_mismatch }}'
-                    writeable: '{{ h_writeable }}'
-                    storage_warning: '{{ h_storage_warning }}'
-                    force_action: '{{ force_action }}'
+                    status: "{{ h_status }}"
+                    mismatch: "{{ h_mismatch }}"
+                    writeable: "{{ h_writeable }}"
+                    storage_warning: "{{ h_storage_warning }}"
+                    force_action: "{{ force_action }}"
             - stop: Health-blocked write
               response_variable: final_response
     - choose:
       - conditions:
         - condition: template
-          value_template: '{{ action_type in [''create'',''update''] and (key == ''''
-            or raw_value == '''') }}'
+          value_template: "{{ action_type in ['create','update'] and (key == '' or raw_value == '') }}"
           alias: Error - Create Update, Drawer (Key) or Value Missing
         sequence:
         - variables:
@@ -279,7 +630,7 @@ script:
           response_variable: final_response
       - conditions:
         - condition: template
-          value_template: '{{ action_type == ''delete'' and key == '''' }}'
+          value_template: "{{ action_type == 'delete' and key == '' }}"
           alias: Error - Delete, Drawer (Key) Missing
         sequence:
         - variables:
@@ -291,32 +642,45 @@ script:
       - conditions:
         - alias: Error - Update, Drawer (Key) does not exist
           condition: template
-          value_template: '{{ action_type == ''update'' and not key_exists_initial and
-            not force_action }}'
+          value_template: "{{ action_type == 'update' and not key_exists_initial and not force_action }}"
         sequence:
         - variables:
             final_response:
               status: error
-              message: 'Cannot update: key ''{{ key }}'' does not exist.'
+              message: "Cannot update: key '{{ key }}' does not exist."
         - stop: Key not found
           response_variable: final_response
       - conditions:
         - alias: Error — Create, Drawer Exists and Not Force_Action
           condition: template
-          value_template: "{{\n  action_type == 'create'\n  and key != ''\n  and key_exists_initial\n
-            \ and not force_action\n}}"
+          value_template: >
+            {{
+              action_type == 'create'
+              and key != ''
+              and key_exists_initial
+              and not force_action
+            }}
         sequence:
         - variables:
             final_response:
               status: error
-              message: 'Cannot create: key ''{{ key }}'' exists. Use Update or retry
-                with override approval using force_action. (Will be logged)'
+              message: "Cannot create: key '{{ key }}' exists. Use Update or retry with override approval using force_action. (Will be logged)"
         - stop: Drawer Exists and not force_action
           response_variable: final_response
       - conditions:
         - condition: template
-          value_template: '{{ action_type == ''set_mount'' and (key == '''' or target_guid
-            == '''') }}'
+          value_template: "{{ action_type in ['create', 'update', 'delete'] and key != '' and key_exists_initial and existing_drawer_is_ro }}"
+          alias: Error - Read-only drawer (zen_scroll)
+        sequence:
+        - variables:
+            final_response:
+              status: error
+              message: "Write blocked: drawer '{{ key }}' is read-only (zen_scroll). Use CabinetAdmin set_ro_flag to clear before writing."
+        - stop: Read-only drawer
+          response_variable: final_response
+      - conditions:
+        - condition: template
+          value_template: "{{ action_type == 'set_mount' and (key == '' or target_guid == '') }}"
           alias: Error - set_mount missing key or target_guid
         sequence:
         - variables:
@@ -328,7 +692,7 @@ script:
           response_variable: final_response
       - conditions:
         - condition: template
-          value_template: '{{ action_type == ''remove_mount'' and key == '''' }}'
+          value_template: "{{ action_type == 'remove_mount' and key == '' }}"
           alias: Error - remove_mount missing key
         sequence:
         - variables:
@@ -339,7 +703,7 @@ script:
           response_variable: final_response
       - conditions:
         - condition: template
-          value_template: '{{ action_type == ''help'' }}'
+          value_template: "{{ action_type == 'help' }}"
           alias: Help
         sequence:
         - variables:
@@ -354,12 +718,20 @@ script:
                   'drawer' and 'value'; drawer must exist; must write WHOLE drawer'
                   at once. AS AN OVERWRITE. 'value' must be valid JSON; will attempt
                   to parse, error returned on failure.
-                read: "manifest: >-\n  Set 'volume_entity' to '*'\n  Same as Volume
-                  Manifest (all volumes)\nvolume: >-\n  directory: >-\n    Set 'volume_entity'
-                  to [your_volume_entity]\n    Set 'drawer' to any of [None, '', '*']\n
-                  \   to obtain volume directory\n  content: >-\n    Set 'volume_entity'
-                  to [your_volume_entity]\n    set 'drawer' to [your_valid_drawer]\n
-                  \ special: >-\n    Use label_targets for filtered read."
+                read: >
+                  manifest: >-
+                    Set 'volume_entity' to '*'
+                    Same as Volume Manifest (all volumes)
+                  volume: >-
+                    directory: >-
+                      Set 'volume_entity' to [your_volume_entity]
+                      Set 'drawer' to any of [None, '', '*']
+                      to obtain volume directory
+                    content: >-
+                      Set 'volume_entity' to [your_volume_entity]
+                      set 'drawer' to [your_valid_drawer]
+                   special: >-
+                      Use label_targets for filtered read.
                 update: Requires 'drawer' and 'value'; drawer must exist; must write
                   WHOLE drawer' at once. 'value' must be valid JSON; will attempt to
                   parse.  With force_action, will silently create drawer. error returned
@@ -372,9 +744,23 @@ script:
                   destination drawer with action."
                 move: Requirements and usage identical to Copy,  will also attempt a
                   delete source after copy.
+                set_cabinet_ro: "Stamps cabinet_ro: true in AI_Cabinet_VolumeInfo.flags for the
+                  target cabinet. Idempotent. BLOCKED on sensor.zenos_system_cabinet (syscab is
+                  hard RO — use zen_admintools_zenos_prompt_loader or zen_admintools_cabinetadmin_factory
+                  to update syscab). No force_action bypass for syscab. Requires volume_entity."
+                relabel: "Updates _label_index only for the specified drawer — does NOT touch the
+                  drawer value. No value param required (ignored if supplied). Use when you need to
+                  update entity labels on a drawer without re-serializing or re-validating its value.
+                  Bypasses JSON parse check. Drawer must exist; returns drawer_not_found if absent."
                 help: Returns help
+              system_cabinet_note: "sensor.zenos_system_cabinet is HARD READ-ONLY to FileCabinet.
+                This is a wire-level lockout — no exceptions, no force_action bypass. It holds the
+                AI prompt substrate (Purpose, Directives, Cortex). To update prompt primitives use
+                zen_admintools_zenos_prompt_loader. For VolumeInfo repair use
+                zen_admintools_cabinetadmin_factory. This prevents the AI from rewriting its own
+                directives."
               about:
-                version: 4.0.0 RC2
+                version: 4.5.x
                 branch: beta
                 manual: "summary: >\n  The Zen DojoTools File Cabinet is your go-to
                   tool for managing data in volumes.\n  Volumes are digital storage
@@ -407,78 +793,142 @@ script:
       - conditions:
         - alias: Read by Label
           condition: template
-          value_template: "{{ \n  (label_targets | default('') | trim | length > 0)\n}}\n"
+          value_template: "{{ (label_targets | default('') | trim | length > 0) }}"
         sequence:
         - variables:
             always_hide_drawers:
             - AI_Cabinet_VolumeInfo
-            read_volume: '{{ state_attr(volume_entity, ''variables'') | default({},
-              true) }}'
-            vol: '{{ read_volume if read_volume is mapping else {} }}'
-            normalized_label_targets: "{{\n  (\n    (label_targets | default('') | replace('\\n',
-              ','))\n    | regex_findall('[^,]+')\n    | map('trim')\n    | map('lower')\n
-              \   | map('slugify')\n    | list\n  )\n}}"
-            label_index: "{{\n  (\n    vol.get('_label_index', {}).get('value', {})\n
-              \   if vol is mapping else {}\n  )\n}}"
-            resolved_label_drawers: "{# Step 1: detect bad python literal #}\n{% set
-              is_python_literal =\n  (label_index is string)\n  and (\"{\" in label_index)\n
-              \ and (\"'\" in label_index)\n  and not ('\"' in label_index)\n%}\n\n{#
-              Step 2: fix it if needed #}\n{% if is_python_literal %}\n  {% set json_str
-              = label_index\n    | replace(\"'\", '\"')\n    | replace(\"None\", \"null\")\n
-              \   | replace(\"True\", \"true\")\n    | replace(\"False\", \"false\")\n
-              \ %}\n  {% set idx = json_str | from_json %}\n{% elif label_index is string
-              %}\n  {% set idx = label_index | from_json %}\n{% else %}\n  {% set idx
-              = label_index %}\n{% endif %}\n\n{% set targets = (normalized_label_targets
-              | list) %}\n{% set ns = namespace(out=[]) %}\n\n{# Iterate through targets
-              #}\n{% for t in targets %}\n  {% set raw_arr = idx[t] | default('__MISS__')
-              %}\n\n  {# normalize arr #}\n  {% if raw_arr is mapping %}\n    {% set
-              arr = raw_arr.keys() | list %}\n  {% elif raw_arr is iterable and raw_arr
-              is not string and raw_arr != '__MISS__' %}\n    {% set arr = raw_arr |
-              list %}\n  {% elif raw_arr not in [none, '', '__MISS__'] %}\n    {% set
-              arr = [raw_arr] %}\n  {% else %}\n    {% set arr = [] %}\n  {% endif %}\n\n
-              \ {# merge #}\n  {% set ns.out = (ns.out + arr) | unique | list %}\n{%
-              endfor %}\n\n{{ ns.out }}"
-            is_label_mode: '{{ normalized_label_targets | length > 0 }}'
-            read_payload: "{% set vol = read_volume if read_volume is mapping else {}
-              %}\n{% if vol|length == 0 %}\n  {{ {\"error\": \"Volume attribute missing
-              or empty.\"} }}\n{% else %}\n  {% set targets = normalized_label_targets
-              %}\n  {% set drawers = resolved_label_drawers %}\n  {% set has_targets
-              = targets|length > 0 %}\n  {% if has_targets %}\n    {% set ns = namespace(out={})
-              %}\n    {% for d in drawers %}\n      {% if d in vol and d not in always_hide_drawers
-              and not (d[:1] in ['_', '.']) %}\n        {% set _d = vol[d] %}\n        {%
-              set _desc = _d.get('meta', {}).get('description', '') | trim if _d is
-              mapping else '' %}\n        {% set _exp = _d.get('meta', {}).get('expires_after',
-              '') | trim if _d is mapping else '' %}\n        {% if _desc | length > 0
-              %}\n          {% set _blurb = _desc %}\n        {% else %}\n          {%
-              set _val = (_d.get('value', '') if _d is mapping else _d) | string %}\n
-              \         {% set _blurb = _val[:120] ~ ('...' if _val | length > 120 else
-              '') %}\n        {% endif %}\n        {% if _exp | length > 0 %}\n          {%
-              set _blurb = '[exp:' ~ _exp ~ '] ' ~ _blurb %}\n        {% endif %}\n        {%
-              set ns.out = ns.out | combine({ d: _blurb }) %}\n      {% endif %}\n    {%
-              endfor %}\n    {{\n      {\n        \"mode\": \"label\",\n        \"label_targets\":
-              targets,\n        \"resolved_drawers\": drawers,\n        \"count\": ns.out|length,\n
-              \       \"drawers\": ns.out,\n        \"note\": \"Label read returns blurbs
-              only. Use direct read for full drawer content.\",\n        \"message\": (\n          \"No drawers found for requested labels.\"\n
-              \         if ns.out|length == 0\n          else \"OK\"\n        )\n      }
-              \n    }}\n  {% else %}\n    {{ {\n      \"error\": \"Label mode requested
-              but no labels found.\",\n      \"label_targets\": targets\n    } }}\n
-              \ {% endif %}\n{% endif %}"
+            read_volume: "{{ state_attr(volume_entity, 'variables') | default({}, true) }}"
+            vol: "{{ read_volume if read_volume is mapping else {} }}"
+            normalized_label_targets: >
+              {{
+                (
+                  (label_targets | default('') | replace('\\n', ','))
+                  | regex_findall('[^,]+')
+                  | map('trim')
+                  | map('lower')
+                  | map('slugify')
+                  | list  )
+              }}
+            label_index: >
+              {{ ( vol.get('_label_index', {}).get('value', {}) if vol is mapping else {} ) }}
+            resolved_label_drawers: >
+              {#- Step 1: detect bad python literal -#}
+              {% set is_python_literal =
+                (label_index is string)
+                and ("{" in label_index)
+                and ("'" in label_index)
+                and not ('"' in label_index)
+              %}
+              
+              {# Step 2: fix it if needed -#}
+              {% if is_python_literal %}
+                {% set json_str = label_index
+                  | replace("'", '"')
+                  | replace("None", "null")
+                  | replace("True", "true")
+                  | replace("False", "false")
+               %}
+                {% set idx = json_str | from_json %}
+              {% elif label_index is string %}
+                {% set idx = label_index | from_json %}
+              {% else %}
+                {% set idx = label_index %}
+              {% endif %}
+              
+              {% set targets = (normalized_label_targets | list) %}
+              {% set ns = namespace(out=[]) %}
+              
+              {#- Iterate through targets -#}
+              {% for t in targets %}
+                {% set raw_arr = idx[t] | default('__MISS__') %}
+                {#- normalize arr -#}
+                {% if raw_arr is mapping %}
+                  {% set arr = raw_arr.keys() | list %}
+                {% elif raw_arr is iterable and raw_arr is not string and raw_arr != '__MISS__' %}
+                  {% set arr = raw_arr | list %}
+                {% elif raw_arr not in [none, '', '__MISS__'] %}
+                  {% set arr = [raw_arr] %}
+                {% else %}
+                  {% set arr = [] %}
+                {% endif %}
+              
+                {#- merge -#}
+                {% set ns.out = (ns.out + arr) | unique | list %}
+              {% endfor %}
+              
+              {{ ns.out }}
+            is_label_mode: "{{ normalized_label_targets | length > 0 }}"
+            read_payload: >
+              {% set vol = read_volume if read_volume is mapping else {} %}
+              {% if vol|length == 0 %}
+                {{ 
+                  {"error": "Volume attribute missing or empty."} 
+              }}
+              {% else %}
+                {% set targets = normalized_label_targets %}
+                {% set drawers = resolved_label_drawers %}
+                {% set has_targets = targets|length > 0 %}
+                {% if has_targets %}
+                  {% set ns = namespace(out={}) %}
+                  {% for d in drawers %}
+                    {% if d in vol and d not in always_hide_drawers and not (d[:1] in ['_', '.']) %}
+                      {% set _d = vol[d] %}
+                      {% set _desc = _d.get('meta', {}).get('description', '') | trim if _d is mapping else '' %}
+                      {% set _exp = _d.get('meta', {}).get('expires_after', '') | trim if _d is mapping else '' %}
+                      {% if _desc | length > 0 %}
+                        {% set _blurb = _desc %}
+                      {% else %}
+                        {% set _val = (_d.get('value', '') if _d is mapping else _d) | string %}
+                        {% set _blurb = _val[:120] ~ ('...' if _val | length > 120 else '') %}
+                      {% endif %}
+                      {% if _exp | length > 0 %}
+                        {% set _blurb = '[exp:' ~ _exp ~ '] ' ~ _blurb %}
+                      {% endif %}
+                      {% set ns.out = ns.out | combine({ d: _blurb }) %}
+                    {% endif %}
+                  {% endfor %}
+                  {{
+                    {
+                      "mode": "label",
+                      "label_targets": targets,
+                      "resolved_drawers": drawers,
+                      "count": ns.out|length,
+                      "drawers": ns.out,
+                      "note": "Label read returns blurbs only. Use direct read for full drawer content.",
+                      "message": (
+                        "No drawers found for requested labels." if ns.out|length == 0 else "OK" )
+                    }
+                  }}
+                {% else %}
+                  {{ {
+                    "error": "Label mode requested but no labels found.",
+                    "label_targets": targets
+                  } }}
+                {% endif %}
+              {% endif %}
         - variables:
             final_response:
-              status: '{{ ''error'' if (read_payload is string and read_payload[:8]
-                == ''{"error"'') else ''success'' }}'
-              message: "{% if read_payload is string and read_payload[:8] == '{\"error\"'
-                %}\n  There was a problem reading from the volume.\n{% else %}\n  Read
-                succeeded.\n{% endif %}"
-              result: '{{ read_payload }}'
+              status: >
+                {{ 'error' if (read_payload is string and read_payload[:8] == '{"error"') else 'success' }}
+              message: >
+                {% if read_payload is string and read_payload[:8] == '{"error"' %}
+                  There was a problem reading from the volume.
+                {%- else -%} 
+                  Read succeeded.
+                {%- endif -%}
+              result: "{{ read_payload }}"
+              caller_token: "{{ caller_token | trim }}"
         - stop: Read complete
           response_variable: final_response
       - conditions:
         - alias: Directory - Read all drawers in volume
           condition: template
-          value_template: "{{ action_type == 'read'\n   and ((label_targets | trim)
-            == '')\n   and (volume_entity not in ['', '*', None])\n   and (key in ['',
-            None, '*']) }}\n"
+          value_template: >
+            {{ action_type == 'read' and ((label_targets | trim)  == '')
+              and (volume_entity not in ['', '*', None])
+              and (key in ['', None, '*']) 
+            }}
         sequence:
         - variables:
             ignore_label_prefixes:
@@ -486,67 +936,94 @@ script:
             - .
             always_hide_drawers:
             - AI_Cabinet_VolumeInfo
-            read_volume: '{{ state_attr(volume_entity, ''variables'') | default({},
-              true) }}'
-            raw_drawers: '{% if read_volume is mapping %}{{ read_volume.keys() | list
-              }}{% else %}[]{% endif %}'
-            read_label_index: "{% if read_volume %}\n  {{ read_volume.get('_label_index',
-              {}).get('value', []) }}\n{% else %}\n  []\n{% endif %}"
-            read_filtered_manifest: "{%- import 'zenos_ai/library_index.jinja' as library_index
-              -%}\n{%- set cabs_json = library_index.parse_index_command('AI Data Storage
-              Cabinet') -%}\n{%- set fixed_json = cabs_json | replace(\"['\", '[\"')
-              \ | replace(\"']\", '\"]') | replace(\"', '\", '\", \"') | trim %}\n{%-
-              set cabs = fixed_json | from_json -%}\n{%- set sensors = states['sensor']
-              | map(attribute='entity_id') | list -%}\n{%- set fcabs = intersect(sensors,
-              cabs) -%}\n\n{%- set ns = namespace(filtered={}) %}\n{%- for cab_entity
-              in fcabs %}\n  {%- set variables = state_attr(cab_entity, 'variables')
-              %}\n  {%- if variables and variables.get('AI_Cabinet_VolumeInfo') and
-              variables['AI_Cabinet_VolumeInfo'].get('value') %}\n    {%- set cab_id
-              = variables['AI_Cabinet_VolumeInfo']['value'].get('id', cab_entity) %}\n
-              \   {%- set ns.filtered = ns.filtered | combine({\n      (cab_entity):
-              variables['AI_Cabinet_VolumeInfo']['value']\n    }) %}\n  {%- endif %}\n{%-
-              endfor %}\n{{ ns.filtered }}"
-            parsed_key: '{{ key | default('''', true) | trim | lower }}'
-            initial_volume: '{{ read_volume if read_volume is mapping else {} }}'
-            read_payload: "\n{# Ensure read_volume is a mapping; else fallback to empty
-              dict #}\n{% set safe_read_volume = read_volume if read_volume is mapping
-              else {} %}\n\n{% if safe_read_volume | length == 0 %}\n  {{ {'error':
-              'Volume attribute missing or empty.'} }}\n{% elif parsed_key in ['', '*']
-              %}\n  {%- set raw_drawers = safe_read_volume.keys() | list | default([])
-              %}\n    {%- set filtered_drawers_ns = namespace(items=[]) %}\n  {%- for
-              d in raw_drawers %}\n    {%- if d not in always_hide_drawers and not (d[:1]
-              == '_' or d[:1] == '.') %}\n      {%- set val = safe_read_volume.get(d,
-              {}) %}\n      {%- set val_value = val.get('value') if val is mapping else
-              {} %}\n      {%- if val is mapping and val_value is mapping and val_value.get('mount_point',
-              false) %}\n        {%- set mp_target = (\n            val_value.get('target_entity_id')\n
-              \           if val_value.get('target_entity_id')\n            else val_value.get('target_volume_id')\n
-              \           if val_value.get('target_volume_id')\n            else '?'\n
-              \         ) -%}\n        {%- set drawer_name = d ~ ' [mount:' ~ mp_target
-              ~ ']' %}\n      {%- else %}\n        {%- set drawer_name = d %}\n      {%-
-              endif %}\n      {%- set filtered_drawers_ns.items = filtered_drawers_ns.items
-              + [drawer_name] %}\n    {%- endif %}\n  {%- endfor %}\n  {%- set drawer_list
-              = filtered_drawers_ns.items %}\n\n  {{\n    {\n      'drawers': drawer_list,\n
-              \     'label_index': read_label_index\n    } | tojson\n  }}\n{% endif
-              %}"
+            read_volume: "{{ state_attr(volume_entity, 'variables') | default({}, true) }}"
+            raw_drawers: >
+              {%- if read_volume is mapping -%}
+                {{- read_volume.keys() | list -}}
+              {%- else -%}
+                []
+              {%- endif -%}
+            read_label_index: >
+              {%- if read_volume -%}
+                {{- read_volume.get('_label_index', {}).get('value', []) -}}
+              {%- else -%}
+                []
+              {%- endif -%}
+            parsed_key: "{{ key | default('', true) | trim | lower }}"
+            initial_volume: "{{ read_volume if read_volume is mapping else {} }}"
+            read_payload: >
+              {#- Ensure read_volume is a mapping; else fallback to empty dict -#}
+              {% set safe_read_volume = read_volume if read_volume is mapping else {} %}
+
+              {% if safe_read_volume | length == 0 %}
+                {{ {'error': 'Volume attribute missing or empty.'} }}
+              {% elif parsed_key in ['', '*'] %}
+                {%- set raw_drawers = safe_read_volume.keys() | list | default([]) %}
+                {%- set filtered_drawers_ns = namespace(items=[]) %}
+                {%- for d in raw_drawers %}
+                  {%- if d not in always_hide_drawers and not (d[:1] == '_' or d[:1] == '.') %}
+                    {%- set val = safe_read_volume.get(d, {}) %}
+                    {%- set val_value = val.get('value') if val is mapping else {} %}
+                    {%- if val is mapping and val_value is mapping and val_value.get('mount_point', false) %}
+                      {%- set mp_target = (
+                          val_value.get('target_entity_id')
+                          if val_value.get('target_entity_id')
+                            else val_value.get('target_volume_id')
+                            if val_value.get('target_volume_id')
+                              else '?'
+                         )
+                      -%}
+                      {%- set drawer_name = d ~ ' [mount:' ~ mp_target ~ ']' %}
+                    {%- else %}
+                      {%- set drawer_name = d %}
+                    {%- endif %}
+                    {%- set filtered_drawers_ns.items = filtered_drawers_ns.items + [drawer_name] %}
+                  {%- endif %}
+                {%- endfor %}
+                {%- set drawer_list = filtered_drawers_ns.items %}
+
+                {{
+                  {
+                    'drawers': drawer_list,
+                     'label_index': read_label_index
+                  } | tojson
+                }}
+              {% endif %}
         - variables:
             final_response:
-              status: '{{ ''error'' if (read_payload is string and read_payload[:8]
-                == ''{"error"'') else ''success'' }}'
-              message: "{% if read_payload is string and read_payload[:8] == '{\"error\"'
-                %}\n  There was a problem reading drawers in the volume.\n{% else %}\n
-                \ Directory read succeeded.\n{% endif %}"
-              result: '{{ read_payload }}'
+              status: >
+                {{ 'error' if (read_payload is string and read_payload[:8] == '{"error"') else 'success' }}
+              message: >
+                {%- if read_payload is string and read_payload[:8] == '{"error"' -%}
+                There was a problem reading drawers in the volume.
+                {%- else -%}
+                Directory read succeeded.
+                {%- endif -%}
+              result: "{{ read_payload }}"
+              caller_token: "{{ caller_token | trim }}"
         - stop: Volume directory read complete
           response_variable: final_response
       - conditions:
         - alias: Read
           condition: template
-          value_template: "{% set is_direct_read =\n     (action_type == 'read')\n     and
-            (volume_entity not in [None, '', '*'])\n     and (key not in [None, '',
-            '*'])\n%}\n\n{% set has_labels = normalized_label_targets is iterable\n
-            \                   and (normalized_label_targets | length) > 0 %}\n\n{%
-            set is_label_read =\n     (action_type == 'read')\n     and has_labels\n%}\n\n{{
-            is_direct_read or is_label_read }}\n\n"
+          value_template: >
+            {% set is_direct_read =
+                 (action_type == 'read')
+                 and (volume_entity not in [None, '', '*'])
+                 and (key not in [None, '', '*'])
+            %}
+
+            {% set is_wildcard_read =
+                 (action_type == 'read')
+                 and (volume_entity not in [None, '', '*'])
+                 and (key in [None, '', '*'])
+            %}
+
+            {% set has_labels = normalized_label_targets is iterable and (normalized_label_targets | length) > 0 %}
+
+            {% set is_label_read = (action_type == 'read') and has_labels %}
+
+            {{ is_direct_read or is_wildcard_read or is_label_read }}
         sequence:
         - variables:
             ignore_label_prefixes:
@@ -554,59 +1031,76 @@ script:
             - .
             always_hide_drawers:
             - AI_Cabinet_VolumeInfo
-            read_volume: '{{ state_attr(volume_entity, ''variables'') | default({},
-              true) }}'
-            parsed_key: '{{ key | default('''', true) | trim | lower }}'
-            vol: '{{ read_volume if read_volume is mapping else {} }}'
-            label_index: "{{\n  (\n    vol.get('_label_index', {}).get('value', {})\n
-              \   if vol is mapping else {}\n  )\n}}"
-            read_payload: "{% if vol | length == 0 %}\n  {{ {\"error\": \"Volume attribute
-              missing or empty.\"} }}\n{% else %}\n\n  {# --------------------------------------------------\n
-              \    CASE 1: DIRECTORY LISTING (\"\", \"*\")\n     --------------------------------------------------
-              #}\n  {% if parsed_key in ['', '*'] %}\n    {%- set ns_draw = namespace(drawers=[])
-              -%}\n    {%- for d in vol.keys() | list -%}\n      {%- if d not in always_hide_drawers
-              and not (d[:1] in ['_', '.']) -%}\n        {%- set ns_draw.drawers = ns_draw.drawers
-              + [d] -%}\n      {%- endif -%}\n    {%- endfor -%}\n    {{ {\"drawers\":
-              ns_draw.drawers, \"label_index\": label_index} }}\n\n  {# --------------------------------------------------\n
-              \    CASE 2: DIRECT KEY READ\n     --------------------------------------------------
-              #}\n  {% elif parsed_key in vol %}\n    {{ {parsed_key: vol[parsed_key]} | tojson }}\n\n  {# --------------------------------------------------\n
-              \    CASE 3: NOT FOUND\n     --------------------------------------------------
-              #}\n  {% else %}\n    {{ {\"error\": \"Requested drawer not found in volume.\"}
-              }}\n  {% endif %}\n\n{% endif %}"
+            read_volume: "{{ state_attr(volume_entity, 'variables') | default({}, true) }}"
+            parsed_key: "{{ key | default('', true) | trim | lower }}"
+            vol: "{{ read_volume if read_volume is mapping else {} }}"
+            label_index: "{{ ( vol.get('_label_index', {}).get('value', {}) if vol is mapping else {} ) }}"
+            read_payload: >
+              {% if vol | length == 0 %}
+                {{ {"error": "Volume attribute missing or empty."} }}
+              {% else %}
+              
+                {#- --------------------------------------------------
+                    CASE 1: WILDCARD READ ("", "*") — return all drawers with full values
+                    -------------------------------------------------- -#}
+                {% if parsed_key in ['', '*'] %}
+                  {%- set ns_draw = namespace(result={}) -%}
+                  {%- for d in vol.keys() | list -%}
+                    {%- if d not in always_hide_drawers and not (d[:1] in ['_', '.']) -%}
+                      {%- set ns_draw.result = ns_draw.result | combine({d: vol[d]}) -%}
+                    {%- endif -%}
+                  {%- endfor -%}
+                  {{ ns_draw.result }}
+              
+                {#- --------------------------------------------------
+                   CASE 2: DIRECT KEY READ
+                   -------------------------------------------------- -#}
+                {% elif parsed_key in vol %}
+                  {{ {parsed_key: vol[parsed_key]} | tojson }}
+               
+                {#- --------------------------------------------------
+                     CASE 3: NOT FOUND
+                    -------------------------------------------------- -#}
+                {% else %}
+                  {{ {"error": "Requested drawer not found in volume."} }}
+                {% endif %}
+              {% endif %}
         - variables:
             final_response:
-              status: '{{ ''error'' if (read_payload is string and read_payload[:8]
-                == ''{"error"'') else ''success'' }}'
-              message: "{% if read_payload is string and read_payload[:8] == '{\"error\"'
-                %}\n  There was a problem reading from the volume.\n{% else %}\n  Read
-                succeeded.\n{% endif %}"
-              result: '{{ read_payload }}'
+              status: >
+                {{ 'error' if (read_payload is string and read_payload[:8] == '{"error"') else 'success' }}
+              message: > 
+                {%- if read_payload is string and read_payload[:8] == '{"error"' -%}
+                  There was a problem reading from the volume.
+                {%- else -%}
+                  Read succeeded.
+                {%- endif -%}
+              result: "{{ read_payload }}"
+              caller_token: "{{ caller_token | trim }}"
         - stop: Read complete
           response_variable: final_response
       - conditions:
         - alias: Manifest - Read Volume( '', '*' )
           condition: template
-          value_template: "  {{\n    action_type == 'manifest'\n    or (\n      action_type
-            == 'read'\n      and (label_targets | trim) == ''\n      and (volume_entity
-            in ['', '*', None])\n    )\n  }}\n"
+          value_template: "{{ action_type == 'manifest' or ( action_type == 'read' and (label_targets | trim) == '' and (volume_entity in ['', '*', None]) )  }}"
         sequence:
         - action: script.zen_dojotools_manifest
           metadata: {}
           data:
-            show_hidden_volumes: '{{ show_hidden_volumes }}'
+            show_hidden_volumes: "{{ show_hidden_volumes }}"
+            show_stacks: "{{ show_stacks }}"
           response_variable: final_response
         - stop: Manifest read complete
           response_variable: final_response
       - conditions:
         - alias: Create (or Update when Key not Exist and Force)
           condition: template
-          value_template: "{{\n   is_create_new\n   or is_force_update_new\n   or is_force_create_over_existing\n}}"
+          value_template: "{{ is_create_new or is_force_update_new or is_force_create_over_existing}}"
         sequence:
         - choose:
           - conditions:
             - condition: template
-              value_template: "  {{\n    protect_write\n    and not force_action\n    and
-                not volume_unmodified\n  }}"
+              value_template: "  {{ protect_write and not force_action and not volume_unmodified }}"
             sequence:
             - variables:
                 final_response:
@@ -616,68 +1110,72 @@ script:
               response_variable: final_response
         - event: set_variable_legacy
           event_data:
-            key: '{{ key }}'
+            key: "{{- key -}}"
             value: '{{ new_entry.value }}'
-            set_timestamp: '{{ set_timestamp }}'
-            volume_entity: '{{ volume_entity }}'
+            set_timestamp: "{{ set_timestamp }}"
+            volume_entity: "{{ volume_entity }}"
         - choose:
           - conditions:
             - condition: template
-              value_template: '{{ accepted_entity_labels | length > 0 }}'
+              value_template: '{{ parsed_entity_labels | length > 0 }}'
               alias: Valid Labels
             sequence:
             - alias: Update the index
               event: set_variable_legacy
               event_data:
                 key: _label_index
-                value: '{{ updated_label_index }}'
+                value: "{{ updated_label_index }}"
                 set_timestamp: true
-                volume_entity: '{{ volume_entity }}'
+                volume_entity: "{{ volume_entity }}"
         - alias: Read after Write Verification
-          wait_template: "{% set vol = state_attr(volume_entity, 'variables') %}\n{%
-            if vol is mapping %}\n  {% set entry = vol.get(key) %}\n  {{ entry is mapping
-            }}\n{% else %}\n  false\n{% endif %}"
+          wait_template: >
+            {%- set vol = state_attr(volume_entity, 'variables') -%}
+            {%- if vol is mapping -%}
+              {%- set entry = vol.get(key) -%}
+              {{ entry is mapping }}
+            {%- else -%}
+              false
+            {%- endif -%}
           timeout: 00:00:05
           continue_on_timeout: true
         - variables:
-            verify_volume: '{{ state_attr(volume_entity, ''variables'') | default({},
-              true) }}'
-            verify_entry: "{% if verify_volume is mapping %}\n  {{ verify_volume.get(key,
-              {}) }}\n{% else %}\n  {}\n{% endif %}"
-            write_verified: "{{\n  verify_entry is mapping\n  and verify_entry.get('value')
-              == new_entry.value\n}}"
+            verify_volume: "{{ state_attr(volume_entity, 'variables') | default({}, true) }}"
+            verify_entry: "{% if verify_volume is mapping %}{{ verify_volume.get(key, {}) }}{% else %}{}{% endif %}"
+            write_verified: "{{ verify_entry is mapping and verify_entry.get('value') == new_entry.value}}"
         - variables:
             final_response:
-              status: '{{ ''success'' if write_verified else ''warning'' }}'
-              message: "{% if write_verified %}\n  Created drawer '{{ key }}' (verification
-                confirmed).\n{% else %}\n  Created drawer '{{ key }}' (value written
-                but verification delayed).\n{% endif %}"
+              status: "{{ 'success' if write_verified else 'warning' }}"
+              message: >
+                {%- if write_verified -%}
+                  Created drawer '{{ key }}' (verification confirmed).
+                {%- else -%}
+                  Created drawer '{{ key }}' (value written but verification delayed).
+                {%- endif -%}
               entry:
-                drawer: '{{ key }}'
+                drawer: "{{- key -}}"
                 value: '{{ new_entry.value }}'
-                timestamp: '{{ new_entry.timestamp if new_entry.timestamp is defined
-                  else None }}'
+                timestamp: '{{ new_entry.timestamp if new_entry.timestamp is defined else None }}'
               verification:
-                confirmed: '{{ write_verified }}'
-              warnings: "{% if dropped_labels | length > 0 %}\n  Warning: {{ dropped_labels
-                | length }} ignored label(s): {{ dropped_labels }}\n{% else %}\n  None\n{%
-                endif %}"
+                confirmed: "{{ write_verified }}"
+              warnings: >
+                {%- if dropped_labels | length > 0 and not create_label -%}
+                  Warning: {{ dropped_labels | length }} ignored label(s): {{ dropped_labels }}. Pass create_label: true to auto-create.
+                {%- else -%}
+                  None
+                {%- endif -%}
+              caller_token: "{{ caller_token | trim }}"
         - stop: Create fired
           response_variable: final_response
       - conditions:
         - alias: Update
           condition: template
-          value_template: '{{ action_type == ''update'' and key_exists_initial and not
-            is_force_update_new }}
-  
-            '
+          value_template: "{{ action_type == 'update' and key_exists_initial and not is_force_update_new }}"
         sequence:
         - choose:
           - conditions:
             - alias: 'Error - Concurrent Modification Blocked: Modified'
               condition: template
-              value_template: "  {{\n    protect_write\n    and not force_action\n    and
-                not volume_unmodified\n  }}\n"
+              value_template: "{{ protect_write and not force_action and not volume_unmodified }}"
             sequence:
             - variables:
                 final_response:
@@ -687,178 +1185,228 @@ script:
               response_variable: final_response
         - event: set_variable_legacy
           event_data:
-            key: '{{ key }}'
+            key: "{{- key -}}"
             value: '{{ new_entry.value }}'
-            set_timestamp: '{{ set_timestamp }}'
-            volume_entity: '{{ volume_entity }}'
+            set_timestamp: "{{ set_timestamp }}"
+            volume_entity: "{{ volume_entity }}"
         - choose:
           - conditions:
             - condition: template
-              value_template: '{{ accepted_entity_labels | length > 0 }}'
+              value_template: '{{ parsed_entity_labels | length > 0 }}'
               alias: Valid Labels
             sequence:
             - alias: Update the Index
               event: set_variable_legacy
               event_data:
                 key: _label_index
-                value: '{{ updated_label_index }}'
+                value: "{{ updated_label_index }}"
                 set_timestamp: true
-                volume_entity: '{{ volume_entity }}'
+                volume_entity: "{{ volume_entity }}"
         - alias: Read after Write Verification (update)
-          wait_template: "{% set vol = state_attr(volume_entity, 'variables') %}\n{%
-            if vol is mapping %}\n  {% set entry = vol.get(key) %}\n  {{ entry is mapping
-            }}\n{% else %}\n  false\n{% endif %}"
-          timeout: 00:00:05
+          # Wait for the NEW value specifically — not just "entry exists".
+          # Old: entry is mapping → fires immediately for updates (old value satisfies it).
+          # Fix: entry.get('value') == new_entry.value waits for the updated value.
+          # Timeout 10s: post-reload propagation can exceed 5s.
+          # See: bug_filecabinet_confirmed_false_negative.md, incident 2026-03-23.
+          wait_template: >
+            {%- set vol = state_attr(volume_entity, 'variables') -%}
+            {%- if vol is mapping -%}
+              {%- set entry = vol.get(key, {}) -%}
+              {{ entry.get('value') == new_entry.value }}
+            {%- else -%}
+              false
+            {%- endif -%}
+          timeout: 00:00:10
           continue_on_timeout: true
         - variables:
-            verify_volume: '{{ state_attr(volume_entity, ''variables'') | default({},
-              true) }}'
-            verify_entry: "{% if verify_volume is mapping %}\n  {{ verify_volume.get(key,
-              {}) }}\n{% else %}\n  {}\n{% endif %}"
-            write_verified: "{{\n  verify_entry is mapping\n  and verify_entry.get('value')
-              == new_entry.value\n}}"
+            verify_volume: "{{ state_attr(volume_entity, 'variables') | default({}, true) }}"
+            verify_entry: >
+              {%- if verify_volume is mapping -%}
+                {{ verify_volume.get(key, {}) }}
+              {%- else -%}
+                {}
+              {%- endif -%}
+            write_verified: "{{ verify_entry is mapping and verify_entry.get('value') == new_entry.value}}"
         - variables:
             final_response:
-              status: '{{ ''success'' if write_verified else ''warning'' }}'
-              message: "{% if write_verified %}\n  Updated drawer '{{ key }}' (verification
-                confirmed).\n{% else %}\n  Updated drawer '{{ key }}' (value written
-                but verification delayed).\n{% endif %}"
+              status: "{{ 'success' if write_verified else 'warning' }}"
+              message: >
+                {%- if write_verified -%}
+                  Updated drawer '{{ key }}' (verification confirmed).
+                {%- else -%}
+                  Updated drawer '{{ key }}' (value written but verification delayed).
+                {%- endif -%}
               entry:
-                drawer: '{{ key }}'
+                drawer: "{{- key -}}"
                 value: '{{ new_entry.value }}'
-                timestamp: '{{ new_entry.timestamp if new_entry.timestamp is defined
-                  else None }}'
+                timestamp: '{{ new_entry.timestamp if new_entry.timestamp is defined else None }}'
               verification:
-                confirmed: '{{ write_verified }}'
-              warnings: "{% if dropped_labels | length > 0 %}\n  Warning: {{ dropped_labels
-                | length }} ignored label(s): {{ dropped_labels }}\n{% else %}\n  None\n{%
-                endif %}"
+                confirmed: "{{ write_verified }}"
+              warnings: >
+                {%- if dropped_labels | length > 0 -%}
+                  Warning: {{ dropped_labels | length }} ignored label(s): {{ dropped_labels }}
+                {%- else -%}
+                None
+                {%- endif -%}
+              caller_token: "{{ caller_token | trim }}"
         - stop: Update fired
           response_variable: final_response
       - conditions:
         - condition: template
-          value_template: '{{ action_type == ''delete'' and key_exists_initial }}'
+          value_template: "{{ action_type == 'delete' and key_exists_initial }}"
           alias: Delete
         sequence:
         - event: remove_variable_legacy
           event_data:
-            key: '{{ key }}'
-            volume_entity: '{{ volume_entity }}'
-        - wait_template: '{% set vol = state_attr(volume_entity, ''variables'') | default({},
-            true) %} {{ vol is mapping and (key not in vol) }}'
+            key: "{{- key -}}"
+            volume_entity: "{{ volume_entity }}"
+        - wait_template: >
+           {% set vol = state_attr(volume_entity, 'variables') | default({}, true) %} 
+            {{ vol is mapping and (key not in vol) }}
           timeout: 00:00:01
           continue_on_timeout: true
           alias: Read after Delete Verification
         - variables:
-            verify_volume: '{{ state_attr(volume_entity, ''variables'') | default({},
-              true) }}'
-            delete_verified: '{{ verify_volume is mapping and (key not in verify_volume)
-              }}'
+            verify_volume: "{{ state_attr(volume_entity, 'variables') | default({}, true) }}"
+            delete_verified: "{{ verify_volume is mapping and (key not in verify_volume) }}"
         - variables:
-            _index_src: '{{ state_attr(volume_entity, ''variables'') | default({}, true)
-              }}'
-            _raw_index: "{% if _index_src is mapping %}\n  {{ _index_src.get('_label_index',
-              {}).get('value', {}) }}\n{% else %}\n  {}\n{% endif %}"
-            pruned_index: "{% if _raw_index is mapping %}\n  {# Build a cleaned copy
-              with `key` removed everywhere #}\n  {% set cleaned = {} %}\n  {% for label,
-              drawers in _raw_index.items() %}\n    {% if drawers is mapping %}\n      {#
-              Nested form: label -> {sub: [drawers]} #}\n      {% set kept_sub = {}
-              %}\n      {% for sub, arr in drawers.items() %}\n        {% set al = arr
-              if (arr is iterable and not arr is string) else [arr] %}\n        {% set
-              cleaned_arr = al | reject('equalto', key) | list %}\n        {% if cleaned_arr
-              | length > 0 %}\n          {% set kept_sub = kept_sub | combine({ sub:
-              cleaned_arr }) %}\n        {% endif %}\n      {% endfor %}\n      {% if
-              kept_sub | length > 0 %}\n        {% set cleaned = cleaned | combine({
-              label: kept_sub }) %}\n      {% endif %}\n    {% elif drawers is iterable
-              and not drawers is string %}\n      {# Flat list form: label -> [drawers]
-              #}\n      {% set cleaned_list = drawers | reject('equalto', key) | list
-              %}\n      {% if cleaned_list | length > 0 %}\n        {% set cleaned =
-              cleaned | combine({ label: cleaned_list }) %}\n      {% endif %}\n    {%
-              else %}\n      {# Single value fallback #}\n      {% if drawers != key
-              %}\n        {% set cleaned = cleaned | combine({ label: [drawers] }) %}\n
-              \     {% endif %}\n    {% endif %}\n  {% endfor %}\n  {{ cleaned }}\n{%
-              else %}\n  {}\n{% endif %}"
+            _index_src: "{{ state_attr(volume_entity, 'variables') | default({}, true) }}"
+            _raw_index: >
+              {%- if _index_src is mapping -%}
+                {{ _index_src.get('_label_index', {}).get('value', {}) }}
+              {%- else -%}
+                {}
+              {%- endif -%}
+            pruned_index: >
+              {% if _raw_index is mapping %}
+                {#- Build a cleaned copy with `key` removed everywhere -#}
+                {% set cleaned = {} %}
+                {% for label, drawers in _raw_index.items() %}
+                  {% if drawers is mapping %}
+                    {# Nested form: label -> {sub: [drawers]} -#}
+                    {% set kept_sub = {} %}
+                    {% for sub, arr in drawers.items() %}
+                      {% set al = arr if (arr is iterable and not arr is string) else [arr] %}
+                      {% set cleaned_arr = al | reject('equalto', key) | list %}
+                      {% if cleaned_arr | length > 0 %}
+                        {% set kept_sub = kept_sub | combine({ sub: cleaned_arr }) %}
+                      {% endif %}
+                    {% endfor %}
+                    {% if kept_sub | length > 0 %}
+                      {% set cleaned = cleaned | combine({ label: kept_sub }) %}
+                    {% endif %}
+                  {% elif drawers is iterable and not drawers is string %}
+                    {#- Flat list form: label -> [drawers] -#}
+                    {% set cleaned_list = drawers | reject('equalto', key) | list %}
+                    {% if cleaned_list | length > 0 %}
+                      {% set cleaned = cleaned | combine({ label: cleaned_list }) %}
+                    {% endif %}
+                  {% else %}
+                    {#- Single value fallback -#}
+                    {% if drawers != key %}
+                      {% set cleaned = cleaned | combine({ label: [drawers] }) %}
+                    {% endif %}
+                  {% endif %}
+                {% endfor %}
+                {{ cleaned }}
+              {%  else %}
+                {}
+              {% endif %}
             index_changed: '{{ pruned_index != _raw_index }}'
         - choose:
           - conditions:
             - condition: template
-              value_template: '{{ index_changed }}'
+              value_template: "{{ index_changed }}"
               alias: Prune needed
             sequence:
             - event: set_variable_legacy
               event_data:
                 key: _label_index
-                value: '{{ pruned_index }}'
+                value: "{{ pruned_index }}"
                 set_timestamp: true
-                volume_entity: '{{ volume_entity }}'
+                volume_entity: "{{ volume_entity }}"
             - alias: Index prune verification
-              wait_template: "{% set vol = state_attr(volume_entity, 'variables') |
-                default({}, true) %} {% set raw = vol.get('_label_index', {}).get('value')
-                if vol is mapping else {} %} {% set found = false %} {% if raw is mapping
-                %}\n  {% for label, drawers in raw.items() %}\n    {% if drawers is
-                mapping %}\n      {% for sub, arr in drawers.items() %}\n        {%
-                set al = arr if (arr is iterable and not arr is string) else [arr] %}\n
-                \       {% if key in al %}{% set found = true %}{% endif %}\n      {%
-                endfor %}\n    {% elif drawers is iterable and not drawers is string
-                %}\n      {% if key in drawers %}{% set found = true %}{% endif %}\n
-                \   {% else %}\n      {% if drawers == key %}{% set found = true %}{%
-                endif %}\n    {% endif %}\n  {% endfor %}\n{% endif %} {{ not found
-                }}"
+              wait_template: >
+                {% set vol = state_attr(volume_entity, 'variables') | default({}, true) %}
+                {% set raw = vol.get('_label_index', {}).get('value') if vol is mapping else {} %} 
+                {% set found = false %} 
+                {% if raw is mapping %}
+                  {% for label, drawers in raw.items() %}
+                    {% if drawers is mapping %}
+                      {% for sub, arr in drawers.items() %}
+                        {% set al = arr if (arr is iterable and not arr is string) else [arr] %}                
+                        {% if key in al %}{% set found = true %}{% endif %}
+                      {% endfor %}
+                    {% elif drawers is iterable and not drawers is string %}
+                      {% if key in drawers %}{% set found = true %}{% endif %}
+                    {% else %}
+                      {% if drawers == key %}{% set found = true %}{% endif %}
+                    {% endif %}
+                  {% endfor %}
+                {% endif %} 
+                {{ not found }}
               timeout: 00:00:01
               continue_on_timeout: true
             - variables:
-                index_pruned_verified: "{% set vol = state_attr(volume_entity, 'variables')
-                  | default({}, true) %} {% set raw = vol.get('_label_index', {}).get('value')
-                  if vol is mapping else {} %} {% set found = false %} {% if raw is
-                  mapping %}\n  {% for label, drawers in raw.items() %}\n    {% if drawers
-                  is mapping %}\n      {% for sub, arr in drawers.items() %}\n        {%
-                  set al = arr if (arr is iterable and not arr is string) else [arr]
-                  %}\n        {% if key in al %}{% set found = true %}{% endif %}\n
-                  \     {% endfor %}\n    {% elif drawers is iterable and not drawers
-                  is string %}\n      {% if key in drawers %}{% set found = true %}{%
-                  endif %}\n    {% else %}\n      {% if drawers == key %}{% set found
-                  = true %}{% endif %}\n    {% endif %}\n  {% endfor %}\n{% endif %}
-                  {{ not found }}"
+                index_pruned_verified: >
+                  {% set vol = state_attr(volume_entity, 'variables') | default({}, true) %} 
+                  {% set raw = vol.get('_label_index', {}).get('value') if vol is mapping else {} %} 
+                  {% set found = false %} 
+                  {% if raw is mapping %}
+                    {% for label, drawers in raw.items() %}
+                      {% if drawers is mapping %}
+                        {% for sub, arr in drawers.items() %}
+                          {% set al = arr if (arr is iterable and not arr is string) else [arr] %}
+                          {% if key in al %}{% set found = true %}{% endif %}
+                      {% endfor %}
+                      {% elif drawers is iterable and not drawers is string %}
+                        {% if key in drawers %}{% set found = true %}{% endif %}
+                      {% else %}
+                        {% if drawers == key %}{% set found = true %}{% endif %}
+                      {% endif %}
+                    {% endfor %}
+                  {% endif %}
+                  {{ not found }}
         - variables:
             final_response:
-              status: '{{ ''success'' if delete_verified else ''warning'' }}'
+              status: "{{ 'success' if delete_verified else 'warning' }}"
               index_maintenance:
-                pruned: '{{ index_changed }}'
-                verified: '{{ index_pruned_verified if index_changed else true }}'
-              message: "{% if delete_verified %}\n  Deleted drawer '{{ key }}' (verification
-                confirmed).\n{% else %}\n  Delete requested for '{{ key }}' (verification
-                not confirmed — key still present or state not yet updated).\n{% endif
-                %}"
+                pruned: "{{ index_changed }}"
+                verified: "{{ index_pruned_verified if index_changed else true }}"
+              message: >
+                {% if delete_verified -%}
+                  Deleted drawer '{{ key }}' (verification confirmed).
+                {% else %}
+                  Delete requested for '{{ key }}' (verification not confirmed — key still present or state not yet updated).
+                {% endif %}
+              caller_token: "{{ caller_token | trim }}"
         - stop: Delete fired
           response_variable: final_response
       - conditions:
         - condition: template
-          value_template: '{{ action_type in [''move'', ''copy''] }}'
+          value_template: "{{ action_type in ['move', 'copy'] }}"
           alias: Move/Copy Drawer
         sequence:
         - variables:
-            dest_cabinet: '{{ destination_cabinet | default('''') }}'
-            dest_drawer: '{{ destination_drawer | default('''') | slugify }}'
-            dest_volume: '{{ state_attr(dest_cabinet, ''variables'') | default({}, true)
-              }}'
+            dest_cabinet: "{{ destination_cabinet }}"
+            dest_drawer: "{{ destination_drawer }}"
+            dest_volume: "{{ state_attr(dest_cabinet, 'variables') | default({}, true) }}"
             src_drawer_data: '{{ initial_volume.get(key, {}) }}'
             src_drawer_value: >-
               {%- set ns = namespace(d=src_drawer_data) -%}
               {%- if ns.d is string and (ns.d | trim)[:1] in ['{', '['] -%}
-                {%- set _parsed = ns.d | from_json -%}
-                {%- if _parsed is not string -%}
+                {%- set _parsed = ns.d | from_json(none) -%}
+                {%- if _parsed is not none and _parsed is not string -%}
                   {%- set ns.d = _parsed -%}
                 {%- endif -%}
               {%- endif -%}
               {{ ns.d.get('value', ns.d) if ns.d is mapping else ns.d }}
-            can_write_dest: '{{ not protect_write or ((state_attr(dest_cabinet, ''variables'') or {}).get(dest_drawer)
-              is none) or force_action }}'
-            is_mount_point: '{{ src_drawer_value is mapping and src_drawer_value.get(''mount_point'',
-              false) == true }}'
+            can_write_dest: "{{ not protect_write or ((state_attr(dest_cabinet, 'variables') or {}).get(dest_drawer) is none) or force_action }}"
+            is_mount_point: "{{ src_drawer_value is mapping and src_drawer_value.get('mount_point', false) == true }}"
         - choose:
           - conditions:
             - condition: template
-              value_template: '{{ dest_cabinet == '''' or dest_drawer == '''' }}'
+              value_template: "{{ dest_cabinet == '' or dest_drawer == '' }}"
             sequence:
             - variables:
                 final_response:
@@ -868,7 +1416,7 @@ script:
               response_variable: final_response
           - conditions:
             - condition: template
-              value_template: '{{ is_mount_point }}'
+              value_template: "{{ is_mount_point }}"
             sequence:
             - variables:
                 final_response:
@@ -879,7 +1427,7 @@ script:
               response_variable: final_response
           - conditions:
             - condition: template
-              value_template: '{{ not can_write_dest }}'
+              value_template: "{{ not can_write_dest }}"
             sequence:
             - variables:
                 final_response:
@@ -890,133 +1438,161 @@ script:
               response_variable: final_response
         - event: set_variable_legacy
           event_data:
-            key: '{{ dest_drawer }}'
-            value: '{{ src_drawer_value }}'
+            key: "{{ dest_drawer }}"
+            value: "{{ src_drawer_value }}"
             set_timestamp: true
-            volume_entity: '{{ dest_cabinet }}'
+            volume_entity: "{{ dest_cabinet }}"
         - choose:
           - conditions:
             - condition: template
-              value_template: '{{ accepted_entity_labels | length > 0 }}'
+              value_template: '{{ parsed_entity_labels | length > 0 }}'
               alias: Valid Labels
             sequence:
             - alias: Update the Index
               event: set_variable_legacy
               event_data:
                 key: _label_index
-                value: '{{ updated_label_index }}'
+                value: "{{ updated_label_index }}"
                 set_timestamp: true
-                volume_entity: '{{ dest_cabinet }}'
-        - wait_template: '{% set vol = state_attr(dest_cabinet, ''variables'') | default({},
-            true) %} {{ vol.get(dest_drawer, {}).get(''value'') == src_drawer_value
-            }}'
+                volume_entity: "{{ dest_cabinet }}"
+        - wait_template: >
+            {% set vol = state_attr(dest_cabinet, 'variables') | default({}, true) %}
+            {{ vol.get(dest_drawer, {}).get('value') == src_drawer_value }}
           timeout: 00:00:01
           continue_on_timeout: true
         - variables:
-            write_verified: '{% set vol = state_attr(dest_cabinet, ''variables'') |
-              default({}, true) %} {{ vol.get(dest_drawer, {}).get(''value'') == src_drawer_value
-              }}'
+            write_verified: >
+              {% set vol = state_attr(dest_cabinet, 'variables') | default({}, true) %}
+              {{ vol.get(dest_drawer, {}).get('value') == src_drawer_value }}'
         - choose:
           - conditions:
             - condition: template
-              value_template: '{{ action_type == ''move'' and key_exists_initial }}'
+              value_template: "{{ action_type == 'move' and key_exists_initial }}"
               alias: Move - Source Delete Required
             sequence:
             - event: remove_variable_legacy
               event_data:
-                key: '{{ key }}'
-                volume_entity: '{{ volume_entity }}'
-            - wait_template: '{% set vol = state_attr(volume_entity, ''variables'')
-                | default({}, true) %} {{ key not in vol }}'
+                key: "{{- key -}}"
+                volume_entity: "{{ volume_entity }}"
+            - wait_template: "{% set vol = state_attr(volume_entity, 'variables') | default({}, true) %} {{ key not in vol }}"
               timeout: 00:00:01
               continue_on_timeout: true
             - variables:
-                _raw_index: '{{ initial_volume.get(''_label_index'', {}).get(''value'')
-                  | default({}) }}'
-                _index_src: '{{ state_attr(volume_entity, ''variables'') | default({},
-                  true) }}'
-                pruned_index: "{% if _raw_index is mapping %}\n  {# Build a cleaned
-                  copy with `key` removed everywhere #}\n  {% set cleaned = {} %}\n
-                  \ {% for label, drawers in _raw_index.items() %}\n    {% if drawers
-                  is mapping %}\n      {# Nested form: label -> {sub: [drawers]} #}\n
-                  \     {% set kept_sub = {} %}\n      {% for sub, arr in drawers.items()
-                  %}\n        {% set al = arr if (arr is iterable and not arr is string)
-                  else [arr] %}\n        {% set cleaned_arr = al | reject('equalto',
-                  key) | list %}\n        {% if cleaned_arr | length > 0 %}\n          {%
-                  set kept_sub = kept_sub | combine({ sub: cleaned_arr }) %}\n        {%
-                  endif %}\n      {% endfor %}\n      {% if kept_sub | length > 0 %}\n
-                  \       {% set cleaned = cleaned | combine({ label: kept_sub }) %}\n
-                  \     {% endif %}\n    {% elif drawers is iterable and not drawers
-                  is string %}\n      {# Flat list form: label -> [drawers] #}\n      {%
-                  set cleaned_list = drawers | reject('equalto', key) | list %}\n      {%
-                  if cleaned_list | length > 0 %}\n        {% set cleaned = cleaned
-                  | combine({ label: cleaned_list }) %}\n      {% endif %}\n    {% else
-                  %}\n      {# Single value fallback #}\n      {% if drawers != key
-                  %}\n        {% set cleaned = cleaned | combine({ label: [drawers]
-                  }) %}\n      {% endif %}\n    {% endif %}\n  {% endfor %}\n  {{ cleaned
-                  }}\n{% else %}\n  {}\n{% endif %}"
-                index_changed: '{{ _raw_index != pruned_index }}'
+                _raw_index: "{{ initial_volume.get('_label_index', {}).get('value') | default({}) }}"
+                _index_src: "{{ state_attr(volume_entity, 'variables') | default({}, true) }}"
+                pruned_index: >
+                  {% if _raw_index is mapping %}
+                    {#- Build a cleaned copy with `key` removed everywhere -#}
+                    {% set cleaned = {} %}
+                    {% for label, drawers in _raw_index.items() %}
+                      {% if drawers is mapping %}
+                        {#- Nested form: label -> {sub: [drawers]} -#}
+                        {% set kept_sub = {} %}
+                        {% for sub, arr in drawers.items() %}
+                          {% set al = arr if (arr is iterable and not arr is string) else [arr] %}
+                          {% set cleaned_arr = al | reject('equalto', key) | list %}
+                          {% if cleaned_arr | length > 0 %}
+                            {% set kept_sub = kept_sub | combine({ sub: cleaned_arr }) %}
+                          {% endif %}
+                        {% endfor %}
+                        {% if kept_sub | length > 0 %}
+                          {% set cleaned = cleaned | combine({ label: kept_sub }) %}
+                        {% endif %}
+                      {% elif drawers is iterable and not drawers is string %}
+                        {#- Flat list form: label -> [drawers] -#}
+                        {% set cleaned_list = drawers | reject('equalto', key) | list %}
+                        {% if cleaned_list | length > 0 %}
+                          {% set cleaned = cleaned | combine({ label: cleaned_list }) %}
+                        {% endif %}
+                      {% else %}
+                        {#- Single value fallback -#}
+                        {% if drawers != key %}
+                          {% set cleaned = cleaned | combine({ label: [drawers] }) %}
+                        {% endif %}
+                      {% endif %}
+                    {% endfor %}
+                    {{ cleaned }}
+                  {% else %}
+                  {}
+                  {% endif %}
+                index_changed: "{{ _raw_index != pruned_index }}"
             - choose:
               - conditions:
                 - condition: template
-                  value_template: '{{ index_changed }}'
+                  value_template: "{{ index_changed }}"
                   alias: Prune needed
                 sequence:
                 - event: set_variable_legacy
                   event_data:
                     key: _label_index
-                    value: '{{ pruned_index }}'
+                    value: "{{ pruned_index }}"
                     set_timestamp: true
-                    volume_entity: '{{ volume_entity }}'
+                    volume_entity: "{{ volume_entity }}"
                 - alias: Index prune verification
-                  wait_template: "{% set vol = state_attr(volume_entity, 'variables')
-                    | default({}, true) %} {% set raw = vol.get('_label_index', {}).get('value')
-                    if vol is mapping else {} %} {% set found = false %} {% if raw is
-                    mapping %}\n  {% for label, drawers in raw.items() %}\n    {% if
-                    drawers is mapping %}\n      {% for sub, arr in drawers.items()
-                    %}\n        {% set al = arr if (arr is iterable and not arr is string)
-                    else [arr] %}\n        {% if key in al %}{% set found = true %}{%
-                    endif %}\n      {% endfor %}\n    {% elif drawers is iterable and
-                    not drawers is string %}\n      {% if key in drawers %}{% set found
-                    = true %}{% endif %}\n    {% else %}\n      {% if drawers == key
-                    %}{% set found = true %}{% endif %}\n    {% endif %}\n  {% endfor
-                    %}\n{% endif %} {{ not found }}"
+                  wait_template: >
+                    {% set vol = state_attr(volume_entity, 'variables') | default({}, true) %} 
+                    {% set raw = vol.get('_label_index', {}).get('value') if vol is mapping else {} %} 
+                    {% set found = false %} 
+                    {% if raw is mapping %}
+                      {% for label, drawers in raw.items() %}
+                        {% if drawers is mapping %}
+                          {% for sub, arr in drawers.items() %}
+                            {% set al = arr if (arr is iterable and not arr is string) else [arr] %}
+                            {% if key in al %}{% set found = true %}{% endif %}
+                          {% endfor %}
+                        {% elif drawers is iterable and not drawers is string %}
+                          {% if key in drawers %}{% set found = true %}{% endif %}
+                        {% else %}
+                          {% if drawers == key %}{% set found = true %}{% endif %}
+                        {% endif %}
+                      {% endfor %}
+                    {% endif %} 
+                    {{ not found }}
                   timeout: 00:00:01
                   continue_on_timeout: true
                 - variables:
-                    index_pruned_verified: "{% set vol = state_attr(volume_entity, 'variables')
-                      | default({}, true) %} {% set raw = vol.get('_label_index', {}).get('value')
-                      if vol is mapping else {} %} {% set found = false %} {% if raw
-                      is mapping %}\n  {% for label, drawers in raw.items() %}\n    {%
-                      if drawers is mapping %}\n      {% for sub, arr in drawers.items()
-                      %}\n        {% set al = arr if (arr is iterable and not arr is
-                      string) else [arr] %}\n        {% if key in al %}{% set found
-                      = true %}{% endif %}\n      {% endfor %}\n    {% elif drawers
-                      is iterable and not drawers is string %}\n      {% if key in drawers
-                      %}{% set found = true %}{% endif %}\n    {% else %}\n      {%
-                      if drawers == key %}{% set found = true %}{% endif %}\n    {%
-                      endif %}\n  {% endfor %}\n{% endif %} {{ not found }}"
+                    index_pruned_verified: >
+                      {% set vol = state_attr(volume_entity, 'variables') | default({}, true) %}
+                      {% set raw = vol.get('_label_index', {}).get('value') if vol is mapping else {} %}
+                      {% set found = false %}
+                      {% if raw is mapping %}
+                        {% for label, drawers in raw.items() %}
+                          {% if drawers is mapping %}
+                            {% for sub, arr in drawers.items() %}
+                              {% set al = arr if (arr is iterable and not arr is string) else [arr] %}
+                              {% if key in al %}{% set found = true %}{% endif %}
+                            {% endfor %}
+                          {% elif drawers is iterable and not drawers is string %}
+                            {% if key in drawers %}{% set found = true %}{% endif %}
+                          {% else %}
+                            {% if drawers == key %}{% set found = true %}{% endif %}
+                          {% endif %}
+                        {% endfor %}
+                      {% endif %}
+                      {{ not found }}
         - variables:
             final_response:
-              status: '{{ ''success'' if write_verified else ''warning'' }}'
-              message: "{% if write_verified %}\n  Drawer '{{ key }}' {{ action_type
-                }}d to '{{ dest_drawer }}' in '{{ dest_cabinet }}'.\n{% else %}\n  {{
-                action_type | title }} completed but write verification failed or delayed.\n{%
-                endif %}"
+              status: "{{ 'success' if write_verified else 'warning' }}"
+              message: >
+                {%- if write_verified -%}  
+                  Drawer '{{ key }}' {{ action_type }}d to '{{ dest_drawer }}' in '{{ dest_cabinet }}'.
+                {%- else -%}
+                  {{ action_type | title }} completed but write verification failed or delayed.
+                {%- endif -%}
               verification:
-                confirmed: '{{ write_verified }}'
+                confirmed: "{{ write_verified }}"
         - stop: Move/Copy complete
           response_variable: final_response
       - conditions:
         - condition: template
-          value_template: '{{ action_type == ''clone'' }}'
+          value_template: "{{ action_type == 'clone' }}"
           alias: Clone Cabinet (Highlander mode)
         sequence:
         - variables:
-            dest_cabinet: '{{ destination_cabinet | default('''') }}'
-            transfer_guid: '{{ transfer_guid | default(false) }}'
-            src_health: '{{ state_attr(volume_entity, ''health'') or {} }}'
-            dest_health: '{{ state_attr(destination_cabinet | default(''''), ''health'') or {} }}'
+            dest_cabinet: "{{ destination_cabinet }}"
+            transfer_guid: "{{ transfer_guid }}"
+            src_health: "{{ state_attr(volume_entity, 'health') or {} }}"
+            dest_health: "{{ state_attr(destination_cabinet, 'health') or {} }}"
             src_health_ok: >-
               {{- src_health.get('status', '') != 'error'
                   and not src_health.get('guid_mismatch', false) -}}
@@ -1046,7 +1622,7 @@ script:
         - choose:
           - conditions:
             - condition: template
-              value_template: '{{ dest_cabinet == '''' }}'
+              value_template: "{{ dest_cabinet == '' }}"
             sequence:
             - variables:
                 final_response:
@@ -1056,7 +1632,7 @@ script:
               response_variable: final_response
           - conditions:
             - condition: template
-              value_template: '{{ dest_cabinet == volume_entity }}'
+              value_template: "{{ dest_cabinet == volume_entity }}"
             sequence:
             - variables:
                 final_response:
@@ -1066,7 +1642,7 @@ script:
               response_variable: final_response
           - conditions:
             - condition: template
-              value_template: '{{ transfer_guid and not force_action }}'
+              value_template: "{{ transfer_guid and not force_action }}"
             sequence:
             - variables:
                 final_response:
@@ -1077,28 +1653,28 @@ script:
               response_variable: final_response
           - conditions:
             - condition: template
-              value_template: '{{ not src_health_ok }}'
+              value_template: "{{ not src_health_ok }}"
             sequence:
             - variables:
                 final_response:
                   status: error
                   message: clone blocked — source cabinet not healthy.
-                  health: '{{ src_health }}'
+                  health: "{{ src_health }}"
             - stop: Source health blocked
               response_variable: final_response
           - conditions:
             - condition: template
-              value_template: '{{ not dest_health_ok }}'
+              value_template: "{{ not dest_health_ok }}"
             sequence:
             - variables:
                 final_response:
                   status: error
                   message: clone blocked — destination cabinet not healthy or not writeable.
-                  health: '{{ dest_health }}'
+                  health: "{{ dest_health }}"
             - stop: Dest health blocked
               response_variable: final_response
         - repeat:
-            for_each: '{{ drawers_to_clone }}'
+            for_each: "{{ drawers_to_clone }}"
             sequence:
             - event: set_variable_legacy
               event_data:
@@ -1107,14 +1683,14 @@ script:
                   {%- set src = initial_volume.get(repeat.item) -%}
                   {%- set ns = namespace(d=src) -%}
                   {%- if ns.d is string and (ns.d | trim)[:1] in ['{', '['] -%}
-                    {%- set _parsed = ns.d | from_json -%}
-                    {%- if _parsed is not string -%}
+                    {%- set _parsed = ns.d | from_json(none) -%}
+                    {%- if _parsed is not none and _parsed is not string -%}
                       {%- set ns.d = _parsed -%}
                     {%- endif -%}
                   {%- endif -%}
                   {{ ns.d.get('value', ns.d) if ns.d is mapping else ns.d }}
                 set_timestamp: true
-                volume_entity: '{{ dest_cabinet }}'
+                volume_entity: "{{ dest_cabinet }}"
         - wait_template: >-
             {{ (state_attr(dest_cabinet, 'variables') or {}) | length >= drawers_to_clone | length }}
           timeout: '00:00:05'
@@ -1125,16 +1701,16 @@ script:
         - choose:
           - conditions:
             - condition: template
-              value_template: '{{ transfer_guid }}'
+              value_template: "{{ transfer_guid }}"
               alias: GUID Transfer — clear source and mark for restamp
             sequence:
             - repeat:
-                for_each: '{{ drawers_to_clone }}'
+                for_each: "{{ drawers_to_clone }}"
                 sequence:
                 - event: remove_variable_legacy
                   event_data:
                     key: '{{ repeat.item }}'
-                    volume_entity: '{{ volume_entity }}'
+                    volume_entity: "{{ volume_entity }}"
             - event: set_variable_legacy
               event_data:
                 key: AI_Cabinet_VolumeInfo
@@ -1143,170 +1719,453 @@ script:
                   needs_restamp: true
                   note: GUID transferred to {{ dest_cabinet }} on {{ now_iso }}
                 set_timestamp: true
-                volume_entity: '{{ volume_entity }}'
+                volume_entity: "{{ volume_entity }}"
         - variables:
             src_guid: >-
               {%- set vi = initial_volume.get('AI_Cabinet_VolumeInfo', {}) -%}
               {%- set v = vi.get('value', vi) if vi is mapping else {} -%}
               {{ v.get('id', '') if v is mapping else '' }}
             final_response:
-              status: '{{ ''success'' if clone_verified else ''warning'' }}'
+              status: "{{ 'success' if clone_verified else 'warning' }}"
               action: clone
-              transfer_guid: '{{ transfer_guid }}'
-              source: '{{ volume_entity }}'
-              destination: '{{ dest_cabinet }}'
+              transfer_guid: "{{ transfer_guid }}"
+              source: "{{ volume_entity }}"
+              destination: "{{ dest_cabinet }}"
               drawers_cloned: '{{ drawers_to_clone | length }}'
-              mounts_copied: '{{ src_mount_keys }}'
-              source_guid: '{{ src_guid }}'
+              mounts_copied: "{{ src_mount_keys }}"
+              source_guid: "{{ src_guid }}"
               verification:
-                confirmed: '{{ clone_verified }}'
+                confirmed: "{{ clone_verified }}"
         - stop: Clone complete
           response_variable: final_response
       - conditions:
         - condition: template
-          value_template: '{{ action_type == ''set_mount'' }}'
+          value_template: "{{ action_type == 'set_mount' }}"
           alias: Set Mount Point
         sequence:
         - variables:
-            target_entity_resolved: "{% set ns = namespace(found='') %}\n{% for eid
-              in label_entities('zen_cabinet') | list %}\n  {% set vinfo = state_attr(eid,
-              'variables') %}\n  {% if vinfo is mapping %}\n    {% set vi = vinfo.get('AI_Cabinet_VolumeInfo',
-              {}).get('value', {}) %}\n    {% if vi is mapping and vi.get('id', '')
-              == target_guid %}\n      {% set ns.found = eid %}\n    {% endif %}\n
-              \ {% endif %}\n{% endfor %}\n{{ ns.found }}"
-            old_mount_entry: '{{ initial_volume.get(key, {}) }}'
-            old_mount_guid: "{% set e = old_mount_entry %}\n{% set ev = e.get('value',
-              {}) if e is mapping else {} %}\n{% if ev is mapping and ev.get('mount_point',
-              false) %}\n  {{ ev.get('target_guid', '') }}\n{% else %}\n  ''\n{% endif
-              %}"
-            existing_is_mount: "{% set e = old_mount_entry %}\n{% set ev = e.get('value',
-              {}) if e is mapping else {} %}\n{{ ev is mapping and ev.get('mount_point',
-              false) == true }}"
+            target_entity_resolved: >
+              {% set ns = namespace(found='') %}
+              {% for eid in label_entities('zen_cabinet') | list %}
+                {% set vinfo = state_attr(eid, 'variables') %}
+                {% if vinfo is mapping %}
+                  {%- set _vi_raw = vinfo.get('AI_Cabinet_VolumeInfo', {}) -%}
+                  {%- set vi = _vi_raw.get('value', {}) if _vi_raw is mapping else {} -%}
+                  {%- set vi = vi if vi is mapping else (vi | from_json if vi is string else {}) -%}
+                  {% if vi is mapping and vi.get('id', '') == target_guid %}
+                    {% set ns.found = eid %}
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
+              {{ ns.found }}
+            old_mount_entry: "{{ initial_volume.get(key, {}) }}"
+            old_mount_guid: >
+              {%- set e = old_mount_entry -%}
+              {%- set ev = e.get('value', {}) if e is mapping else {} -%}
+              {%- if ev is mapping and ev.get('mount_point', false) -%}
+                {{ ev.get('target_guid', '') }}
+              {%- else -%}
+                ''
+              {%- endif -%}
+            existing_is_mount: >
+              {% set e = old_mount_entry %}
+              {% set ev = e.get('value', {}) if e is mapping else {} %}
+              {{ ev is mapping and ev.get('mount_point', false) == true }}
         - choose:
           - conditions:
             - condition: template
-              value_template: '{{ target_entity_resolved == '''' }}'
+              value_template: "{{ target_entity_resolved == '' }}"
               alias: GUID not found in any cabinet
             sequence:
             - variables:
                 final_response:
                   status: error
-                  message: 'set_mount failed: target_guid ''{{ target_guid }}'' not
-                    found in any cabinet volume.'
+                  message: "set_mount failed: target_guid '{{ target_guid }}' not found in any cabinet volume."
             - stop: Target GUID not found
               response_variable: final_response
           - conditions:
             - condition: template
-              value_template: '{{ key_exists_initial and not existing_is_mount and
-                not force_action }}'
+              value_template: "{{ key_exists_initial and not existing_is_mount and not force_action }}"
               alias: Drawer exists and is not a mount — require force_action to overwrite
             sequence:
             - variables:
                 final_response:
                   status: error
-                  message: 'set_mount blocked: drawer ''{{ key }}'' exists and is
-                    not a mount point. Use force_action to overwrite.'
+                  message: "set_mount blocked: drawer '{{ key }}' exists and is not a mount point. Use force_action to overwrite."
             - stop: Non-mount drawer would be overwritten
               response_variable: final_response
         - event: set_variable_legacy
           event_data:
-            key: '{{ key }}'
-            value: "{{ {'mount_point': true, 'target_guid': target_guid, 'target_entity_id':
-              target_entity_resolved} }}"
-            volume_entity: '{{ volume_entity }}'
+            key: "{{- key -}}"
+            value: "{{ {'mount_point': true, 'target_guid': target_guid, 'target_entity_id': target_entity_resolved} }}"
+            volume_entity: "{{ volume_entity }}"
             set_timestamp: true
         - alias: set_mount write verification
-          wait_template: "{% set vol = state_attr(volume_entity, 'variables') | default({},
-            true) %} {% set entry = vol.get(key, {}) if vol is mapping else {} %} {{
-            entry.get('value', {}).get('mount_point', false) == true }}"
+          wait_template: >
+            {% set vol = state_attr(volume_entity, 'variables') | default({}, true) %} 
+            {% set entry = vol.get(key, {}) if vol is mapping else {} %} 
+            {{ entry.get('value', {}).get('mount_point', false) == true }}
           timeout: 00:00:05
           continue_on_timeout: true
         - variables:
-            verify_vol: '{{ state_attr(volume_entity, ''variables'') | default({},
-              true) }}'
-            verify_entry: '{{ verify_vol.get(key, {}) if verify_vol is mapping else
-              {} }}'
-            mount_write_verified: "{{ verify_entry.get('value', {}).get('mount_point',
-              false) == true }}"
+            verify_vol: "{{ state_attr(volume_entity, 'variables') | default({}, true) }}"
+            verify_entry: "{{ verify_vol.get(key, {}) if verify_vol is mapping else {} }}"
+            mount_write_verified: "{{ verify_entry.get('value', {}).get('mount_point',  false) == true }}"
         - variables:
             final_response:
-              status: '{{ ''success'' if mount_write_verified else ''warning'' }}'
-              message: "{% if mount_write_verified %}\n  Mount point ''{{ key }}''
-                set to target ''{{ target_guid }}'' ({{ target_entity_resolved }})
-                (verified).\n{% else %}\n  Mount point ''{{ key }}'' write issued
-                but not yet confirmed.\n{% endif %}"
+              status: "{{ 'success' if mount_write_verified else 'warning' }}"
+              message: >
+                {%- if mount_write_verified -%}
+                    Mount point '{{ key }}' set to target '{{ target_guid }}' ({{ target_entity_resolved }}) (verified).
+                {%- else -%}
+                  Mount point '{{ key }}' write issued but not yet confirmed.
+                {%- endif -%}
               mount:
-                drawer: '{{ key }}'
-                target_guid: '{{ target_guid }}'
-                target_entity_id: '{{ target_entity_resolved }}'
-              previous_guid: '{{ old_mount_guid }}'
+                drawer: "{{- key -}}"
+                target_guid: "{{ target_guid }}"
+                target_entity_id: "{{ target_entity_resolved }}"
+              previous_guid: "{{ old_mount_guid }}"
               verification:
-                confirmed: '{{ mount_write_verified }}'
+                confirmed: "{{ mount_write_verified }}"
         - stop: set_mount complete
           response_variable: final_response
       - conditions:
         - condition: template
-          value_template: '{{ action_type == ''remove_mount'' }}'
+          value_template: "{{ action_type == 'remove_mount' }}"
           alias: Remove Mount Point
         sequence:
         - variables:
-            existing_entry: '{{ initial_volume.get(key, {}) }}'
-            is_mount: "{% set e = existing_entry %}\n{% set ev = e.get('value', {})
-              if e is mapping else {} %}\n{{ ev is mapping and ev.get('mount_point',
-              false) == true }}"
-            old_mount_guid: "{% set e = existing_entry %}\n{% set ev = e.get('value',
-              {}) if e is mapping else {} %}\n{% if ev is mapping %}\n  {{ ev.get('target_guid',
-              '') }}\n{% else %}\n  ''\n{% endif %}"
+            existing_entry: "{{ initial_volume.get(key, {}) }}"
+            is_mount: >
+              {% set e = existing_entry %}
+              {% set ev = e.get('value', {}) if e is mapping else {} %}
+              {{ ev is mapping and ev.get('mount_point', false) == true }}
+            old_mount_guid: >
+              {%- set e = existing_entry -%}
+              {%- set ev = e.get('value', {}) if e is mapping else {} -%}
+              {%- if ev is mapping -%}
+                {{ ev.get('target_guid', '') }}
+              {%- else -%}
+              ''
+              {%- endif -%}
         - choose:
           - conditions:
             - condition: template
-              value_template: '{{ not key_exists_initial }}'
+              value_template: "{{ not key_exists_initial }}"
               alias: Drawer not found
             sequence:
             - variables:
                 final_response:
                   status: error
-                  message: 'remove_mount failed: drawer ''{{ key }}'' not found in
-                    volume.'
+                  message: "remove_mount failed: drawer '{{ key }}' not found in volume."
             - stop: Mount drawer not found
               response_variable: final_response
           - conditions:
             - condition: template
-              value_template: '{{ not is_mount }}'
+              value_template: "{{ not is_mount }}"
               alias: Drawer is not a mount point
             sequence:
             - variables:
                 final_response:
                   status: error
-                  message: 'remove_mount failed: drawer ''{{ key }}'' is not a mount
-                    point.'
+                  message: "remove_mount failed: drawer '{{ key }}' is not a mount point."
             - stop: Not a mount
               response_variable: final_response
         - event: remove_variable_legacy
           event_data:
-            key: '{{ key }}'
-            volume_entity: '{{ volume_entity }}'
+            key: "{{- key -}}"
+            volume_entity: "{{ volume_entity }}"
         - alias: remove_mount delete verification
-          wait_template: '{% set vol = state_attr(volume_entity, ''variables'') |
-            default({}, true) %} {{ vol is mapping and (key not in vol) }}'
+          wait_template: >
+            {% set vol = state_attr(volume_entity, 'variables') | default({}, true) %} 
+            {{ vol is mapping and (key not in vol) }}
           timeout: 00:00:01
           continue_on_timeout: true
         - variables:
-            verify_vol: '{{ state_attr(volume_entity, ''variables'') | default({},
-              true) }}'
-            remove_verified: '{{ verify_vol is mapping and (key not in verify_vol)
-              }}'
+            verify_vol: "{{ state_attr(volume_entity, 'variables') | default({}, true) }}"
+            remove_verified: "{{ verify_vol is mapping and (key not in verify_vol) }}"
         - variables:
             final_response:
-              status: '{{ ''success'' if remove_verified else ''warning'' }}'
-              message: "{% if remove_verified %}\n  Mount point ''{{ key }}'' removed
-                (verified).\n{% else %}\n  Remove issued for ''{{ key }}'' but not
-                yet confirmed.\n{% endif %}"
-              previous_guid: '{{ old_mount_guid }}'
+              status: "{{ 'success' if remove_verified else 'warning' }}"
+              message: >
+                {%- if remove_verified -%}
+                  Mount point '{{ key }}' removed (verified).
+                {%- else -%}
+                  Remove issued for '{{ key }}' but not yet confirmed.
+                {%- endif -%}
+              previous_guid: "{{ old_mount_guid }}"
               verification:
-                confirmed: '{{ remove_verified }}'
+                confirmed: "{{ remove_verified }}"
         - stop: remove_mount complete
           response_variable: final_response
+      - conditions:
+        - condition: template
+          value_template: "{{ action_type == 'mount_cabinet' }}"
+          alias: Mount Cabinet
+        sequence:
+        - variables:
+            cab_current_state: "{{ states(volume_entity) }}"
+        - choose:
+          - conditions:
+            - condition: template
+              value_template: "{{ cab_current_state == 'init' }}"
+              alias: Cabinet not loaded yet
+            sequence:
+            - variables:
+                final_response:
+                  status: error
+                  message: "mount_cabinet failed: '{{ volume_entity }}' is in 'init' state — VolumeInfo not yet loaded."
+            - stop: Cabinet in init
+              response_variable: final_response
+          - conditions:
+            - condition: template
+              value_template: "{{ cab_current_state == 'online_mounted' }}"
+              alias: Already mounted — idempotent
+            sequence:
+            - variables:
+                final_response:
+                  status: success
+                  message: "Cabinet '{{ volume_entity }}' is already mounted (idempotent)."
+                  state: online_mounted
+            - stop: Already mounted
+              response_variable: final_response
+        - event: set_variable_legacy
+          event_data:
+            key: meta
+            value: "{{ {'mounted': true} }}"
+            volume_entity: "{{ volume_entity }}"
+            set_timestamp: true
+        - alias: mount_cabinet state transition wait
+          wait_template: "{{ states(volume_entity) == 'online_mounted' }}"
+          timeout: 00:00:05
+          continue_on_timeout: true
+        - variables:
+            mount_verified: "{{ states(volume_entity) == 'online_mounted' }}"
+        - variables:
+            final_response:
+              status: "{{ 'success' if mount_verified else 'warning' }}"
+              message: >
+                {%- if mount_verified -%}
+                  Cabinet '{{ volume_entity }}' mounted (verified).
+                {%- else -%}
+                  Mount write issued for '{{ volume_entity }}' but state not yet confirmed.
+                {%- endif -%}
+              state: "{{ states(volume_entity) }}"
+              verification:
+                confirmed: "{{ mount_verified }}"
+        - event: zen_event
+          event_data:
+            event:
+              kind: cabinet_mounted
+              component: "{{ volume_entity }}"
+              severity: info
+              summary: "Cabinet '{{ volume_entity }}' mounted."
+        - stop: mount_cabinet complete
+          response_variable: final_response
+      - conditions:
+        - condition: template
+          value_template: "{{ action_type == 'dismount_cabinet' }}"
+          alias: Dismount Cabinet
+        sequence:
+        - variables:
+            _default_label_slugs:
+              - zen_default_household_cabinet
+              - zen_default_family_cabinet
+              - zen_default_user_cabinet
+              - zen_default_ai_user_cabinet
+        - variables:
+            cab_is_default: >
+              {%- set ns = namespace(v=false) -%}
+              {%- for lbl in _default_label_slugs -%}
+                {%- if volume_entity in (label_entities(lbl) | list) -%}
+                  {%- set ns.v = true -%}
+                {%- endif -%}
+              {%- endfor -%}
+              {{ ns.v }}
+            cab_current_state: "{{ states(volume_entity) }}"
+        - choose:
+          - conditions:
+            - condition: template
+              value_template: "{{ cab_is_default }}"
+              alias: Dismount lock — default label holder
+            sequence:
+            - variables:
+                final_response:
+                  status: error
+                  message: "dismount_cabinet blocked: '{{ volume_entity }}' holds a zen_default_* label. Transfer the default label before dismounting."
+            - stop: Default label lock
+              response_variable: final_response
+          - conditions:
+            - condition: template
+              value_template: "{{ cab_current_state == 'init' }}"
+              alias: Cabinet not loaded
+            sequence:
+            - variables:
+                final_response:
+                  status: error
+                  message: "dismount_cabinet failed: '{{ volume_entity }}' is in 'init' state — VolumeInfo not yet loaded."
+            - stop: Cabinet in init
+              response_variable: final_response
+          - conditions:
+            - condition: template
+              value_template: "{{ cab_current_state == 'online_unmounted' }}"
+              alias: Already dismounted — idempotent
+            sequence:
+            - variables:
+                final_response:
+                  status: success
+                  message: "Cabinet '{{ volume_entity }}' is already dismounted (in the stacks, idempotent)."
+                  state: online_unmounted
+            - stop: Already dismounted
+              response_variable: final_response
+        - event: set_variable_legacy
+          event_data:
+            key: meta
+            value: "{{ {'mounted': false} }}"
+            volume_entity: "{{ volume_entity }}"
+            set_timestamp: true
+        - alias: dismount_cabinet state transition wait
+          wait_template: "{{ states(volume_entity) == 'online_unmounted' }}"
+          timeout: 00:00:05
+          continue_on_timeout: true
+        - variables:
+            dismount_verified: "{{ states(volume_entity) == 'online_unmounted' }}"
+        - variables:
+            final_response:
+              status: "{{ 'success' if dismount_verified else 'warning' }}"
+              message: >
+                {%- if dismount_verified -%}
+                  Cabinet '{{ volume_entity }}' dismounted and in the stacks (verified).
+                {%- else -%}
+                  Dismount write issued for '{{ volume_entity }}' but state not yet confirmed.
+                {%- endif -%}
+              state: "{{ states(volume_entity) }}"
+              verification:
+                confirmed: "{{ dismount_verified }}"
+        - event: zen_event
+          event_data:
+            event:
+              kind: cabinet_dismounted
+              component: "{{ volume_entity }}"
+              severity: info
+              summary: "Cabinet '{{ volume_entity }}' dismounted (in the stacks)."
+        - stop: dismount_cabinet complete
+          response_variable: final_response
+      # ── set_cabinet_ro — stamp cabinet_ro: true in VolumeInfo flags ──────────
+      # Blocked on syscab — use zen_admintools_zenos_prompt_loader or
+      # zen_admintools_cabinetadmin_factory to manage the syscab RO flag.
+      # Idempotent: safe to call if cabinet_ro is already true.
+      - conditions:
+        - condition: template
+          value_template: "{{ action_type == 'set_cabinet_ro' }}"
+          alias: Set Cabinet RO Flag
+        sequence:
+        - choose:
+          - conditions:
+            - condition: template
+              value_template: "{{ volume_entity == 'sensor.zenos_system_cabinet' }}"
+            sequence:
+            - variables:
+                final_response:
+                  status: error
+                  failure: syscab_write_blocked
+                  message: >-
+                    set_cabinet_ro blocked on sensor.zenos_system_cabinet.
+                    The syscab cabinet_ro flag is managed by zen_admintools_zenos_prompt_loader
+                    and zen_admintools_cabinetadmin_factory (admin plane). Use those tools.
+                  volume_entity: "{{ volume_entity }}"
+            - stop: Syscab set_cabinet_ro blocked
+              response_variable: final_response
+          default:
+          - variables:
+              _scro_vi_raw: '{{ initial_volume.get(''AI_Cabinet_VolumeInfo'', {}) if initial_volume is mapping else {} }}'
+              _scro_vi_mapped: '{{ _scro_vi_raw if _scro_vi_raw is mapping else {} }}'
+              _scro_vi_val_raw: '{{ _scro_vi_mapped.get(''value'', _scro_vi_mapped) }}'
+              _scro_vi_val: '{{ _scro_vi_val_raw if _scro_vi_val_raw is mapping else (_scro_vi_val_raw | from_json if _scro_vi_val_raw is string else {}) }}'
+              _scro_flags: '{{ _scro_vi_val.get(''flags'', {}) }}'
+              _scro_flags_mapped: '{{ _scro_flags if _scro_flags is mapping else {} }}'
+              _scro_ro_already: '{{ _scro_flags_mapped.get(''cabinet_ro'', false) == true }}'
+          - if: '{{ _scro_ro_already }}'
+            then:
+            - variables:
+                final_response:
+                  status: ok
+                  message: "cabinet_ro already true on '{{ volume_entity }}'. No change."
+                  volume_entity: "{{ volume_entity }}"
+                  cabinet_ro: true
+            - stop: Already RO
+              response_variable: final_response
+          - event: set_variable_legacy
+            event_data:
+              key: AI_Cabinet_VolumeInfo
+              value: "{{ {'value': _scro_vi_val | combine({'flags': _scro_flags_mapped | combine({'cabinet_ro': true})})} }}"
+              volume_entity: "{{ volume_entity }}"
+              set_timestamp: true
+          - variables:
+              final_response:
+                status: success
+                message: "cabinet_ro: true stamped on '{{ volume_entity }}'."
+                volume_entity: "{{ volume_entity }}"
+                cabinet_ro: true
+          - stop: set_cabinet_ro complete
+            response_variable: final_response
+      # ── RELABEL ────────────────────────────────────────────────────────────────
+      # Updates _label_index only — does NOT touch the drawer value.
+      # Use when tagging an existing drawer without modifying its content.
+      # Large payload drawers (kata components, etc.) should ALWAYS use relabel
+      # instead of passing the full value through an update call.
+      # ───────────────────────────────────────────────────────────────────────────
+      - conditions:
+        - condition: template
+          value_template: "{{ action_type == 'relabel' }}"
+          alias: Relabel drawer (label index only)
+        sequence:
+        - choose:
+          - conditions:
+            - condition: template
+              value_template: "{{ key == '' or not key_exists_initial }}"
+            sequence:
+            - variables:
+                final_response:
+                  status: error
+                  failure: drawer_not_found
+                  message: "relabel requires an existing drawer key. '{{ raw_key }}' not found in this cabinet."
+                  volume_entity: "{{ volume_entity }}"
+                  key: "{{ key }}"
+            - stop: relabel — drawer not found
+              response_variable: final_response
+          - conditions:
+            - condition: template
+              value_template: "{{ existing_drawer_is_ro }}"
+            sequence:
+            - variables:
+                final_response:
+                  status: error
+                  failure: drawer_ro
+                  message: "relabel blocked: drawer '{{ key }}' is read-only (zen_scroll)."
+                  volume_entity: "{{ volume_entity }}"
+                  key: "{{ key }}"
+            - stop: relabel — drawer is ro
+              response_variable: final_response
+          default:
+          - event: set_variable_legacy
+            event_data:
+              key: _label_index
+              value: "{{ updated_label_index }}"
+              set_timestamp: true
+              volume_entity: "{{ volume_entity }}"
+          - variables:
+              final_response:
+                status: success
+                message: "Labels updated on drawer '{{ key }}' (index only — drawer value unchanged)."
+                volume_entity: "{{ volume_entity }}"
+                entry:
+                  drawer: "{{ key }}"
+                  labels_applied: "{{ accepted_entity_labels }}"
+                  labels_dropped: "{{ dropped_labels }}"
+                caller_token: "{{ caller_token | trim }}"
+          - stop: relabel complete
+            response_variable: final_response
       default:
       - variables:
           final_response:
@@ -1315,7 +2174,7 @@ script:
       - stop: Invalid parameters
         response_variable: final_response
     alias: Zen DojoTools FileCabinet
-    description: "Zen DojoTools FileCabinet (v4.0.0 RC2+) 100% More Health, No Bad JSON!
+    description: "Zen DojoTools FileCabinet (v4.5.x+) 100% More Health, No Bad JSON!
       No more ghost Writes, output mapping, Parser engages on Create / Update to validate
       input.\nCabinetVolumes are The Library's storage. To use ALWAYS pull a Volume
       Manifest 'Manifest' (list of all volumes with rich metadata) FIRST if you do not
@@ -1326,11 +2185,10 @@ script:
       (yes, a list) to scan drawers for subjects. STRONG recommendation to HELP() and
       pull a manifest - READ() immediately.\nIMPORTANT: Read By Label is currently limited
       to ONE cabinet at a time.\nMOUNT OPS: set_mount links a drawer in this volume to another cabinet by GUID (requires key +
-      target_guid). remove_mount unlinks it. Both verify the write and return previous_guid for undo.\nCLONE: clone copies all cabinet drawers to destination_cabinet. Default: destination gets a new GUID (source untouched). With transfer_guid+force_action: GUID travels to destination, source is cleared and marked needs_restamp (Highlander mode — one cabinet owns a GUID)."
+      target_guid). remove_mount unlinks it. Both verify the write and return previous_guid for undo.\nCABINET MOUNT/DISMOUNT: mount_cabinet / dismount_cabinet flip meta.mounted (state: online_mounted / online_unmounted). dismount_cabinet blocked if cabinet holds a zen_default_* label — transfer first. Both fire zen_event on completion.\nRO DRAWERS: Include 'zen_scroll' in label_input to make a drawer read-only (one-way — removing the label later does NOT revert ro). ro drawers block all create/update/delete — no force bypass. Use CabinetAdmin set_ro_flag to clear.\nCLONE: clone copies all cabinet drawers to destination_cabinet. Default: destination gets a new GUID (source untouched). With transfer_guid+force_action: GUID travels to destination, source is cleared and marked needs_restamp (Highlander mode — one cabinet owns a GUID).\n\u26a0\ufe0f SYSTEM CABINET (sensor.zenos_system_cabinet) IS HARD READ-ONLY to FileCabinet. It holds the AI prompt substrate (Purpose, Directives, Cortex). All writes are blocked — no force_action bypass. Use zen_admintools_zenos_prompt_loader to update prompt primitives, or zen_admintools_cabinetadmin_factory for VolumeInfo repair. This is wire-level lockout — the tool cannot write there."
     fields:
       action_type:
-        description: '''manifest'', ''create'', ''read'', ''update'', ''delete'', ''move'',
-          ''copy'', ''clone'', ''set_mount'', ''remove_mount'', ''help'' (default: help)'
+        description: "'manifest', 'create', 'read', 'update', 'delete', 'move', 'copy', 'clone', 'set_mount', 'remove_mount', 'mount_cabinet', 'dismount_cabinet', 'set_cabinet_ro', 'relabel', 'help' (default: help). relabel: updates _label_index only — does NOT touch drawer value, no value param required. NOTE: sensor.zenos_system_cabinet (syscab) is hard read-only — all write actions blocked. Use zen_admintools_zenos_prompt_loader or zen_admintools_cabinetadmin_factory for syscab operations."
         required: true
         selector:
           select:
@@ -1345,6 +2203,10 @@ script:
             - clone
             - set_mount
             - remove_mount
+            - mount_cabinet
+            - dismount_cabinet
+            - set_cabinet_ro
+            - relabel
             - help
         default: manifest
       volume_entity_id:
@@ -1441,29 +2303,36 @@ script:
           only use when you're trying to debug, confirm etc.)  System Drawers are always
           hidden.
         required: true
-      start:
-        description: Start time in ISO 8601. Used when searching for entities updated
-          or changed after... Defaults to no end date [Experimental - currently unused]
+      show_stacks:
+        selector:
+          boolean:
+        name: Show Stacks
+        description: Include online_unmounted (stacks) cabinets in manifest results.
         required: false
-        selector:
-          text:
-      end:
-        description: End time in ISO 8601. Used when searching for entities updated
-          or changed before... Defaults to no end date [Experimental - currently unused]
-        required: false
-        selector:
-          text:
-      filter_domain:
-        description: Filter result list for entities in this domain Defaults to no end
-          date [Experimental - currently unused]
-        selector:
-          text:
-      filter_state_operand:
-        description: Filter result list for entities with this operand (must use filter_op)  [Experimental
-          - currently unused]
-        selector:
-          text:
-        name: Filter Operand
+        default: false
+      #start:
+      #  description: Start time in ISO 8601. Used when searching for entities updated
+      #    or changed after... Defaults to no end date [Experimental - currently unused]
+      #  required: false
+      #  selector:
+      #    text:
+      #end:
+      #  description: End time in ISO 8601. Used when searching for entities updated
+      #    or changed before... Defaults to no end date [Experimental - currently unused]
+      #  required: false
+      #  selector:
+      #    text:
+      #filter_domain:
+      #  description: Filter result list for entities in this domain Defaults to no end
+      #    date [Experimental - currently unused]
+      #  selector:
+      #    text:
+      #filter_state_operand:
+      #  description: Filter result list for entities with this operand (must use filter_op)  [Experimental
+      #    - currently unused]
+      #  selector:
+      #    text:
+      #  name: Filter Operand
       filter_op:
         description: Filter entity by entity matching state using this operation with
           filter operand to obtain a filtered result [Experimental - currently unused]
@@ -1495,8 +2364,7 @@ script:
         selector:
           text:
         name: Destination Drawer
-        description: 'Target Drawer, REQUIRED for Move / Copy Actions. Drawer name will
-          be slugified - ''My Partner'' == ''my_partner'' '
+        description: "Target Drawer, REQUIRED for Move / Copy Actions. Drawer name will be slugified - 'My Partner' == 'my_partner'"
       transfer_guid:
         selector:
           boolean:
@@ -1513,4 +2381,24 @@ script:
         description: Cabinet volume GUID to mount. REQUIRED for set_mount. Must match
           AI_Cabinet_VolumeInfo.value.id on an existing cabinet sensor.
         required: false
+      caller_token:
+        name: Caller Token
+        description: >-
+          Optional. Caller identity token. When provided, echoed in response
+          to confirm receipt. Reserved for SP1 access control enforcement —
+          no behavior change in current version. Defaults to '' (anonymous/guest).
+        required: false
+        default: ''
+        selector:
+          text:
+      create_label:
+        name: Create Label
+        description: >-
+          When true, auto-creates any HA labels in label_input that do not exist
+          in the label registry before writing. Errors with failure: label_create_failed
+          if creation fails. Default false.
+        required: false
+        default: false
+        selector:
+          boolean:
     icon: mdi:folder-key

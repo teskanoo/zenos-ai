@@ -1,6 +1,6 @@
 ###############################################################################
 # ZenOS-AI — System Health Helpers
-# Version 4.0.0 RC2
+# Version: 4.5.5
 #
 # Label and cabinet health sensors migrated to dedicated files:
 #   zenos_label_health.yaml   — sensor.zen_label_health
@@ -80,7 +80,11 @@ template:
       - name: Flynn System Ready
         unique_id: flynn_system_ready
         state: >-
+          {%- import 'zenos_ai/zenos_health.jinja' as HEALTH %}
+          {%- set _in_warmup = HEALTH.is_warmup() | trim | bool %}
+          {%- set mon_st = states('sensor.zen_monastery_health') %}
+          {%- set mon_ok = mon_st in ['ok', 'warn'] or (mon_st == 'unavailable' and _in_warmup) %}
           {{ states('sensor.zen_label_health') == 'ok'
-             and states('sensor.zen_cabinet_health') == 'ok'
-             and states('sensor.zen_monastery_health') in ['ok', 'warn'] }}
-        icon: "{{ 'mdi:check-circle' if this.state == 'on' else 'mdi:alert-circle' }}"
+             and states('sensor.zen_cabinet_health') in ['ok', 'warn']
+             and mon_ok }}
+        icon: "{{ 'mdi:check-circle' if is_state('binary_sensor.flynn_system_ready', 'on') else 'mdi:alert-circle' }}"

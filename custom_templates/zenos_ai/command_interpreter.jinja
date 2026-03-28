@@ -1,5 +1,5 @@
 {#
-  ZenOS-AI Command Interpreter 4.0.0 RC2
+  ZenOS-AI Command Interpreter 4.5.5
   This software is licensed under the MIT License.
   Copyright (c) 2026 curtisplace / Friday Project.
 
@@ -1377,7 +1377,7 @@ note:
 {# ============================================================ #}
 
 {%- macro render_cmd_window(userid, household, cmd, args) -%}
-{%- set header = 'ZenOS-AI 4.0.0 RC2' -%}
+{%- set header = 'ZenOS-AI 4.5.x' -%}
 {%- if userid == "" -%}
   {%- set userid = '@ANONYMOUS@' -%}
 {%- endif -%}
@@ -1482,7 +1482,7 @@ USE LIBRARY QUERY: ~COMMANDS~ for help
 
 {%- macro commandhelp() -%}
 {%- set full_menu_text = "
-ZenOS-AI 4.0.0 RC2 - Library Command Menu
+ZenOS-AI 4.5.x - Library Command Menu
 Use: all commands listed below are Library commands and should be sent to
 the query_library tool for processing.
 

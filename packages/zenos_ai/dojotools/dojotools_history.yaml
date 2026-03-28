@@ -1,9 +1,9 @@
 ###############################################################################
 # ZenOS-AI DojoTools: History
-# Version: 4.0.0 RC2
+# Version: 4.5.5
 #
 # Scripts:
-#   zen_dojotools_history — Recorder statistics query engine (v4.0.0 RC2)
+#   zen_dojotools_history — Recorder statistics query engine (v4.5.x)
 #
 # MIGRATED FROM: scripts.yaml (2026-03-06)
 #
@@ -28,6 +28,12 @@
 script:
   zen_dojotools_history:
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
+
     - variables:
         error_msgs: "{%- set ns = namespace(msgs=[]) -%}\n{%- if statistic_ids is not defined or statistic_ids
           is none or statistic_ids == '' or statistic_ids == [] -%}\n  {%- set ns.msgs = ns.msgs + [\"Missing
@@ -48,7 +54,7 @@ script:
         help_text:
           help: true
           action: read
-          version: 4.0.0 RC2
+          version: 4.5.x
           description: '`Zen DojoTools History` provides a structured interface for
             querying long-term statistics from Home Assistant''s Recorder database.
             It supports time-bucketed statistical queries, not raw event logs.
@@ -176,6 +182,7 @@ script:
               code: H-0001
               reason: Temporal Paradox
               detail: You cannot create history. You are not the Doctor.
+              caller_token: '{{ caller_token }}'
         - stop: Create complete
           response_variable: history_result
       - conditions:
@@ -189,6 +196,7 @@ script:
               code: H-0002
               reason: Redaction Denied
               detail: This isn’t a reality show. You don’t get to delete the past.
+              caller_token: ‘{{ caller_token }}’
         - stop: Delete complete
           response_variable: history_result
       - conditions:
@@ -203,8 +211,9 @@ script:
               reason: Zen Violation
               detail: 'You cannot rewrite history. You can, however, learn from it.
                 See: https://www.goodreads.com/quotes/tag/change
-  
+
                 '
+              caller_token: '{{ caller_token }}'
         - stop: Update complete
           response_variable: history_result
       - conditions:
@@ -280,7 +289,15 @@ script:
         description: Optional label for trace/logging
         selector:
           text:
-    description: "Zen DojoTools History (4.0.0 RC2)\nHistory Stats for Homeassistant.\nUses
+      caller_token:
+        name: Caller Token
+        required: false
+        default: ''
+        selector:
+          text:
+        description: 'Reserved. Governance stub — echoed in response. SP1 enforcement
+          not yet active.'
+    description: "Zen DojoTools History (4.5.x)\nHistory Stats for Homeassistant.\nUses
       recorder.get_statistics for current entity stats.\nCRITICAL:\n  Read HELP for
       detailed use, including information on targeting.\n  Read HELP - cheat_sheet for
       detailed use instructions and examples."

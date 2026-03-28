@@ -1,5 +1,18 @@
 # **9. Identity Architecture and Security Model – Technical Reference Specification (v1 → v1.5)**
 
+> **GA Update — see also: [`security_model_ga.md`](security_model_ga.md)**
+>
+> This document defines the full identity data model and is the authoritative spec for
+> identity structures, ACL rules, Squirrel Safe / Content Safe filters, and the v1.5
+> session token and visa system.
+>
+> For the **operational security model at GA** — what is active now, what is stubbed for SP1,
+> the `security_policy` syscab drawer, caller_token plumbing, prompt integrity sensor,
+> and the claims engine architecture — see [`security_model_ga.md`](security_model_ga.md).
+>
+> This document and `security_model_ga.md` are complementary. This one is the data model
+> spec. The GA doc is the operator reference for what's running.
+
 This section defines the complete identity model for the ZenOS AI architecture.
 It specifies the data structures, edge rules, provenance semantics, cabinet behaviors, and ACL operations necessary for any implementation of:
 
@@ -439,7 +452,7 @@ Filtered tags:
 
 Only after these filters apply is graph expansion allowed.
 These filters will be detailed in thier own docs.
-THESE ARE CURRENTLY NOT IMPLEMENTED in v.1.x but plumbed and non blocking in the indexer pipeline v.4.x+.  (Planned for post RC1.)
+These filters are plumbed and non-blocking in the indexer pipeline. Full enforcement is deferred post-GA.
 
 ---
 

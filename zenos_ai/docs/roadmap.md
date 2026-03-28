@@ -8,7 +8,45 @@ ZenOS-AI is a cabinet-centric AI framework for deterministic, inspectable househ
 
 ## Current Status
 
-**4.1.0 RC2 — Complete**
+**4.5.6 — Shipped (2026-03-27)**
+
+Identity graph, alertmanager, and GUID correctness batch. `unlink_partners` variable name fix (ACL
+removal now persists). Cold bootstrap wires default family into household graph. Identity tree
+name resolution extended (friendly_name → name → entity_id). GUID id-preference fix (23 sites —
+`id` over legacy `guid`). Household root profile-first name resolution. Home mode `input_datetime`
+helpers ship without `initial:`; Flynn seeds defaults on first boot. AlertManager deduplication
+fixed. `run_repair` moved from SystemTools to AdminTools behind confirm gate; two new maint scripts
+(`stamp_cab_guid`, `roster_guid_repair`) for pre-provisioner installs. Family cabinet VolumeInfo
+rogue key repair script added (`maint/repair_fam_cab_volumeinfo.yaml`).
+
+See: [Patch 4.5.6 Release Notes](releases/patch_4_5_6.md)
+
+---
+
+**4.5.5 'Ready Player Two' — Shipped (2026-03-26)**
+
+Identity and lifecycle release. Cabinet provisioning system (mount-aware state machine,
+RP2 provisioner, expansion slots, scroll ceremony). Warmup as first-class sensor state.
+Identity model v4.5.0 — full household/family group management, 12 new modes, depth-2
+security resolution, enriched manifest. Profile editor GA-hardened. Cortex 32 (True Voice)
+now the default. UAT passed 21/21 on live install 2026-03-26.
+
+See: [Release Notes — Ready Player Two](releases/ready_player_two.md)
+
+---
+
+**Previous: Meridian — Shipped (2026-03-21)**
+
+Hardening and governance batch. `caller_token` SP1 §4a stub wired to all 15 AI-accessible
+DojoTools scripts. Cortex 31 cabinet state visibility. KFC schema 1.2.0. Labels UPDATE
+patch semantics (pre-read, confirm gate, no data-loss path). Scheduler, summarizer, and
+history bug fixes.
+
+See: [Release Notes — Meridian](releases/meridian.md)
+
+---
+
+**Previous: 4.1.0 RC2 — Complete**
 
 KF4 RC2 has shipped. The Kung Fu Component architecture is fully Dojo-driven — drawer IS the spec, label IS the scope, HyperIndex IS the data layer. The Scheduler is data-driven; no hardcoded branches. 12 components stamped and running. UAT passed on live install 2026-03-11. The next milestone is GA.
 
@@ -103,6 +141,65 @@ Updated to v4.0.0 RC2. Remains the infrastructure-layer bootstrap and failback a
 `GA` is the hardening, operator experience, and lifecycle polish milestone.
 
 Where RC2 proves deployability, GA proves durability, clean boundaries, and maintainability at scale.
+
+---
+
+## GA Stability Gates — Delivered
+
+### Prompt Finalization — Final GA Feature (planned)
+
+Final polish pass before gold candidate lock. Three work streams:
+
+**1. Template structure pass + rename**
+
+`zen_os_1rc.jinja` renamed to `zen_os_1.jinja` for release. Full ref sweep across
+all packages, templates, and docs completed. `custom_templates/zenos_ai/` layout finalized
+and locked.
+
+**2. Prompt instrumentation + collapse**
+
+Each major prompt section (cortex, home overview, active components, zen_summary,
+etc.) gets a dedicated sensor — observable at runtime, traceable by Nyx, and
+auditable by Flynn. Once all sections are instrumented and validated individually,
+the full prompt collapses behind a single `zen.prompt('ai_user')` call. Persona-aware,
+data-layer driven, no hardcoded structure in the surface API.
+
+The "exploded" dev-era template layout disappears from the surface. The structure
+is still there — it's just behind a clean interface.
+
+**3. Flynn prompt shunt**
+
+Pre-boot and degraded-state path: agent receives Flynn-only context (who Flynn is,
+what tools he has) instead of an incomplete or errored full prompt. Shunt condition
+derived from existing health sensors — resolver unsettled, essence missing, Gate 3
+incomplete. No full prompt rendered until the system is ready to render it correctly.
+
+**Stuffiness gauge:** token pressure per prompt section surfaced as a first-class
+observable. Flynn can see which sections are consuming context budget, flag pressure
+before it degrades agent quality, and recommend or trigger remediation (trim, collapse,
+raise abstraction level). Context stuffiness goes from invisible to instrumented.
+
+**Sequence:** instrument first → Nyx validates each sensor → collapse behind
+`zen.prompt()` → Flynn shunt wired last.
+
+---
+
+### Highlander Resolver Architecture (2026-03-19)
+
+Boss Add. Support team demand. Shipped in `fix/ga-batch-1`, UAT-passed on live install.
+
+Cabinet entity ID resolution is now deterministic system-wide. There can be only one source of
+truth per cabinet — resolver sensors (`sensor.zen_*_cabinet_resolved`). All OS code reads cabinet
+entity IDs from these sensors exclusively. No `label_entities()` for single-cabinet resolution
+anywhere in OS code.
+
+**What shipped:**
+- 7 always-live resolver sensors (dojo, kata, system, household, ai_user, family, user)
+- Full resolver canonization sweep across all OS files (dojotools, sensors, flynn, templates)
+- `zen_health_report` v4.3.0 — all 7 resolver states, 6 health sensors, FG-38-safe diagnosis
+- `zen_resolver_refresh` — exposed MCP tool + ha_start cold-start retrigger
+- FG-38 v3 (double-encoded JSON) — three-round normalization pattern, patched in all affected paths
+- HALMark FG-38 v3 candidate filed for Vera's ratification review
 
 ---
 
@@ -224,12 +321,34 @@ A misconfigured, offline, or rate-limited model will pass the boot gate silently
 
 ---
 
+# 1.0 SP1 — Queued
+
+Post-GA service pack. Token-related items deferred from `fix/ga-batch-1`.
+
+### Security Enforcement — `security_policy` Syscab Drawer
+
+The System Cabinet carries a `security_policy` drawer at GA with the following
+fields stubbed and documented:
+
+- `secure: false` — GA active. Set to `true` at SP1 to activate full enforcement.
+- `max_delegation_depth: 2` — GA active. Hard rule enforced now.
+- `max_nesting_depth: 2` — GA active. Hard rule enforced now. Group nesting ceiling.
+- `provider`, `token_endpoint`, `validation_mode`, `claims_cache_ttl` — SP1 fields.
+  Plumbed and documented. Populating them at GA is a no-op — enforcement is not
+  active until SP1.
+
+**SP1 activates:** external auth provider integration (pluggable — ZenOS is the
+policy plane, external stack is the auth plane). One drawer setting (`secure: true`)
+enables full enforcement. The policy plane, HyperIndex claims engine, and caller_token
+enforcement are all plumbed at GA. SP1 wires the external provider and flips the switch.
+
+---
+
 # v.next
 
 Following GA, ZenOS-AI can evolve toward:
 
 - Dynamic extension mapping
-- Richer KFC ecosystem
 - Deeper long-horizon memory
 - Stronger governance modules (multi-level ACL, audit log)
 - Improved portability templates
@@ -237,14 +356,44 @@ Following GA, ZenOS-AI can evolve toward:
 - Architectural simplification and cleanup passes
 - Public persona registry
 
+### KFC v1.1 — State Key + Master-Switch-Free Controller
+
+Replace the `master_switch` field in KFC drawer schema with a `state` key stored directly
+in drawer `meta`. Remove the kill-switch HA switch entity as the default lifecycle mechanism.
+Component enabled/disabled state lives in the drawer itself — no external entity required.
+Introduce a dedicated KFC controller that owns component lifecycle (enable, disable, reset)
+as a first-class operation rather than a side-effect of master switch state.
+
+**`meta` block additions:**
+
+```yaml
+meta:
+  description: "Plain-English description of what this component does."
+  enabled: true          # replaces master_switch — on/off stored here, not in HA switch
+  requires:
+    cert: "zen_level_2"  # machine-readable capability requirement — retrievable by code
+    level: 2             # numeric level for range checks
+```
+
+`requires.cert` is checked at Monastery dispatch time. When zen_auth is live, TGT validation
+gates against this field. A component declares its own scope of practice; the runtime
+enforces it. `cert` is intentionally retrievable by code — it is not documentation, it
+is a runtime predicate.
+
+Scope: Dojo cabinet schema (KFC drawer meta), Scheduler dispatch loop, KungFu Writer,
+Flynn gate-3 bootstrap validation, Monastery dispatch guard.
+
 ---
 
 # Immediate Next Focus
 
-The RC2 baseline is done. The system deploys, runs, and maintains itself.
+GA is shipped. The system deploys, bootstraps, and maintains itself cleanly through RP2 and the 4.5.6 patch.
 
-The GA focus is proving the full path from **zero to live** and from **legacy to canonical** — cleanly, deterministically, and repeatably.
+The next major work stream is **Prompt Finalization**:
 
-`fresh install → canonical state → first live agent → legacy import → regenerated derived state`
+1. **Template structure pass + rename** — `zen_os_1rc.jinja` → `zenos.jinja`, ref sweep, finalize `custom_templates/zenos_ai/` layout
+2. **Prompt instrumentation + collapse** — sensor per major prompt section → validate → collapse behind `zen.prompt('ai_user')`. Persona-aware, data-layer driven.
+3. **Flynn shunt** — pre-boot/degraded state routes to Flynn-only context. Wire last.
+4. **Stuffiness gauge** — token pressure per section as observable metric.
 
-That is the real GA line.
+Sequence: instrument → Nyx validates sensors → collapse → shunt.

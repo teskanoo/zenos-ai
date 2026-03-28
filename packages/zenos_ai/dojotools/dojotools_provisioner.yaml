@@ -1,0 +1,629 @@
+#####################################################################
+# zen_dojotools_provisioner — ZenOS-AI cabinet provisioner
+#
+# v1.1.0 (ZenOS-AI 4.5.5)
+#
+# Ops: provision, deprovision, replace
+#
+# provision: validates GUID, applies type label, mounts a stacks cab,
+#   directory-preloads profile data. ai_user: also seeds blank zenai_essence.
+#   Fires identity manifest rebuild.
+#   Rollback on health gate timeout: strips label, cab returns to stacks.
+#
+# deprovision: dismounts cab, strips type label, fires manifest rebuild.
+#   Blocked if cab holds a zen_default_* label — transfer default first.
+#
+# replace: deprovision replace_cabinet, then provision target_cabinet.
+#   Same cab_type for both. Stacks make replace cheap.
+#
+# GUID gate (provision): GUID must be present, valid UUID format, and
+#   unique across ALL currently online_mounted zen_cabinet entities.
+#   Gate runs BEFORE label application — no rollback needed on failure.
+#
+# FG-38 SAFE: all VolumeInfo reads use two-round normalization.
+#####################################################################
+
+script:
+
+  zen_dojotools_provisioner:
+    alias: Zen DojoTools Provisioner
+    description: >-
+      Zen DojoTools Provisioner 1.0.0. Ready Player 2 — provision, deprovision,
+      or replace a cabinet-backed identity (ai_user / user / family / household).
+
+      provision: pulls a stacks cab (online_unmounted) into service. Validates
+      GUID uniqueness, applies type label, mounts, directory-preloads profile
+      data, fires identity manifest rebuild. Rollback on health gate timeout.
+
+      deprovision: dismounts, strips type label, returns cab to stacks. Blocked
+      if cab holds a zen_default_* label — transfer the default label first.
+
+      replace: deprovisions replace_cabinet, then provisions target_cabinet with
+      the same cab_type.
+
+      All ops fire zen_event on completion and trigger identity manifest rebuild.
+    mode: queued
+    max: 5
+
+    fields:
+      mode:
+        name: Operation Mode
+        description: provision, deprovision, or replace
+        default: provision
+        selector:
+          select:
+            options:
+              - provision
+              - deprovision
+              - replace
+
+      cab_type:
+        name: Cabinet Type
+        description: >-
+          Type of identity being provisioned. Determines which label is applied
+          to the cabinet. Required for provision and replace.
+        selector:
+          select:
+            options:
+              - ai_user
+              - user
+              - family
+              - household
+
+      target_cabinet:
+        name: Target Cabinet
+        description: >-
+          Cabinet entity to provision (online_unmounted) or deprovision
+          (online_mounted). Required for all modes.
+        selector:
+          entity:
+            filter:
+              - domain: sensor
+
+      replace_cabinet:
+        name: Replace Cabinet (replace mode only)
+        description: >-
+          Existing cabinet to deprovision before provisioning target_cabinet.
+          Required for replace mode only.
+        required: false
+        selector:
+          entity:
+            filter:
+              - domain: sensor
+
+      person_entity:
+        name: Person Entity (optional)
+        description: >-
+          HA person entity_id. If provided, friendly_name and user_id are
+          preloaded into the profile drawer during provisioning.
+        required: false
+        selector:
+          entity:
+            filter:
+              - domain: person
+
+      profile_payload:
+        name: Profile Payload (optional)
+        description: >-
+          JSON string of additional key/value pairs to press into the profile
+          drawer during provisioning. Merged with person_entity data if both
+          provided.
+        required: false
+        selector:
+          text:
+            multiline: true
+
+      caller_token:
+        name: Caller Token
+        required: false
+        default: ''
+        selector:
+          text:
+
+    sequence:
+
+    # ── Normalize inputs ───────────────────────────────────────────────────
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
+    - variables:
+        _op: "{{ mode | default('provision') | lower | trim }}"
+        _cab_type: "{{ cab_type | default('') | lower | trim }}"
+        _target: "{{ target_cabinet | default('') | trim }}"
+        _replace: "{{ replace_cabinet | default('') | trim }}"
+        _person: "{{ person_entity | default('') | trim }}"
+        _payload_raw: "{{ profile_payload | default('') | trim }}"
+    - variables:
+        _valid_types:
+          - ai_user
+          - user
+          - family
+          - household
+        _type_label_map:
+          ai_user: zen_ai_user_cabinet
+          user: zen_user_cabinet
+          family: zen_family_cabinet
+          household: zen_household_cabinet
+        _default_label_slugs:
+          - zen_default_household_cabinet
+          - zen_default_family_cabinet
+          - zen_default_user_cabinet
+          - zen_default_ai_user_cabinet
+    - variables:
+        _type_label_id: "{{ _type_label_map.get(_cab_type, '') }}"
+        _cab_type_friendly_map:
+          ai_user: AI User Cabinet
+          user: User Cabinet
+          family: Family Cabinet
+          household: Household Cabinet
+
+    # ── Gate: require target_cabinet ──────────────────────────────────────
+    - if:
+      - condition: template
+        value_template: "{{ _target == '' }}"
+      then:
+      - variables:
+          result:
+            status: error
+            message: target_cabinet is required.
+            caller_token: "{{ caller_token }}"
+      - stop: missing target_cabinet
+        response_variable: result
+
+    # ── Gate: require cab_type for provision / replace ─────────────────────
+    - if:
+      - condition: template
+        value_template: "{{ _op in ['provision', 'replace'] and _cab_type not in _valid_types }}"
+      then:
+      - variables:
+          result:
+            status: error
+            message: "Invalid cab_type '{{ _cab_type }}'. Must be one of: ai_user, user, family, household."
+            caller_token: "{{ caller_token }}"
+      - stop: invalid cab_type
+        response_variable: result
+
+    # ── Gate: require replace_cabinet for replace mode ────────────────────
+    - if:
+      - condition: template
+        value_template: "{{ _op == 'replace' and _replace == '' }}"
+      then:
+      - variables:
+          result:
+            status: error
+            message: replace mode requires replace_cabinet.
+            caller_token: "{{ caller_token }}"
+      - stop: missing replace_cabinet
+        response_variable: result
+
+    ###########################################################################
+    # PROVISION
+    ###########################################################################
+    - if:
+      - condition: template
+        value_template: "{{ _op in ['provision', 'replace'] }}"
+      then:
+
+      # ── Gate: target must be init or online_unmounted ───────────────────
+      - if:
+        - condition: template
+          value_template: "{{ states(_target) not in ['init', 'online_unmounted'] }}"
+        then:
+        - variables:
+            result:
+              status: error
+              message: >-
+                provision requires target_cabinet in init or online_unmounted
+                state (in the stacks). Current state: '{{ states(_target) }}'.
+              caller_token: "{{ caller_token }}"
+        - stop: target not in stacks
+          response_variable: result
+
+      # ── Auto-stamp if init (no VolumeInfo yet) ───────────────────────────
+      - variables:
+          _needs_stamp: "{{ states(_target) == 'init' }}"
+          _cab_type_friendly: "{{ _cab_type_friendly_map.get(_cab_type, _cab_type | title | replace('_', ' ') + ' Cabinet') }}"
+
+      - if:
+        - condition: template
+          value_template: "{{ _needs_stamp }}"
+        then:
+        - action: script.zen_admintools_cabinetadmin_factory
+          data:
+            cabinet_entity: "{{ _target }}"
+            cabinet_type: "{{ _cab_type_friendly }}"
+            confirm_action: true
+            caller_token: "{{ caller_token }}"
+          response_variable: _stamp_result
+        - wait_template: "{{ states(_target) == 'online_unmounted' }}"
+          timeout: '00:00:15'
+          continue_on_timeout: true
+        - if:
+          - condition: template
+            value_template: "{{ states(_target) != 'online_unmounted' }}"
+          then:
+          - variables:
+              result:
+                status: error
+                message: "provision failed: auto-stamp did not land online_unmounted within 15s. Current state: '{{ states(_target) }}'."
+                caller_token: "{{ caller_token }}"
+          - stop: stamp timeout
+            response_variable: result
+
+      # ── GUID gate (before label application) ────────────────────────────
+      # FG-38 safe — two-round normalization on VolumeInfo
+      - variables:
+          _vi_vars: >-
+            {%- set _v = state_attr(_target, 'variables') | default({}, true) -%}
+            {{ _v if _v is mapping else {} }}
+      - variables:
+          _vi_entry: >-
+            {%- set _e = _vi_vars.get('AI_Cabinet_VolumeInfo', {}) -%}
+            {%- set _e = _e if _e is mapping else (_e | from_json if _e is string else {}) -%}
+            {%- set _vi = _e.get('value', _e) -%}
+            {%- set _vi = _vi if _vi is mapping else (_vi | from_json if _vi is string else {}) -%}
+            {{ _vi }}
+      - variables:
+          _guid: "{{ _vi_entry.get('id', '') | trim }}"
+          _guid_pattern: "(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+
+      # Gate: GUID must exist
+      - if:
+        - condition: template
+          value_template: "{{ _guid == '' }}"
+        then:
+        - variables:
+            result:
+              status: error
+              message: >-
+                GUID gate failed: AI_Cabinet_VolumeInfo.id is missing or empty
+                on '{{ _target }}'. Cabinet needs stamping before provisioning.
+              caller_token: "{{ caller_token }}"
+        - stop: guid missing
+          response_variable: result
+
+      # Gate: GUID must be valid UUID format
+      - if:
+        - condition: template
+          value_template: "{{ not (_guid is match(_guid_pattern)) }}"
+        then:
+        - variables:
+            result:
+              status: error
+              message: "GUID gate failed: '{{ _guid }}' is not a valid UUID format."
+              caller_token: "{{ caller_token }}"
+        - stop: guid invalid format
+          response_variable: result
+
+      # Gate: GUID must be unique across all online_mounted cabs
+      - variables:
+          _guid_collision: >-
+            {%- set ns = namespace(collision='') -%}
+            {%- set all_cabs = label_entities('Zen Cabinet' | slugify) | list -%}
+            {%- for eid in all_cabs if eid != _target -%}
+              {%- if states(eid) == 'online_mounted' -%}
+                {%- set _v = state_attr(eid, 'variables') | default({}, true) -%}
+                {%- set _v = _v if _v is mapping else {} -%}
+                {%- set _e = _v.get('AI_Cabinet_VolumeInfo', {}) -%}
+                {%- set _e = _e if _e is mapping else (_e | from_json if _e is string else {}) -%}
+                {%- set _vi = _e.get('value', _e) -%}
+                {%- set _vi = _vi if _vi is mapping else (_vi | from_json if _vi is string else {}) -%}
+                {%- set _other_guid = _vi.get('id', '') | trim -%}
+                {%- if _other_guid != '' and _other_guid | lower == _guid | lower -%}
+                  {%- set ns.collision = eid -%}
+                {%- endif -%}
+              {%- endif -%}
+            {%- endfor -%}
+            {{ ns.collision }}
+
+      - if:
+        - condition: template
+          value_template: "{{ _guid_collision != '' }}"
+        then:
+        - variables:
+            result:
+              status: error
+              message: "GUID gate failed: '{{ _guid }}' is already in use by '{{ _guid_collision }}'. Cannot provision duplicate identity."
+              colliding_cabinet: "{{ _guid_collision }}"
+              caller_token: "{{ caller_token }}"
+        - stop: guid collision
+          response_variable: result
+
+      # ── Apply type label + Zen Cabinet parent ────────────────────────────
+      # zen_cabinet is the universal parent label required by all cabinet
+      # health sensors, scroll_count, slot_entities, and label_entities()
+      # enumerations. Without it, provisioned expansion cabs are invisible
+      # to intersect(all_cabs, label_entities(type_slug)) queries.
+      - action: homeassistant.add_label_to_entity
+        data:
+          label_id: "{{ _type_label_id }}"
+          entity_id: "{{ _target }}"
+      - action: homeassistant.add_label_to_entity
+        data:
+          label_id: zen_cabinet
+          entity_id: "{{ _target }}"
+
+      # ── Mount ────────────────────────────────────────────────────────────
+      - event: set_variable_legacy
+        event_data:
+          key: meta
+          value: "{{ {'mounted': true} }}"
+          volume_entity: "{{ _target }}"
+          set_timestamp: true
+
+      # ── Health gate — wait for online_mounted ────────────────────────────
+      - wait_template: "{{ states(_target) == 'online_mounted' }}"
+        timeout: '00:00:10'
+        continue_on_timeout: true
+      - variables:
+          _mount_ok: "{{ states(_target) == 'online_mounted' }}"
+
+      # ── Rollback on health gate timeout ──────────────────────────────────
+      - if:
+        - condition: template
+          value_template: "{{ not _mount_ok }}"
+        then:
+        - action: homeassistant.remove_label_from_entity
+          data:
+            label_id: "{{ _type_label_id }}"
+            entity_id: "{{ _target }}"
+        - variables:
+            result:
+              status: error
+              message: >-
+                provision failed: '{{ _target }}' did not reach online_mounted
+                within 10s. Type label stripped. Cabinet returned to stacks.
+              rollback: label_stripped
+              caller_token: "{{ caller_token }}"
+        - stop: health gate timeout
+          response_variable: result
+
+      # ── Directory preload (optional) ─────────────────────────────────────
+      - variables:
+          _person_data: >-
+            {%- if _person != '' -%}
+              {{- {
+                'name': state_attr(_person, 'friendly_name') | default('', true),
+                'person_entity': _person
+              } -}}
+            {%- else -%}
+              {{- {} -}}
+            {%- endif -%}
+          _payload_data: >-
+            {%- if _payload_raw != '' -%}
+              {%- set _p = _payload_raw | from_json if _payload_raw is string else _payload_raw -%}
+              {{- _p if _p is mapping else {} -}}
+            {%- else -%}
+              {{- {} -}}
+            {%- endif -%}
+      - variables:
+          _profile: "{{ _person_data | combine(_payload_data) }}"
+
+      - if:
+        - condition: template
+          value_template: "{{ _profile | length > 0 }}"
+        then:
+        - action: script.zen_dojotools_filecabinet
+          data:
+            action_type: create
+            force_action: true
+            set_timestamp: true
+            volume_entity_id:
+              - "{{ _target }}"
+            key: >-
+              {%- if _cab_type == 'user' -%}_user_profile
+              {%- elif _cab_type == 'family' -%}_family_profile
+              {%- elif _cab_type == 'household' -%}_household_profile
+              {%- else -%}profile{%- endif -%}
+            value: "{{ _profile | tojson }}"
+
+      # ── ai_user: seed blank zenai_essence ────────────────────────────────
+      # Ensures profile editor read/write is live immediately after provision.
+      # mode: write with no fields will self-heal if this is ever deleted.
+      - if:
+        - condition: template
+          value_template: "{{ _cab_type == 'ai_user' }}"
+        then:
+        - action: script.zen_dojotools_filecabinet
+          data:
+            action_type: create
+            force_action: true
+            set_timestamp: true
+            volume_entity_id:
+              - "{{ _target }}"
+            key: zenai_essence
+            value: >-
+              {{ {
+                'core': {
+                  'id': _guid,
+                  'person_id': '',
+                  'minted_for': '',
+                  'minted_at': now().isoformat(),
+                  'household_guid': '',
+                  'signature': 'pending_x509'
+                },
+                'jacket': {
+                  'name': '',
+                  'presentation': '',
+                  'pronouns': '',
+                  'persona': {
+                    'appearance': {'visual': ''},
+                    'voice': {'register': '', 'identity': ''},
+                    'household': {'position': ''}
+                  },
+                  'traits': {'warm': ''}
+                },
+                'companion': {'name': '', 'species': '', 'visual': ''}
+              } | tojson }}
+
+      # ── Fire completion events ────────────────────────────────────────────
+      - event: zen_event
+        event_data:
+          event:
+            kind: cabinet_provisioned
+            component: "{{ _target }}"
+            cab_type: "{{ _cab_type }}"
+            guid: "{{ _guid }}"
+            severity: info
+            summary: "Cabinet '{{ _target }}' provisioned as {{ _cab_type }} (GUID: {{ _guid }})."
+      - event: zen_event
+        event_data:
+          event:
+            kind: identity_manifest_rebuild
+            component: zen_dojotools_provisioner
+            severity: info
+            summary: Identity manifest rebuild triggered by cabinet provision.
+
+      # ── Return success ────────────────────────────────────────────────────
+      - variables:
+          provision_result:
+            status: success
+            message: "Cabinet '{{ _target }}' provisioned as {{ _cab_type }}. GUID: {{ _guid }}."
+            cabinet: "{{ _target }}"
+            cab_type: "{{ _cab_type }}"
+            guid: "{{ _guid }}"
+            profile_loaded: "{{ _profile | length > 0 }}"
+            caller_token: "{{ caller_token }}"
+
+    ###########################################################################
+    # DEPROVISION (standalone or as part of replace)
+    ###########################################################################
+    - variables:
+        _deprov_target: >-
+          {%- if _op == 'replace' -%}{{ _replace }}{%- else -%}{{ _target }}{%- endif -%}
+
+    - if:
+      - condition: template
+        value_template: "{{ _op in ['deprovision', 'replace'] }}"
+      then:
+
+      # ── Gate: must be online_mounted ─────────────────────────────────────
+      - if:
+        - condition: template
+          value_template: "{{ states(_deprov_target) != 'online_mounted' }}"
+        then:
+        - variables:
+            result:
+              status: error
+              message: >-
+                deprovision requires target in online_mounted state. Current: '{{ states(_deprov_target) }}'.
+              caller_token: "{{ caller_token }}"
+        - stop: not mounted
+          response_variable: result
+
+      # ── Gate: cannot deprovision a default cabinet ────────────────────────
+      - variables:
+          _holds_default: >-
+            {%- set ent_labels = labels(_deprov_target) -%}
+            {{- ent_labels | select('in', _default_label_slugs) | list | count > 0 -}}
+
+      - if:
+        - condition: template
+          value_template: "{{ _holds_default }}"
+        then:
+        - variables:
+            result:
+              status: error
+              message: >-
+                deprovision blocked: '{{ _deprov_target }}' holds a zen_default_* label.
+                Transfer the default label to another cabinet before deprovisioning.
+              caller_token: "{{ caller_token }}"
+        - stop: default label gate
+          response_variable: result
+
+      # ── Strip type label + Zen Cabinet parent ────────────────────────────
+      - variables:
+          _deprov_type_label: >-
+            {%- set ent_labels = labels(_deprov_target) -%}
+            {%- for l in _type_label_map.values() -%}
+              {%- if l in ent_labels -%}{{ l }}{%- endif -%}
+            {%- endfor -%}
+
+      - if:
+        - condition: template
+          value_template: "{{ _deprov_type_label != '' }}"
+        then:
+        - action: homeassistant.remove_label_from_entity
+          data:
+            label_id: "{{ _deprov_type_label }}"
+            entity_id: "{{ _deprov_target }}"
+      - action: homeassistant.remove_label_from_entity
+        data:
+          label_id: zen_cabinet
+          entity_id: "{{ _deprov_target }}"
+
+      # ── Dismount ──────────────────────────────────────────────────────────
+      - event: set_variable_legacy
+        event_data:
+          key: meta
+          value: "{{ {'mounted': false} }}"
+          volume_entity: "{{ _deprov_target }}"
+          set_timestamp: true
+
+      - wait_template: "{{ states(_deprov_target) == 'online_unmounted' }}"
+        timeout: '00:00:10'
+        continue_on_timeout: true
+
+      # ── Fire completion events ────────────────────────────────────────────
+      - event: zen_event
+        event_data:
+          event:
+            kind: cabinet_deprovisioned
+            component: "{{ _deprov_target }}"
+            severity: info
+            summary: "Cabinet '{{ _deprov_target }}' deprovisioned and returned to stacks (verified: {{ states(_deprov_target) == 'online_unmounted' }})."
+      - event: zen_event
+        event_data:
+          event:
+            kind: identity_manifest_rebuild
+            component: zen_dojotools_provisioner
+            severity: info
+            summary: Identity manifest rebuild triggered by cabinet deprovision.
+
+      - variables:
+          deprov_result:
+            status: success
+            message: "Cabinet '{{ _deprov_target }}' deprovisioned ({{ states(_deprov_target) }})."
+            cabinet: "{{ _deprov_target }}"
+            verified: "{{ states(_deprov_target) == 'online_unmounted' }}"
+            caller_token: "{{ caller_token }}"
+
+    ###########################################################################
+    # Final result — consolidate provision / deprovision / replace
+    ###########################################################################
+    - if:
+      - condition: template
+        value_template: "{{ _op == 'provision' }}"
+      then:
+      - stop: provision complete
+        response_variable: provision_result
+
+    - if:
+      - condition: template
+        value_template: "{{ _op == 'deprovision' }}"
+      then:
+      - stop: deprovision complete
+        response_variable: deprov_result
+
+    - if:
+      - condition: template
+        value_template: "{{ _op == 'replace' }}"
+      then:
+      - variables:
+          result:
+            status: success
+            message: >-
+              replace complete. Deprovisioned '{{ _replace }}',
+              provisioned '{{ _target }}' as {{ _cab_type }}.
+            deprovisioned: "{{ deprov_result }}"
+            provisioned: "{{ provision_result }}"
+            caller_token: "{{ caller_token }}"
+      - stop: replace complete
+        response_variable: result
+
+    - variables:
+        result:
+          status: error
+          message: "Unknown mode '{{ _op }}'."
+          caller_token: "{{ caller_token }}"
+    - stop: unknown mode
+      response_variable: result

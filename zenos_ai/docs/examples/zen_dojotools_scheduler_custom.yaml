@@ -10,7 +10,7 @@
 #   2. Replace the placeholder entity IDs under each trigger with your own.
 #      Remove any trigger blocks for hardware you don't have.
 #   3. Add the trigger IDs you want to use to the `trigger_subscriptions`
-#      list in each component's Dojo drawer (via zen_dojotools_kungfu_writer).
+#      list in each component's Dojo drawer (via zen_dojotools_scribe).
 #   4. Add this file to your local .gitignore — it contains your entity IDs
 #      and should never be committed to a shared repo.
 #

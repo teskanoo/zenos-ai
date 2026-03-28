@@ -99,6 +99,9 @@ Options offered (if applicable):
 
 Activation preferences are written to the system cabinet.
 
+> **Optional — Kung Fu System Switch**
+> Each active KFC component can have a paired `input_boolean` in HA labeled `Kung Fu System Switch`. When present, the boolean overrides the component's `meta.enabled` drawer flag — useful for toggling a component on/off without editing the Dojo. No switch is required; if absent, `meta.enabled` governs. Create one at any time by making an `input_boolean` whose entity ID contains the component's `kata_key` and assigning it the `Kung Fu System Switch` label.
+
 ---
 
 ### Step 6 — Close Out

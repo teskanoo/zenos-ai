@@ -1,11 +1,22 @@
 ###############################################################################
 # ZenOS-AI DojoTools: SystemTools Package
-# Version: 4.0.0 RC2
+# Version: 4.5.6
 #
 # Consolidated from: dojotools_ha_api.yaml + dojotools_system.yaml
 # Contains: zen_log_* shell_commands, ha_api rest_commands,
 #           zen_dojotools_ha_api (internal), zen_dojotools_systemtools (MCP),
 #           zen_dojotools_ha_log_viewer (MCP), zen_dojotools_event_emitter (MCP)
+#
+# CHANGELOG:
+#   4.2.0 (2026-03-19) — zen_dojotools_systemtools: added zen_health_report (v1.6.0).
+#     Reads all three health sensors, returns overall ok/issues_found + per-sensor
+#     diagnosis string. Voice-ready. Migrated from admintools namespace.
+#   4.1.0 (2026-03-15) — zen_dojotools_systemtools: added ha_reload_all,
+#     ha_reload_scripts, ha_reload_automations, ha_reload_templates.
+#     Full reload/restart decision guide in tool description.
+#     No ha_api or whitelist changes required — reloads use HA service
+#     calls directly (same path as ha_restart → homeassistant.restart).
+#   4.5.x — initial consolidated release
 #
 # SETUP:
 #   1. Add to secrets.yaml:
@@ -22,6 +33,7 @@
 #   - Auth token is read-once from secrets.yaml; never passed at call time
 #   - ha_api_get paths are whitelisted — arbitrary /api/... GET is blocked
 #   - All write operations (restart, install, skip) require confirm=true
+#   - Reload ops are unguarded — non-destructive, no confirm needed
 #   - No access to /states, /templates, cabinet sensors, or room control
 #
 # JOURNAL MODE GUARD (HA 2025.11+):
@@ -30,7 +42,7 @@
 #   file returns a structured journal_mode response (not an error) with guidance
 #   including the Petro31 HACS file-logger restoration link.
 #
-# === UAT PASS — 2026-03-03 ===
+# === UAT PASS — 2026-03-03 (4.5.x baseline) ===
 # Auditor: Caitlin (Anthropic, Sonnet 4.6) + Veronica (OAI, editorial)
 # HALMark: 0.9.10-draft — PASS Level 3 (Steward Safe) — 23/25 PASS, 2/25 N/A
 # UAT Cases: 20/20 PASS
@@ -54,6 +66,9 @@
 #   ha_restart (canary YAML injected) → {result: nogo, restart: blocked} ✓
 #   log viewer tail → {status: success} ✓
 #   log viewer journal_mode (log renamed) → {status: journal_mode, expected_behavior: true} ✓
+#
+# === UAT PENDING — 4.1.0 reload tools ===
+# ha_reload_all, ha_reload_scripts, ha_reload_automations, ha_reload_templates
 # ==============================
 #
 # KNOWN BEHAVIORS:
@@ -144,7 +159,20 @@ script:
         description: Path for the 'get' action. Must be in allowed_paths list.
         selector:
           text:
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
     sequence:
+
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
+
     - variables:
         op: '{{ action_type }}'
         requested_path: '{{ path | default('''') }}'
@@ -178,6 +206,7 @@ script:
               notes:
               - Token handled entirely in rest_command. Uses 127.0.0.1:8123.
               - No access to /states, /templates, or cabinet endpoints.
+              caller_token: '{{ caller_token }}'
         - stop: help_shown
           response_variable: final
 
@@ -202,6 +231,7 @@ script:
               message: "{{ 'Config check passed — safe to restart.' if check_valid
                 else 'Config check FAILED — do not restart. Errors: '
                   ~ (check_response.get('errors', 'unknown error') | string) }}"
+              caller_token: '{{ caller_token }}'
         - stop: check_config_done
           response_variable: final
 
@@ -225,6 +255,7 @@ script:
               message: Core Home Assistant log retrieved.
               truncated: '{{ (raw | length) > 220000 }}'
               result: '{{ safe }}'
+              caller_token: '{{ caller_token }}'
         - stop: error_log_done
           response_variable: final
 
@@ -248,6 +279,7 @@ script:
               message: Supervisor logs retrieved.
               truncated: '{{ (raw | length) > 220000 }}'
               result: '{{ safe }}'
+              caller_token: '{{ caller_token }}'
         - stop: supervisor_logs_done
           response_variable: final
 
@@ -271,6 +303,7 @@ script:
               message: Event schema retrieved.
               truncated: '{{ (raw | length) > 220000 }}'
               result: '{{ safe }}'
+              caller_token: '{{ caller_token }}'
         - stop: events_done
           response_variable: final
 
@@ -294,6 +327,7 @@ script:
               message: Service registry retrieved.
               truncated: '{{ (raw | length) > 220000 }}'
               result: '{{ safe }}'
+              caller_token: '{{ caller_token }}'
         - stop: services_done
           response_variable: final
 
@@ -317,6 +351,7 @@ script:
               message: System config retrieved.
               truncated: '{{ (raw | length) > 220000 }}'
               result: '{{ safe }}'
+              caller_token: '{{ caller_token }}'
         - stop: config_done
           response_variable: final
 
@@ -340,6 +375,7 @@ script:
               message: System health retrieved.
               truncated: '{{ (raw | length) > 220000 }}'
               result: '{{ safe }}'
+              caller_token: '{{ caller_token }}'
         - stop: health_done
           response_variable: final
 
@@ -363,6 +399,7 @@ script:
               message: Supervisor info retrieved.
               truncated: '{{ (raw | length) > 220000 }}'
               result: '{{ safe }}'
+              caller_token: '{{ caller_token }}'
         - stop: supervisor_done
           response_variable: final
 
@@ -381,6 +418,7 @@ script:
                   message: Path not allowed.
                   attempted: '{{ requested_path }}'
                   allowed: '{{ allowed_paths }}'
+                  caller_token: '{{ caller_token }}'
             - stop: denied
               response_variable: final
         - data:
@@ -399,6 +437,7 @@ script:
               message: GET /api/{{ requested_path }} retrieved.
               truncated: '{{ (raw | length) > 220000 }}'
               result: '{{ safe }}'
+              caller_token: '{{ caller_token }}'
         - stop: get_done
           response_variable: final
 
@@ -406,11 +445,17 @@ script:
         final:
           status: error
           message: Unknown or invalid action.
+          caller_token: '{{ caller_token }}'
     - stop: failure
       response_variable: final
 
   zen_dojotools_systemtools:
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
     - variables:
         tool: '{{ tool | default('''') }}'
         confirm: '{{ confirm_action | default(false) }}'
@@ -533,26 +578,362 @@ script:
               entity_id | default(''),\n    \"confirm\": confirm | default(false),\n
               \   \"result\": \"success\",\n    \"message\": \"Update Un-Skipped\"\n
               \ }\n}}"
+      - conditions:
+        - alias: Reload All
+          condition: template
+          value_template: '{{ tool == ''ha_reload_all'' }}'
+        sequence:
+        - action: script.zen_dojotools_ha_api
+          data:
+            action_type: check_config
+          response_variable: check_result
+        - choose:
+          - conditions:
+            - alias: Config check failed — block reload
+              condition: template
+              value_template: '{{ check_result.result != ''go'' }}'
+            sequence:
+            - variables:
+                response: "{{
+                  {
+                    'tool': tool,
+                    'result': 'nogo',
+                    'errors': check_result.errors,
+                    'message': 'Reload BLOCKED — config check failed. Fix errors before reloading. reload_all would have silently aborted anyway.'
+                  }
+                }}"
+          default:
+          - action: homeassistant.reload_all
+            data: {}
+          - variables:
+              response: "{{
+                {
+                  'tool': tool,
+                  'result': 'success',
+                  'config_check': 'passed',
+                  'message': 'Config check passed. Reload all complete — automations, scripts, scenes, helpers, custom templates, themes, and core config reloaded.'
+                }
+              }}"
+      - conditions:
+        - alias: Reload Scripts
+          condition: template
+          value_template: '{{ tool == ''ha_reload_scripts'' }}'
+        sequence:
+        - action: script.reload
+          data: {}
+        - variables:
+            response: "{{
+              {
+                'tool': tool,
+                'result': 'success',
+                'message': 'Scripts reloaded from YAML.'
+              }
+            }}"
+      - conditions:
+        - alias: Reload Automations
+          condition: template
+          value_template: '{{ tool == ''ha_reload_automations'' }}'
+        sequence:
+        - action: automation.reload
+          data: {}
+        - variables:
+            response: "{{
+              {
+                'tool': tool,
+                'result': 'success',
+                'message': 'Automations reloaded from YAML. Note: any currently running automation actions were stopped.'
+              }
+            }}"
+      - conditions:
+        - alias: Reload Custom Templates
+          condition: template
+          value_template: '{{ tool == ''ha_reload_templates'' }}'
+        sequence:
+        - action: homeassistant.reload_custom_templates
+          data: {}
+        - variables:
+            response: "{{
+              {
+                'tool': tool,
+                'result': 'success',
+                'message': 'Custom Jinja templates reloaded. Changes take effect on next template render.'
+              }
+            }}"
+      - conditions:
+        - alias: Help
+          condition: template
+          value_template: '{{ tool == ''help'' }}'
+        sequence:
+        - variables:
+            response: "{{
+              {
+                'tool': 'help',
+                'result': 'info',
+                'version': '1.6.0',
+                'reload_response_contract': 'ha_reload_all and ha_reload_scripts reload the script domain and kill the running script before it can report back. No response = success. Nogo from config check is the only case this tool speaks. Silence after a passing preflight = reload fired. ha_reload_automations and ha_reload_templates do return responses (different domain). Treat all reloads as fire-and-done.',
+                'reload_tools': {
+                  'ha_reload_all': 'All YAML domains: automations, scripts, scenes, groups, helpers, timers, counters, schedules, YAML template sensors, MQTT YAML entities, zones, rest/command_line, custom Jinja templates, themes, homeassistant: core block. Explicit config check runs first — blocked on nogo. DEFAULT CHOICE.',
+                  'ha_reload_scripts': 'Scripts only. Use when automations are running and you do not want to stop them.',
+                  'ha_reload_automations': 'Automations only. WARNING: stops all currently in-flight automation action sequences.',
+                  'ha_reload_templates': 'config/custom_templates/ Jinja files only. Changes take effect on next render.'
+                },
+                'restart_required': 'auth_providers/auth_mfa_modules changes, http: block (port/SSL/CORS/trusted_proxies), recorder: block (db_url/include/exclude), adding net-new integrations never bootstrapped, logger: YAML block. Use logger.set_level service for runtime log level changes — no restart needed.',
+                'other_tools': {
+                  'zen_resolver_refresh': 'Fire zen_resolver_refresh. Kicks cabinet resolvers, monastery health, and all resolver-subscribed sensors. Use after ha_reload_all to recover sensors from cold-start unavailable. On real HA restart, the scheduler fires this automatically via ha_start trigger.',
+                  'zen_health_report': 'Read all 5 health sensors + 7 resolver states. Returns overall ok/issues_found, resolver all_ok, timestamps, monk_status, schema_ok, kill switches, and plain-English diagnosis.',
+                  'ha_config_check': 'YAML validation, go/nogo. No side effects. Safe to run anytime.',
+                  'ha_restart': 'Full HA restart. Requires confirm=true. Config check runs automatically first — blocked if check fails.',
+                  'ha_update_install': 'Install a pending update. Requires confirm=true + entity_id.',
+                  'ha_update_skip': 'Skip a pending update. Requires confirm=true + entity_id.',
+                  'ha_update_clear_skipped': 'Un-skip a skipped update. Requires confirm=true + entity_id.'
+                },
+                'when_in_doubt': 'Run zen_health_report first. If issues found, run ha_config_check then ha_reload_all. If reloads do not fix it, use ha_restart.',
+                'halmark_fgs': ['FG-35: automation.reload kills in-flight automations', 'FG-36: reload_all silent abort on config check failure (mitigated here by explicit preflight)', 'FG-37: partial reload state from incorrect surgical reload sequencing']
+              }
+            }}"
+      - conditions:
+        - alias: Resolver Refresh
+          condition: template
+          value_template: '{{ tool == ''zen_resolver_refresh'' }}'
+        sequence:
+        - event: zen_resolver_refresh
+        - variables:
+            response:
+              tool: "{{ tool }}"
+              result: success
+              message: "zen_resolver_refresh fired. Cabinet resolvers, monastery health, and all zen_resolver_refresh subscribers will re-evaluate."
+      - conditions:
+        - alias: Health Report
+          condition: template
+          value_template: '{{ tool == ''zen_health_report'' }}'
+        sequence:
+        - variables:
+            _dojo: "{{ states('sensor.zen_dojo_cabinet_resolved') }}"
+            _kata: "{{ states('sensor.zen_kata_cabinet_resolved') }}"
+            _system: "{{ states('sensor.zen_system_cabinet_resolved') }}"
+            _household: "{{ states('sensor.zen_default_household_cabinet_resolved') }}"
+            _ai_user: "{{ states('sensor.zen_default_ai_user_cabinet_resolved') }}"
+            _family: "{{ states('sensor.zen_default_family_cabinet_resolved') }}"
+            _user: "{{ states('sensor.zen_default_user_cabinet_resolved') }}"
+        - variables:
+            _kata_vars: >-
+              {{ state_attr(_kata, 'variables') or {}
+                 if _kata not in ['unknown','unavailable','none',''] else {} }}
+        - variables:
+            _ts: "{{ _kata_vars.get('zen_summary', {}).get('timestamp', '') }}"
+            _sched_ts: "{{ _kata_vars.get('zen_scheduler', {}).get('timestamp', '') }}"
+            _monk_status: >-
+              {%- set _ss_raw = _kata_vars.get('zen_supersummary_status', {}) -%}
+              {%- set _ss_v1 = _ss_raw.get('value', _ss_raw) if _ss_raw is mapping else (_ss_raw | from_json if _ss_raw is string else {}) -%}
+              {%- set _ss_d = _ss_v1 if _ss_v1 is mapping else (_ss_v1 | from_json if _ss_v1 is string else {}) -%}
+              {{ _ss_d.get('status', 'unknown') if _ss_d is mapping else 'unknown' }}
+            _schema_ok: >-
+              {%- set _zt_raw = _kata_vars.get('zen_template', {}) -%}
+              {%- set _zt_v1 = _zt_raw.get('value', _zt_raw) if _zt_raw is mapping else (_zt_raw | from_json if _zt_raw is string else {}) -%}
+              {%- set _zt_d = _zt_v1 if _zt_v1 is mapping else (_zt_v1 | from_json if _zt_v1 is string else {}) -%}
+              {{ (_zt_d.get('structure', none) is mapping) if _zt_d is mapping else false }}
+            _resolver_all_ok: >-
+              {{ [_dojo, _kata, _system, _household, _ai_user, _family, _user]
+                 | select('in', ['unknown','unavailable','none',''])
+                 | list | count == 0 }}
+            _active_raw: "{{ state_attr('sensor.zen_monastery_health', 'active_components') | default('[]') }}"
+        - variables:
+            _ts_age_min: >-
+              {%- if _ts and _ts != '' -%}
+                {{ ((now() - as_datetime(_ts)).total_seconds() / 60) | round(1) }}
+              {%- else -%}none{%- endif -%}
+            _sched_age_min: >-
+              {%- if _sched_ts and _sched_ts != '' -%}
+                {{ ((now() - as_datetime(_sched_ts)).total_seconds() / 60) | round(1) }}
+              {%- else -%}none{%- endif -%}
+        - variables:
+            _legacy_cabinets: >-
+              {%- set r = state_attr('sensor.zen_cabinet_health', 'cabinet_states') | default({}, true) -%}
+              {%- set cs = r if r is mapping else (r | from_json if r is string else {}) -%}
+              {%- set ns = namespace(l=[]) -%}
+              {%- for slot, st in cs.items() if st == 'Variables' -%}
+                {%- set ns.l = ns.l + [slot] -%}
+              {%- endfor -%}
+              {{ ns.l | join(', ') if ns.l else '' }}
+        - variables:
+            _diagnosis: >-
+              {%- set _ns = namespace(issues=[]) -%}
+              {%- if _dojo in ['unknown','unavailable','none',''] -%}
+                {%- set _ns.issues = _ns.issues + ['CRITICAL: dojo resolver unavailable — label zen_dojo_cabinet has no sensor entities'] -%}
+              {%- endif -%}
+              {%- if _kata in ['unknown','unavailable','none',''] -%}
+                {%- set _ns.issues = _ns.issues + ['CRITICAL: kata resolver unavailable — label zen_kata_cabinet has no sensor entities'] -%}
+              {%- endif -%}
+              {%- if _system in ['unknown','unavailable','none',''] -%}
+                {%- set _ns.issues = _ns.issues + ['CRITICAL: system resolver unavailable — label zen_system_cabinet has no sensor entities'] -%}
+              {%- endif -%}
+              {%- if _household in ['unknown','unavailable','none',''] -%}
+                {%- set _ns.issues = _ns.issues + ['CRITICAL: household resolver unavailable — label zen_default_household_cabinet has no sensor entities'] -%}
+              {%- endif -%}
+              {%- if _ai_user in ['unknown','unavailable','none',''] -%}
+                {%- set _ns.issues = _ns.issues + ['CRITICAL: ai_user resolver unavailable — label zen_default_ai_user_cabinet has no sensor entities'] -%}
+              {%- endif -%}
+              {%- if _family in ['unknown','unavailable','none',''] -%}
+                {%- set _ns.issues = _ns.issues + ['warn: family resolver unavailable — label zen_default_family_cabinet has no sensor entities'] -%}
+              {%- endif -%}
+              {%- if _user in ['unknown','unavailable','none',''] -%}
+                {%- set _ns.issues = _ns.issues + ['warn: user resolver unavailable — label zen_default_user_cabinet has no sensor entities'] -%}
+              {%- endif -%}
+              {%- set _mon_st = states('sensor.zen_monastery_health') -%}
+              {%- if _mon_st == 'unknown' -%}
+                {%- set _ns.issues = _ns.issues + ['Monastery health has not woken up yet. Run resolver refresh to kick it.'] -%}
+              {%- elif _mon_st == 'unavailable' -%}
+                {%- set _ns.issues = _ns.issues + ['Monastery health tried to evaluate but hit an error. Check HA logs for template errors.'] -%}
+              {%- elif _mon_st == 'critical' -%}
+                {%- set _r = state_attr('sensor.zen_monastery_health', 'reason') | default('Schema missing, resolver down, or summary very stale with monk errors.') -%}
+                {%- set _ns.issues = _ns.issues + ['Monastery CRITICAL: ' ~ _r] -%}
+              {%- elif _mon_st == 'warn' -%}
+                {%- set _r = state_attr('sensor.zen_monastery_health', 'reason') | default('Summary stale, monk error, or no active components.') -%}
+                {%- set _ns.issues = _ns.issues + ['Monastery warn: ' ~ _r] -%}
+              {%- endif -%}
+              {%- set _ninja_st = states('sensor.zen_summarizer_health') -%}
+              {%- if _ninja_st == 'unknown' -%}
+                {%- set _ns.issues = _ns.issues + ['Ninja summarizer health has not woken up yet. Run resolver refresh.'] -%}
+              {%- elif _ninja_st == 'unavailable' -%}
+                {%- set _ns.issues = _ns.issues + ['Ninja summarizer health hit an error. Check HA logs.'] -%}
+              {%- elif _ninja_st not in ['ok', 'disabled'] -%}
+                {%- set _r = state_attr('sensor.zen_summarizer_health', 'reason') | default('Scheduler stale or ai_task entity not set.') -%}
+                {%- set _ns.issues = _ns.issues + ['Ninja summarizer ' ~ _ninja_st ~ ': ' ~ _r] -%}
+              {%- endif -%}
+              {%- set _ss_st = states('sensor.zen_supersummary_health') -%}
+              {%- if _ss_st == 'unknown' -%}
+                {%- set _ns.issues = _ns.issues + ['Supersummary health has not woken up yet. Run resolver refresh.'] -%}
+              {%- elif _ss_st == 'unavailable' -%}
+                {%- set _ns.issues = _ns.issues + ['Supersummary health hit an error. Check HA logs.'] -%}
+              {%- elif _ss_st not in ['ok', 'disabled'] -%}
+                {%- set _r = state_attr('sensor.zen_supersummary_health', 'reason') | default('Summary stale or monk returned an error.') -%}
+                {%- set _ns.issues = _ns.issues + ['Supersummary ' ~ _ss_st ~ ': ' ~ _r] -%}
+              {%- endif -%}
+              {%- if not is_state('input_boolean.zen_summarizers_enabled', 'on') -%}
+                {%- set _ns.issues = _ns.issues + ['pipeline master kill switch OFF'] -%}
+              {%- endif -%}
+              {%- if not is_state('input_boolean.zen_ninja_summarizer_enabled', 'on') -%}
+                {%- set _ns.issues = _ns.issues + ['ninja summarizer kill switch OFF'] -%}
+              {%- endif -%}
+              {%- if not is_state('input_boolean.zen_supersummarizer_enabled', 'on') -%}
+                {%- set _ns.issues = _ns.issues + ['supersummary kill switch OFF'] -%}
+              {%- endif -%}
+              {%- if _schema_ok == 'False' -%}
+                {%- set _ns.issues = _ns.issues + ['CRITICAL: zen_template schema missing — run zen_admintools_reset_template'] -%}
+              {%- endif -%}
+              {%- if states('input_text.zenos_ai_task_entity') | trim in ['','unknown','unavailable'] -%}
+                {%- set _ns.issues = _ns.issues + ['ai_task entity not set (input_text.zenos_ai_task_entity empty)'] -%}
+              {%- endif -%}
+              {%- if _ts == '' -%}
+                {%- set _ns.issues = _ns.issues + ['no zen_summary timestamp — pipeline has never run or kata not bootstrapped'] -%}
+              {%- elif _ts_age_min != 'none' and _ts_age_min | float > 30 -%}
+                {%- set _ns.issues = _ns.issues + ['zen_summary critically stale (' ~ _ts_age_min ~ ' min, threshold 30 min)'] -%}
+              {%- elif _ts_age_min != 'none' and _ts_age_min | float > 15 -%}
+                {%- set _ns.issues = _ns.issues + ['zen_summary stale (' ~ _ts_age_min ~ ' min, threshold 15 min)'] -%}
+              {%- endif -%}
+              {%- if _sched_ts == '' -%}
+                {%- set _ns.issues = _ns.issues + ['no scheduler timestamp — ninja has never run'] -%}
+              {%- elif _sched_age_min != 'none' and _sched_age_min | float > 20 -%}
+                {%- set _ns.issues = _ns.issues + ['ninja scheduler stale (' ~ _sched_age_min ~ ' min, threshold 20 min)'] -%}
+              {%- endif -%}
+              {%- if _monk_status in ['error','timeout','none','null','unknown'] -%}
+                {%- set _ns.issues = _ns.issues + ['supersummary monk status: ' ~ _monk_status] -%}
+              {%- endif -%}
+              {%- set _agent_st = states('sensor.zen_agent_health') -%}
+              {%- if _agent_st in ['warn','error','critical'] -%}
+                {%- set _flynn_blocking = state_attr('sensor.zen_flynn_health', 'blocking') | default('none') -%}
+                {%- set _roster_raw = state_attr('sensor.zen_agent_health', 'roster') | default('[]') -%}
+                {%- set _roster = _roster_raw | from_json if _roster_raw is string else _roster_raw -%}
+                {%- set _notes = _roster | map(attribute='note') | list | join(', ') if _roster is iterable else '' -%}
+                {%- set _ns.issues = _ns.issues + ['Agent health ' ~ _agent_st ~ ' — Flynn blocking: ' ~ _flynn_blocking ~ (' | agents: ' ~ _notes if _notes else '')] -%}
+              {%- endif -%}
+              {%- if _legacy_cabinets != '' -%}
+                {%- set _ns.issues = _ns.issues + ['Cabinet schema upgrade available: ' ~ _legacy_cabinets ~ ' — say "upgrade my cabinets"'] -%}
+              {%- endif -%}
+              {%- if _ns.issues | count == 0 -%}
+                All gates nominal.
+              {%- else -%}
+                {{ _ns.issues | join(' | ') }}
+              {%- endif -%}
+        - variables:
+            response:
+              generated: "{{ now().isoformat() }}"
+              overall: "{{ 'ok' if 'All gates nominal.' in _diagnosis else 'issues_found' }}"
+              resolvers:
+                dojo: "{{ _dojo }}"
+                kata: "{{ _kata }}"
+                system: "{{ _system }}"
+                household: "{{ _household }}"
+                ai_user: "{{ _ai_user }}"
+                family: "{{ _family }}"
+                user: "{{ _user }}"
+                all_ok: "{{ _resolver_all_ok }}"
+              health_sensors:
+                monastery: "{{ states('sensor.zen_monastery_health') }}"
+                ninja_summarizer: "{{ states('sensor.zen_summarizer_health') }}"
+                supersummary: "{{ states('sensor.zen_supersummary_health') }}"
+                cabinet: "{{ states('sensor.zen_cabinet_health') }}"
+                legacy_schema_cabinets: "{{ _legacy_cabinets }}"
+                agents: "{{ states('sensor.zen_agent_health') }}"
+              reasons:
+                monastery: "{{ state_attr('sensor.zen_monastery_health', 'reason') | default('') }}"
+                ninja_summarizer: "{{ state_attr('sensor.zen_summarizer_health', 'reason') | default('') }}"
+                supersummary: "{{ state_attr('sensor.zen_supersummary_health', 'reason') | default('') }}"
+                cabinet: "{{ state_attr('sensor.zen_cabinet_health', 'reason') | default('') }}"
+                agents: "{{ state_attr('sensor.zen_agent_health', 'reason') | default('') }}"
+              kill_switches:
+                pipeline_master: "{{ is_state('input_boolean.zen_summarizers_enabled', 'on') }}"
+                ninja_enabled: "{{ is_state('input_boolean.zen_ninja_summarizer_enabled', 'on') }}"
+                supersummary_enabled: "{{ is_state('input_boolean.zen_supersummarizer_enabled', 'on') }}"
+              schema_ok: "{{ _schema_ok }}"
+              ai_task_entity: "{{ states('input_text.zenos_ai_task_entity') | trim }}"
+              ai_task_set: "{{ states('input_text.zenos_ai_task_entity') | trim not in ['','unknown','unavailable'] }}"
+              timestamps:
+                zen_summary: "{{ _ts | default('none') }}"
+                zen_summary_age_min: "{{ _ts_age_min }}"
+                zen_scheduler: "{{ _sched_ts | default('none') }}"
+                zen_scheduler_age_min: "{{ _sched_age_min }}"
+              monk_status: "{{ _monk_status }}"
+              active_components: "{{ _active_raw }}"
+              diagnosis: "{{ _diagnosis }}"
       default:
       - variables:
           response: "{{\n  {\n    \"tool\": tool | default('N/A'),\n    \"confirm\":
             confirm | default(false),\n    \"result\": \"error\",\n    \"message\":
             \"No tool selected.\"\n  }\n}}"
+    - variables:
+        response: "{{ response | combine({'caller_token': caller_token | default('')}) if response is mapping else response }}"
     - stop: return
       response_variable: response
     alias: Zen DojoTools SystemTools
-    description: "Zen DojoTools SystemTools (1.3.0)\nCollection of tools and utilities
-      for Home Assistant\n  ha_config_check - run YAML config check; returns go/nogo
-      + output. No confirmation needed.\n  ha_restart - restarts HA (requires confirm).
-      Config check runs automatically first; restart is blocked if check fails.\n  ha_update_install
-      - requires an 'update.' entity_id to update\n  ha_update_skip - requires an 'update.'
-      entity_id to skip update\n  ha_update_clear_skipped - requires an 'update.' entity_id
-      to clear a skipped update"
+    description: "Zen DojoTools SystemTools (1.6.0)\n\
+      \nHEALTH: zen_health_report — reads all 5 health sensors + 7 resolver states.\n\
+      \nReturns overall ok/issues_found, resolver all_ok, timestamps, monk_status, schema_ok, kill switches, diagnosis.\n\
+      \nRELOAD RESPONSE: ha_reload_all/ha_reload_scripts kill the running script —\n\
+      \nno response = success. Only nogo from preflight config check speaks.\n\
+      \nSilence = reload fired. Trust the preflight.\n\
+      \nRELOAD (no restart):\n\
+      \  ha_reload_all — all YAML domains, config-checked. DEFAULT.\n\
+      \  ha_reload_scripts — scripts only.\n\
+      \  ha_reload_automations — automations only; STOPS in-flight actions.\n\
+      \  ha_reload_templates — custom_templates/ Jinja only.\n\
+      \nRESTART REQUIRED:\n\
+      \  auth_providers, http:, recorder:, new unbootstrapped integrations,\n\
+      \  logger: YAML block. (Use logger.set_level for runtime log changes.)\n\
+      \nOTHER: ha_config_check, ha_restart, ha_update_install/skip/clear_skipped.\n\
+      \nUse tool=help for full reference and FG notes."
     fields:
       tool:
         selector:
           select:
             options:
+            - zen_resolver_refresh
+            - zen_health_report
+            - help
+            - ha_reload_all
+            - ha_reload_scripts
+            - ha_reload_automations
+            - ha_reload_templates
             - ha_restart
             - ha_config_check
             - ha_update_install
@@ -573,6 +954,12 @@ script:
         name: Backup before Install
         description: Flag backup before install or change, Default off - ask the end
           user.
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
 
   zen_dojotools_ha_log_viewer:
     alias: Zen DojoTools HA Log Viewer
@@ -622,7 +1009,19 @@ script:
             min: 10
             max: 20000
         default: 500
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
+
     - variables:
         m: '{{ mode }}'
         p: '{{ pattern | default('''') }}'
@@ -676,6 +1075,7 @@ script:
                     - Do not reinstall Home Assistant
                     - Do not assume corruption or startup failure
                     - Do not treat missing log file as an error
+                  caller_token: '{{ caller_token }}'
             - stop: journal_mode
               response_variable: final
           default:
@@ -694,6 +1094,7 @@ script:
                 - Run ha_config_check via zen_dojotools_systemtools
                 - Review supervisor logs via zen_dojotools_ha_api
                 - Verify /config mount integrity
+                caller_token: '{{ caller_token }}'
           - stop: legacy_missing_error
             response_variable: final
     # ===== END GUARD — file exists, proceed with mode dispatch =====
@@ -725,6 +1126,7 @@ script:
                   line_count: 0
                   lines_requested: '{{ n }}'
                   result: ''
+                  caller_token: '{{ caller_token }}'
             - stop: invalid_search
               response_variable: final
         - action: shell_command.zen_log_search
@@ -774,13 +1176,14 @@ script:
           line_count: '{{ count }}'
           message: HA logs returned ({{ m }} mode)
           result: '{{ safe }}'
+          caller_token: '{{ caller_token }}'
     - stop: done
       response_variable: final
     icon: mdi:file-find-outline
 
   zen_dojotools_event_emitter:
     alias: Zen DojoTools Event Emitter
-    description: "Zen DojoTools Event Emitter (v4.0.0 RC2). Advanced mode for Zen!\nEmits
+    description: "Zen DojoTools Event Emitter (v4.5.x). Advanced mode for Zen!\nEmits
       structured ZenOS-AI events or returns a dictionary of canonical event shapes.
       Used for breadcrumbs, observability, and trace reconstruction by Zen Constructs
       and the Monastery.\nModes:\n  emit → send a zen_event to the HA EventBus\n  help
@@ -856,8 +1259,20 @@ script:
         description: 'OPTIONAL. Miniature reasoning breadcrumb.
 
           '
+      caller_token:
+        name: Caller Token
+        description: Opaque token passed through by the caller for correlation. Not interpreted by this script.
+        required: false
+        selector:
+          text:
     mode: parallel
     sequence:
+    # --------------------------------------------------------------
+    # Always normalize User/AI inputs so we don't have to react JIT
+    # --------------------------------------------------------------
+    - variables:
+        caller_token: "{{- caller_token | default('') -}}"
+
     - choose:
       - conditions:
         - condition: template
@@ -874,6 +1289,7 @@ script:
                   force: summary
                 kata: {}
                 monk: {}
+              caller_token: '{{ caller_token }}'
         - stop: done
           response_variable: well_known_events
     - variables:
@@ -902,5 +1318,6 @@ script:
           status: success
           message: Zen event emitted
           event: '{{ evt }}'
+          caller_token: '{{ caller_token }}'
     - stop: done
       response_variable: final

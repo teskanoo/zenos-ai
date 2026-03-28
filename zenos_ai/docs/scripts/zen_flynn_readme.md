@@ -1,4 +1,4 @@
-# Flynn — Stepgate Sentinel & Bootstrap Engine — 4.2.0
+# Flynn — Stepgate Sentinel & Bootstrap Engine — 4.5.6
 
 *ZenOS-AI's boot guard, initializer, and onboarding driver*
 
@@ -28,6 +28,16 @@ Flynn re-runs any time these sensors change state:
 
 States that re-engage Flynn: `critical`, `error`, `warn`, `ok`
 
+Flynn also re-runs on these events:
+
+| Event | When |
+|---|---|
+| `zen_event kind: warmup_expired` | 5 min after `ha_start` — warmup window closed, re-evaluate all gates |
+| `zen_event kind: cabinet_mounted` | Cabinet mounted — gate 2.5 may now clear |
+| `zen_event kind: cabinet_dismounted` | Cabinet dismounted — gate 2.5 may re-engage |
+
+The `warmup_expired` event is fired by `automation.zen_warmup_timer` (also in `flynn.yaml`). It guarantees the warmup gate-down is a real signal, not a side-effect of monastery settling. If monastery never settles (real problem), Flynn will catch it at the 5-min mark rather than leaving sensors stuck at `warmup` indefinitely.
+
 ---
 
 ## Early Exit
@@ -35,7 +45,7 @@ States that re-engage Flynn: `critical`, `error`, `warn`, `ok`
 Flynn skips all gates and exits immediately if **all** of the following are true:
 
 - `binary_sensor.flynn_system_ready` is `on`
-- All health sensors are `ok` (monastery may be `warn` — degraded but functional)
+- All health sensors are `ok` (monastery and cabinet may be `warn` — both are non-blocking)
 - OOBE is not pending
 - Both `kfc_template` (Dojo) and `zen_template` (Kata) are already seeded
 
@@ -75,20 +85,34 @@ Once complete, Flynn stops and waits for `zen_label_health` to update.
 
 ### Gate 2 — Cabinet Initialization
 
-**Trigger:** `sensor.zen_cabinet_health != ok`
+**Trigger:** `sensor.zen_cabinet_health` is not `ok`
 
-One or more required cabinet entities are uninitialized. Flynn reads the `missing_cabinets` list from the health sensor, maps each slot to its cabinet type, and calls `zen_admintools_cabinetadmin` with `mode: initialize` for each one.
+Gate 2 behavior depends on the severity of the cabinet health state. Three cases:
 
-Cabinet types initialized on demand:
+**Case A — `error` or `critical` (hard stop)**
+
+One or more required cabinet entities are uninitialized or unavailable. Flynn fires a persistent notification ("Cabinet Check Needed") and stops. Operator action required.
+
+**What to do:** Open a conversation and say "initialize my cabinets", or run `script.zen_admintools_cabinetadmin` with `mode: initialize` directly. Check `sensor.zen_cabinet_health` → `missing_cabinets` to see which slots are affected.
+
+**Case B — `warn`, outside warmup window, not `ha_start` (notify + continue)**
+
+Legacy schema detected — one or more cabinets are on the pre-4.5 schema (state: `Variables`). The system is **fully operational**. Flynn fires a non-urgent notification ("Cabinet Upgrade Available") and continues — no stop.
+
+**What to do:** When convenient, open a conversation and say "upgrade my cabinets". No urgency — nothing is broken.
+
+**Case C — `warn`, inside warmup window OR triggered by `ha_start` (log only, continue)**
+
+Same legacy schema condition but detected during the boot warmup window (≤5 min after last boot) or on `ha_start`. Flynn logs it and **continues** — no notification, no stop. The warmup window exists to avoid notification noise on normal restarts.
+
+Cabinet types Flynn can initialize on demand (Case A):
 
 ```
 system, dojo, kata, default_household, default_family,
 default_user, default_ai_user, history, index
 ```
 
-Flynn stops and waits for `zen_cabinet_health` to update.
-
-**Event fired:** `flynn_stepgate_event` (gate: 2, action: cabinets_initialized)
+**Event fired:** `flynn_stepgate_event` (gate: 2, action: cabinets_initialized) — Case A only.
 
 ---
 
@@ -133,10 +157,12 @@ If `zen_monastery_health == critical`, Flynn calls `script.flynn_bootstrap_conte
 2. **Auto-resolves reasoning task** — reads `input_text.zenos_reasoning_task`. If unset and exactly one conversation entity exists, auto-writes it. Multiple found with none configured → stops with notification.
 3. **Auto-resolves AI task entity** — reads `input_text.zenos_ai_task_entity`. Same auto-resolve logic. Zero found = non-fatal (summarizer degrades gracefully).
 4. **Seeds household name** — non-destructive write to `_household_name` drawer.
-5. **Seeds AI persona essence** — writes default essence with `identity.name = 'your AI'` as placeholder (non-destructive — skips if drawer already exists).
+5. **Seeds AI persona essence** — writes default legacy-schema essence with `identity.name = 'your AI'` as placeholder (non-destructive — skips if drawer already exists). Three-layer cabinets already have a real name stamped at mint; this step is a no-op for them.
 6. **Seeds schema templates** — calls `reset_template` if either template drawer is missing.
 7. **Loads prompt substrate** — calls `zen_admintools_zenos_prompt_loader` (Cortex, Directives, Purpose).
-8. **Flags completion** — calls `flynn_unified_engine` with `action_type: flag_complete`.
+8. **Wires default family graph** *(4.5.6)* — calls `household_add_family` for the default family cabinet, then `family_add_member` for the default user and AI user. All three calls are guarded (skips if cabinet unavailable) and idempotent (no-op if already wired). Closes a gap where cold builds left the default family as an orphan in the identity graph.
+9. **Seeds home mode timers** *(4.5.6)* — each `input_datetime` schedule anchor and quiet/work bounds helper is individually checked and seeded to its default time if still bare (`''`, `unknown`, or `unavailable`). Each timer has its own guard — partially-configured installs are safe.
+10. **Flags completion** — calls `flynn_unified_engine` with `action_type: flag_complete`.
 
 **Event fired:** `flynn_stepgate_event` (gate: 3, action: bootstrap_complete)
 
@@ -147,8 +173,10 @@ If `zen_monastery_health == critical`, Flynn calls `script.flynn_bootstrap_conte
 Runs after Gate 3, with a 10-second delay to let Gate 3 writes settle.
 
 **OOBE is pending when:**
-- The AI user cabinet's `zenai_essence` has `identity.name` = `''` or `'your AI'` (placeholder)
+- The AI user cabinet's persona name resolves to `''` or `'your AI'` — checked via `essence_probe()` which handles both legacy (`identity.name`) and three-layer (`jacket.name`) schemas
 - AND no `_oobe_complete` flag exists in the cabinet
+
+**Pending name values:** `''`, `'your AI'`, `'unknown'` (all treated as placeholder — system will prompt for a real name)
 
 Three cases:
 
@@ -189,13 +217,32 @@ All `build` writes are non-destructive — existing values are never overwritten
 
 ---
 
+## Companion Selects
+
+Four `template: select` entities provide UI-level dropdowns for the critical input helpers. Each select reads the current value of its corresponding `input_text` and writes back to it on change. The `input_text` entities remain the canonical source of truth — selects are overlay controls only.
+
+| Select Entity | Drives | Options Source |
+|---|---|---|
+| `select.zenos_persona` | `input_text.zenos_persona_name` | AI user cabinet essence names |
+| `select.zenos_primary_user` | `input_text.zenos_primary_user` | `person.*` with `user_id` attr (login-bound only) |
+| `select.zenos_conversation_agent` | `input_text.zenos_conversation_agent` | All `conversation.*` domain entities |
+| `select.zenos_ai_task` | `input_text.zenos_ai_task_entity` | All `ai_task.*` domain entities |
+
+Options resolve dynamically at render time. The persona select only shows personas with a valid name in their essence — `unknown`, `your AI`, and empty strings are excluded.
+
+**Fastest setup path:** Use these selects from Settings → Helpers instead of typing entity IDs manually.
+
+---
+
 ## Health Sensor → Gate Map
 
 | Sensor State | Gate Triggered | Action |
 |---|---|---|
 | `zen_label_health: critical` | Gate 0 | Create labels, notify, stop |
 | `zen_label_health: warn` | Gate 1 | Assign labels to entities |
-| `zen_cabinet_health: not ok` | Gate 2 | Initialize missing cabinets |
+| `zen_cabinet_health: error/critical` | Gate 2 (hard stop) | Initialize missing cabinets — operator action required |
+| `zen_cabinet_health: warn` (outside warmup) | Gate 2 (non-blocking) | Schema upgrade notification — system continues |
+| `zen_cabinet_health: warn` (warmup/ha_start) | Gate 2 (log only) | Logged, system continues — no notification |
 | `zen_monastery_health: critical` | Gate 3 | Full content bootstrap |
 | `zen_monastery_health: warn` | Gate 3 (partial) | Schema seed only |
 | All green + OOBE complete | Gate 4 | System ready notification |
@@ -222,9 +269,9 @@ All `build` writes are non-destructive — existing values are never overwritten
 
 ---
 
-### Stuck at Gate 2
+### Stuck at Gate 2 — Cabinet Check Needed
 
-`zen_cabinet_health: not ok` — one or more cabinets uninitialized.
+`zen_cabinet_health: error or critical` — one or more cabinets uninitialized or unavailable.
 
 **Check:** `sensor.zen_cabinet_health` attributes → `missing_cabinets` list.
 
@@ -232,11 +279,21 @@ All `build` writes are non-destructive — existing values are never overwritten
 
 ---
 
+### Gate 2 — Cabinet Upgrade Available notification
+
+`zen_cabinet_health: warn` — this is **not a stuck gate**. The system is fully operational. One or more cabinets are on legacy schema (state: `Variables`).
+
+**What to do:** Open a conversation and say "upgrade my cabinets" when convenient. Or dismiss the notification and proceed — nothing will break.
+
+If you keep seeing this notification on every non-warmup restart, it means the cabinet hasn't been touched since the upgrade notification first appeared. The upgrade is one-way and non-destructive — data is intact.
+
+---
+
 ### Stuck at Gate 3 — "Conversation Agent Required"
 
 Flynn stopped in `bootstrap_content` because `input_text.zenos_conversation_agent` is empty or the entity is unavailable.
 
-**Fix:** Settings → Helpers → `zenos_conversation_agent` → set to your conversation agent entity ID. Verify the entity is available in Developer Tools.
+**Fix:** Settings → Helpers → use the **ZenOS: Conversation Agent** select — it shows all available `conversation.*` entities as a dropdown. Or set `zenos_conversation_agent` manually. Verify the entity is available in Developer Tools.
 
 ---
 
@@ -262,6 +319,41 @@ Resolver sensors haven't settled after label assignment. Flynn gates on resolver
 
 ---
 
+## Flynn as Prompt Fallback
+
+Flynn is not just a boot guard — he is the fallback persona when the system cannot build a valid prompt. `render_prompt()` in `zen_os_1.jinja` checks for Flynn conditions before assembling Friday's prompt.
+
+### Mode Detection Chain
+
+`render_prompt(ai_entity)` evaluates these conditions in order:
+
+| Priority | Condition | `_flynn_reason` |
+|----------|-----------|-----------------|
+| 1 | `input_boolean.zen_flynn_override` is `on` | `override` |
+| 2 | `ai_entity` is blank or whitespace | `blank_persona` |
+| 3 | persona label explicitly set to `flynn` | `explicit` |
+| 4 | `identity_resolve_source()` returns error | error key from resolver |
+
+If any condition matches, `prompt_system_flynn()` is returned — a hardcoded system prompt with zero cabinet dependencies.
+
+### input_boolean.zen_flynn_override
+
+Defined in `flynn.yaml`. Auto-creates on HA reload. Toggle this on to force Flynn mode for any conversation regardless of the selected persona — useful for maintenance, debugging, and testing without changing the persona selector.
+
+Default state: `off`. Safe to leave off indefinitely.
+
+### prompt_system_flynn()
+
+Hardcoded system prompt — no Jinja cabinet reads. Works on a bare install, works when cabinets are corrupt, works when the identity resolver fails. Flynn will always answer.
+
+### active_notification()
+
+`active_notification()` macro in `flynn_onboarding.jinja` scans `persistent_notification.flynn_*` for active notifications and returns the highest-priority one with context label. Flynn's prompt reads this and acknowledges the active notification in its opening — giving coherent UX during first-boot and error states.
+
+All four Flynn persistent notification messages are written in Flynn's voice and include an invitation to open the conversation agent.
+
+---
+
 ## Events Reference
 
 | Event | When | Payload |
@@ -284,7 +376,15 @@ Resolver sensors haven't settled after label assignment. Flynn gates on resolver
 | `script.zen_admintools_zenos_prompt_loader` | Gate 3 prompt substrate |
 | `script.zen_dojotools_filecabinet` | All cabinet reads and writes |
 | `binary_sensor.flynn_system_ready` | Early exit gate |
+| `input_boolean.zen_flynn_override` | Forces Flynn mode regardless of persona |
+| `zen_os_1.jinja` → `render_prompt()` | Calls `prompt_system_flynn()` when Flynn conditions met |
+| `flynn_onboarding.jinja` → `active_notification()` | Surfaces active Flynn notifications in prompt |
 | `input_text.zenos_conversation_agent` | Bootstrap validation |
 | `input_text.zenos_persona_name` | OOBE persona name |
+| `input_text.zenos_primary_user` | Bootstrap primary user seed |
 | `input_text.zenos_reasoning_task` | Auto-resolved at bootstrap |
 | `input_text.zenos_ai_task_entity` | Auto-resolved at bootstrap |
+| `select.zenos_persona` | Companion UI for persona name |
+| `select.zenos_primary_user` | Companion UI for primary user |
+| `select.zenos_conversation_agent` | Companion UI for conversation agent |
+| `select.zenos_ai_task` | Companion UI for AI task entity |

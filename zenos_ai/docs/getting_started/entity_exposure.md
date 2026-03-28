@@ -31,7 +31,7 @@ Keep this list as short as possible. Every entity exposed to Assist is a token i
 
 **All ZenOS-AI DojoTools scripts** — these are Friday's hands. Every `script.zen_dojotools_*` belongs in the exposed set.
 
-> The one exception: `zen_admintools_*` scripts other than `zen_dojotools_kungfu_writer` are admin-only and should NOT be exposed to the conversation agent. See [AdminTools](../scripts/zen_dojotools_admintools_readme.md).
+> `zen_admintools_*` scripts are admin-only and should NOT be exposed to the conversation agent. See [AdminTools](../scripts/zen_dojotools_admintools_readme.md). (`zen_dojotools_scribe` is the MCP-exposed KFC registration tool — it is a DojoTools script and is already covered by the "always expose all `zen_dojotools_*`" rule.)
 
 **Conversation agent helper** — `input_text.zenos_conversation_agent` (Friday needs to know her own entity ID for self-reference)
 
@@ -139,6 +139,7 @@ The system is designed so that the labeled+indexed path handles the overwhelming
 
 ## Related
 
+* [Cabinet Placement Guide](cabinet_placement.md) — where to store things once you've decided what to expose
 * [Understanding KF4](../kung_fu/understanding_kf4.md) — how labels connect to KFC components
 * [Zen HyperIndex](../zen_hyperindex/zen_hyperindex_overview.md) — how the index traverses labels
 * [DojoTools AdminTools](../scripts/zen_dojotools_admintools_readme.md) — what not to expose
