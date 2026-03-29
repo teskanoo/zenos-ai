@@ -255,8 +255,10 @@ script:
                     },
                     'stats': { 'drawer_count': drawers | count },
                     'capacity': {
-                      'chars_used': char_count, 'chars_max': max_chars,
-                      'percent_used': pct_chars, 'warning': storage_warning
+                      'chars_used': char_count, 
+                      'chars_max': max_chars,
+                      'percent_used': pct_chars, 
+                      'warning': storage_warning
                     },
                     'access': { 'writeable': writeable, 'readable': readable },
                     'drawer_index': drawer_index,
