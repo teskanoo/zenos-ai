@@ -479,7 +479,7 @@ script:
                     {{- cab.get('value') -}}
                   {% else -%}
                     {}
-                  %- endif -%}
+                  {%- endif -%}
                 {%- else -%} 
                   {} 
                 {%- endif -%}
