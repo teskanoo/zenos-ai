@@ -315,7 +315,7 @@ script:
     # ── Step 2: resolve identity ────────────────────────────────────────────
     - variables:
         cab_json: >
-          {% import ''zenos_ai/zen_os_1.jinja'' as zen %}
+          {% import 'zenos_ai/zen_os_1.jinja' as zen %}
           {{- zen.identity_resolve_source(normalized) -}}
 
         cab: >
