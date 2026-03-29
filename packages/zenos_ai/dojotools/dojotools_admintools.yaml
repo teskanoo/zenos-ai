@@ -1028,7 +1028,7 @@ script:
     - variables:
         cabinet_entity: "{{- cabinet_entity | default('') -}}"
         cabinet_type: "{{- cabinet_type | default('AI Data Storage Cabinet') -}}"
-        cabinet_friendly: "{{- state_attr(cabinet_entity,friendly_name') | default(cabinet_entity) -}}"
+        cabinet_friendly: "{{- state_attr(cabinet_entity,'friendly_name') | default(cabinet_entity) -}}"
         now_iso: "{{- now().isoformat() -}}"
         schema_version: 1
         cabinet_guid: >
