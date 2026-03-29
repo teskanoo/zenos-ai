@@ -1199,7 +1199,7 @@ script:
           response_variable: response
       - conditions:
         - condition: template
-          value_template: "{{- state_attr(cabinet_entity,variables') is mapping -}}"
+          value_template: "{{- state_attr(cabinet_entity,'variables') is mapping -}}"
         alias: Repair / Restamp
         sequence:
         - variables:
