@@ -476,7 +476,7 @@ script:
           data:
             level: error
             message: 'ZenDojoTools FileCabinet: FATAL — JSON parse error, write aborted.
-              Key: {{ key }} | Volume: {{ volume_entity }} Parsed Value: {{ parsed_value }}
+              Key: {{ key }} | Volume: {{ volume_entity }} Parsed Value: {{ parsed_value }} Raw Value: ```\n{{ raw_value }}\n```
   
               '
         - variables:
