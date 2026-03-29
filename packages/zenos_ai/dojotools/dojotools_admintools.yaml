@@ -1011,7 +1011,12 @@ script:
   zen_admintools_cabinetadmin_factory:
     sequence:
     - variables:
+        owner_person: "{{- owner_person | default('') -}}"
+        partner_person: "{{- partner_person | default('') -}}"
+        cabinet_guid: "{{- cabinet_guid | default('') -}}"
+        auto_profile: "{{- auto_profile | default(true) -}}"
         confirm_action: "{{- confirm_action | default(false) -}}"
+        force_new_guid: "{{- force_new_guid | default(false) -}}"
         caller_token: "{{- caller_token | default('') -}}"
     - choose:
       - conditions:
