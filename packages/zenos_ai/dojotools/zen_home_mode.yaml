@@ -285,18 +285,18 @@ automation:
   ###########################################################################
   - id: zen_hm_schedule
     alias: "Zen Home Mode: Schedule"
-    trigger:
-      - platform: time
+    triggers:
+      - trigger: time
         at: input_datetime.zen_am_start
-      - platform: time
+      - trigger: time
         at: input_datetime.zen_morning_start
-      - platform: time
+      - trigger: time
         at: input_datetime.zen_daytime_start
-      - platform: time
+      - trigger: time
         at: input_datetime.zen_evening_start
-      - platform: time
+      - trigger: time
         at: input_datetime.zen_night_start
-      - platform: time
+      - trigger: time
         at: input_datetime.zen_late_night_start
     condition:
       - condition: template
@@ -311,7 +311,7 @@ automation:
   - id: zen_hm_away
     alias: "Zen Home Mode: Away"
     trigger:
-      - platform: numeric_state
+      - trigger: numeric_state
         entity_id: zone.home
         below: 1
     condition:
@@ -330,7 +330,7 @@ automation:
   - id: zen_hm_presence_return
     alias: "Zen Home Mode: Presence Return"
     trigger:
-      - platform: numeric_state
+      - trigger: numeric_state
         entity_id: zone.home
         above: 0
     condition:
@@ -349,7 +349,7 @@ automation:
   - id: zen_hm_init
     alias: "Zen Home Mode: Init on HA Start"
     trigger:
-      - platform: homeassistant
+      - trigger: homeassistant
         event: start
     condition:
       - condition: template

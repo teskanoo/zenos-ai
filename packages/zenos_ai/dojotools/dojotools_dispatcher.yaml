@@ -36,7 +36,7 @@
 #         caller_token: "{{ caller_token }}"
 #
 #   wait_for_trigger:
-#     - platform: event
+#     - trigger: event
 #       event_type: zen_event
 #       event_data:
 #         event:

@@ -190,11 +190,11 @@ template:
   # 1️⃣ ZEN MONASTERY HEALTH — global cognition rollup
   ###########################################################################
   - trigger:
-      - platform: homeassistant
+      - trigger: homeassistant
         event: start
-      - platform: event
+      - trigger: event
         event_type: zen_health_tick
-      - platform: event
+      - trigger: event
         event_type: zen_resolver_refresh
         alias: Manual refire
     sensor:
@@ -434,11 +434,11 @@ template:
   # 2️⃣ NINJA SUMMARIZER HEALTH
   ###########################################################################
   - trigger:
-      - platform: homeassistant
+      - trigger: homeassistant
         event: start
-      - platform: event
+      - trigger: event
         event_type: zen_health_tick
-      - platform: event
+      - trigger: event
         event_type: zen_resolver_refresh
         alias: Manual refire
     sensor:
@@ -524,11 +524,11 @@ template:
   # 3️⃣ SUPER SUMMARY (High Priestess)
   ###########################################################################
   - trigger:
-      - platform: homeassistant
+      - trigger: homeassistant
         event: start
-      - platform: event
+      - trigger: event
         event_type: zen_health_tick
-      - platform: event
+      - trigger: event
         event_type: zen_resolver_refresh
         alias: Manual refire
     sensor:
@@ -637,16 +637,16 @@ automation:
     description: >-
       When any summarizer kill switch is turned on, immediately fire the
       summary pipeline rather than waiting for the next scheduled tick.
-    trigger:
-      - platform: state
+    triggers:
+      - trigger: state
         entity_id: input_boolean.zen_summarizers_enabled
         to: "on"
         id: master
-      - platform: state
+      - trigger: state
         entity_id: input_boolean.zen_ninja_summarizer_enabled
         to: "on"
         id: ninja
-      - platform: state
+      - trigger: state
         entity_id: input_boolean.zen_supersummarizer_enabled
         to: "on"
         id: supersummary

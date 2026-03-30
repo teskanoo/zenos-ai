@@ -31,8 +31,8 @@ Your automation fires on whatever condition you care about:
 ```yaml
 automation:
   alias: Water Manager — Respond on Flow Stop
-  trigger:
-    - platform: state
+  triggers:
+    - trigger: state
       entity_id: binary_sensor.water_flow_active
       to: "off"
   action:
@@ -125,8 +125,8 @@ The standard fields are `urgency`, `summary`, `attention`, `events`, and `ts`. Y
 automation:
   alias: Water Manager — Respond on Flow Stop
   mode: single
-  trigger:
-    - platform: state
+  triggers:
+    - trigger: state
       entity_id: binary_sensor.water_flow_active
       to: "off"
   action:
