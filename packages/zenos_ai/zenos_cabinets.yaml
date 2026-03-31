@@ -2894,7 +2894,7 @@ automation:
           {% if mm.get('id') %}
             {{ mm.get('id') }}
           {% else %}
-            ''
+            {{- '' -}}
           {% endif %}
 
         # Cabinet → info
@@ -2911,7 +2911,7 @@ automation:
           {% if civ.get('id') %}
             {{ civ.get('id') }}
           {% else %}
-            ''
+            {{- '' -}}
           {% endif %}
 
         guid_mismatch: "{{ manifest_guid and cabinet_guid and (manifest_guid != cabinet_guid) }}"
